@@ -60,12 +60,12 @@ This tool was created to **accelerate dataset collection for LoRA (Low-Rank Adap
 - **Quality Scoring**: Only saves high-quality frames
 
 ### 📐 Multiple Formats
-- **9:16** - TikTok, Instagram Reels, YouTube Shorts
-- **3:4** - Instagram Feed
-- **1:1** - Square format (ideal for LoRA training)
-- **4:5** - Instagram Portrait
-- **16:9** - Horizontal
-- **4:3** - Classic
+- **9:16**
+- **3:4**
+- **1:1**
+- **4:5**
+- **16:9**
+- **4:3**
 
 ### 📝 Text Detection
 - **Automatic Subtitle Skip**: Avoids text-heavy scenes
@@ -432,12 +432,12 @@ Bu araç, **LoRA (Low-Rank Adaptation) eğitimi için dataset toplama işlemini 
 - **Kalite Puanlama**: Sadece yüksek kaliteli kareleri kaydeder
 
 ### 📐 Çoklu Formatlar
-- **9:16** - TikTok, Instagram Reels, YouTube Shorts
-- **3:4** - Instagram Feed
-- **1:1** - Kare format (LoRA eğitimi için ideal)
-- **4:5** - Instagram Portrait
-- **16:9** - Yatay format
-- **4:3** - Klasik format
+- **9:16** 
+- **3:4**
+- **1:1**
+- **4:5**
+- **16:9**
+- **4:3**
 
 ### 📝 Metin Tespiti
 - **Otomatik Altyazı Atlama**: Metin yoğun sahnelerden kaçınır
@@ -637,3 +637,4 @@ Sorunlar ve sorular için:
 *Faydalı bulursanız ⭐ yıldız verin! / Star ⭐ if you find it useful!*
 
 </div>
+
