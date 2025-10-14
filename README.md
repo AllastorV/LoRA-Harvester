@@ -363,7 +363,7 @@ For detailed guides:
 
 GNU General Public License v3.0 - free for personal and commercial use with copyleft requirements
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
 
 See [LICENSE](LICENSE) file for details.
 
@@ -594,7 +594,7 @@ python cli.py video.mp4 -f 1:1 -i 60 --turbo --batch-size 8
 
 GNU Genel Kamu Lisansı v3.0 - copyleft gereklilikleri ile kişisel ve ticari kullanım için ücretsiz
 
-Bu program özgür bir yazılımdır: Free Software Foundation tarafından yayınlanan GNU Genel Kamu Lisansı'nın 3. sürümü (veya daha sonraki bir sürümü) şartları altında yeniden dağıtabilir ve/veya değiştirebilirsiniz.
+Bu program özgür bir yazılımdır: Free Software Foundation tarafından yayınlanan GNU Genel Kamu Lisansı'nın 3. sürümü şartları altında yeniden dağıtabilir ve/veya değiştirebilirsiniz.
 
 Detaylar için [LICENSE](LICENSE) dosyasına bakın.
 
@@ -637,5 +637,6 @@ Sorunlar ve sorular için:
 *Faydalı bulursanız ⭐ yıldız verin! / Star ⭐ if you find it useful!*
 
 </div>
+
 
 
