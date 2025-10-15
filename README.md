@@ -78,7 +78,6 @@ This tool was created to **accelerate dataset collection for LoRA (Low-Rank Adap
 - **Turkish/English**: Dual language support
 - **Real-time Progress**: Live statistics and progress bar
 - **CLI Mode**: Advanced command-line interface for automation
-- **Batch Processing**: Process multiple videos easily
 - **Tooltips**: Helpful hints for every setting
 
 ### 🗂️ Auto-Organization
@@ -450,7 +449,6 @@ Bu araç, **LoRA (Low-Rank Adaptation) eğitimi için dataset toplama işlemini 
 - **Türkçe/İngilizce**: Çift dil desteği
 - **Gerçek Zamanlı İlerleme**: Canlı istatistikler ve ilerleme çubuğu
 - **CLI Modu**: Otomasyon için gelişmiş komut satırı arayüzü
-- **Toplu İşleme**: Birden fazla videoyu kolayca işleyin
 - **Tooltip Yardım**: Her ayar için açıklayıcı ipuçları
 
 ### 🗂️ Otomatik Organizasyon
