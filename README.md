@@ -626,10 +626,6 @@ Sorunlar ve sorular için:
 
 <div align="center">
 
-**❤️ ile yapıldı - Yapay Zeka ve GPU hızlandırma kullanılarak**
-
-**Made with ❤️ using AI and GPU acceleration**
-
 **[GitHub @AllastorV](https://github.com/AllastorV)**
 
 *Faydalı bulursanız ⭐ yıldız verin! / Star ⭐ if you find it useful!*
