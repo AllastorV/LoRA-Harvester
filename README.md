@@ -2,9 +2,6 @@
 
 <div align="center">
 
-<img src="https://img.shields.io/badge/AI-Powered-blueviolet?style=for-the-badge&logo=opencv&logoColor=white" alt="AI Powered">
-<img src="https://img.shields.io/badge/LoRA-Training-ff69b4?style=for-the-badge&logo=pytorch&logoColor=white" alt="LoRA Training">
-<img src="https://img.shields.io/badge/Batch-Processing-success?style=for-the-badge&logo=files&logoColor=white" alt="Batch Processing">
 
 ### 🎯 AI-Powered Video Processing Tool for LoRA Training Dataset Creation
 ### 🎯 LoRA Eğitim Dataseti Oluşturma için Yapay Zeka Destekli Video İşleme Aracı
@@ -13,6 +10,11 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue?style=flat-square&logo=gnu&logoColor=white)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-AllastorV-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/AllastorV)
+
+<img src="https://img.shields.io/badge/AI-Powered-blueviolet?style=for-the-badge&logo=opencv&logoColor=white" alt="AI Powered">
+<img src="https://img.shields.io/badge/LoRA-Training-ff69b4?style=for-the-badge&logo=pytorch&logoColor=white" alt="LoRA Training">
+<img src="https://img.shields.io/badge/Batch-Processing-success?style=for-the-badge&logo=files&logoColor=white" alt="Batch Processing">
+
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -534,19 +536,16 @@ performance:
 <th></th>
 <th>Minimum</th>
 <th>Recommended</th>
-<th>Optimal</th>
 </tr>
 <tr>
 <td><b>CPU</b></td>
 <td>Intel i5 / AMD Ryzen 5</td>
 <td>Intel i7 / AMD Ryzen 7</td>
-<td>Intel i9 / AMD Ryzen 9</td>
 </tr>
 <tr>
 <td><b>RAM</b></td>
 <td>8 GB</td>
 <td>16 GB</td>
-<td>32 GB+</td>
 </tr>
 <tr>
 <td><b>GPU</b></td>
@@ -558,7 +557,6 @@ performance:
 <td><b>Storage</b></td>
 <td>10 GB free</td>
 <td>50 GB free</td>
-<td>100 GB+ SSD</td>
 </tr>
 </table>
 
@@ -1442,19 +1440,16 @@ performance:
 <th></th>
 <th>Minimum</th>
 <th>Önerilen</th>
-<th>Optimal</th>
 </tr>
 <tr>
 <td><b>CPU</b></td>
 <td>Intel i5 / AMD Ryzen 5</td>
 <td>Intel i7 / AMD Ryzen 7</td>
-<td>Intel i9 / AMD Ryzen 9</td>
 </tr>
 <tr>
 <td><b>RAM</b></td>
 <td>8 GB</td>
 <td>16 GB</td>
-<td>32 GB+</td>
 </tr>
 <tr>
 <td><b>GPU</b></td>
@@ -1466,7 +1461,6 @@ performance:
 <td><b>Depolama</b></td>
 <td>10 GB boş</td>
 <td>50 GB boş</td>
-<td>100 GB+ SSD</td>
 </tr>
 </table>
 
@@ -2116,6 +2110,7 @@ Sorunlar ve sorular için:
 *Faydalı bulursanız ⭐ yıldız verin! / Star ⭐ if you find it useful!*
 
 </div>
+
 
 
 
