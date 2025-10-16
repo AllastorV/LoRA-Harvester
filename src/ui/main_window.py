@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTextEdit, QGroupBox, QSpinBox, QToolButton)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QUrl
 from PyQt5.QtGui import QFont, QPalette, QColor, QDragEnterEvent, QDropEvent, QIcon
-from typing import Optional
+from typing import Optional, List
 from src.ui.translations import get_text
 
 
@@ -34,7 +34,8 @@ class ProcessingThread(QThread):
     def run(self):
         """Run video processing"""
         try:
-            stats = self.processor.process_video(
+            # Use process_all_videos which handles both single and batch
+            stats = self.processor.process_all_videos(
                 frame_interval=self.frame_interval,
                 skip_text=self.skip_text,
                 progress_callback=self.progress_callback,
@@ -59,9 +60,9 @@ class ProcessingThread(QThread):
 
 
 class DropZone(QLabel):
-    """Drag and drop zone for video files"""
+    """Drag and drop zone for video files - supports multiple files"""
     
-    file_dropped = pyqtSignal(str)
+    files_dropped = pyqtSignal(list)  # Changed to list
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -82,7 +83,7 @@ class DropZone(QLabel):
                 border-color: #bb86fc;
             }
         """)
-        self.setText("🎬 Drag & Drop Video File Here\nor click 'Browse' button")
+        self.setText("🎬 Drag & Drop Video File(s) Here\n(Supports multiple videos)\nor click 'Browse' button")
     
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter"""
@@ -97,19 +98,23 @@ class DropZone(QLabel):
         self.setStyleSheet(self.styleSheet().replace('#1a1a2e', '#2c2c3e'))
     
     def dropEvent(self, event: QDropEvent):
-        """Handle drop"""
+        """Handle drop - supports multiple files"""
         self.setStyleSheet(self.styleSheet().replace('#1a1a2e', '#2c2c3e'))
         
         files = [u.toLocalFile() for u in event.mimeData().urls()]
-        if files:
-            video_file = files[0]
-            # Check if it's a video file
-            valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm']
-            if any(video_file.lower().endswith(ext) for ext in valid_extensions):
-                self.file_dropped.emit(video_file)
-                self.setText(f"✅ {Path(video_file).name}")
+        valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v']
+        
+        # Filter valid video files
+        video_files = [f for f in files if any(f.lower().endswith(ext) for ext in valid_extensions)]
+        
+        if video_files:
+            self.files_dropped.emit(video_files)
+            if len(video_files) == 1:
+                self.setText(f"✅ {Path(video_files[0]).name}")
             else:
-                self.setText("❌ Invalid file type. Please drop a video file.")
+                self.setText(f"✅ {len(video_files)} videos selected")
+        else:
+            self.setText("❌ Invalid file type. Please drop video file(s).")
 
 
 class VideoSmartCropperUI(QMainWindow):
@@ -117,7 +122,7 @@ class VideoSmartCropperUI(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.video_path = None
+        self.video_paths = []  # Changed to list for batch support
         self.processor = None
         self.processing_thread = None
         self.current_lang = 'tr'  # Default to Turkish
@@ -184,7 +189,7 @@ class VideoSmartCropperUI(QMainWindow):
         
         # Drop zone
         self.drop_zone = DropZone()
-        self.drop_zone.file_dropped.connect(self.on_file_dropped)
+        self.drop_zone.files_dropped.connect(self.on_files_dropped)  # Updated signal
         self.update_drop_zone_text()
         main_layout.addWidget(self.drop_zone)
         
@@ -602,16 +607,16 @@ class VideoSmartCropperUI(QMainWindow):
         )
     
     def browse_video(self):
-        """Browse for video file"""
-        file_path, _ = QFileDialog.getOpenFileName(
+        """Browse for video file(s) - supports multiple selection"""
+        file_paths, _ = QFileDialog.getOpenFileNames(  # Changed to getOpenFileNames for multiple
             self,
-            "Select Video File",
+            "Select Video File(s)",
             "",
-            "Video Files (*.mp4 *.avi *.mov *.mkv *.flv *.wmv *.webm);;All Files (*)"
+            "Video Files (*.mp4 *.avi *.mov *.mkv *.flv *.wmv *.webm *.m4v);;All Files (*)"
         )
         
-        if file_path:
-            self.on_file_dropped(file_path)
+        if file_paths:
+            self.on_files_dropped(file_paths)
     
     def open_output_folder(self):
         """Open output folder in file explorer"""
@@ -633,14 +638,21 @@ class VideoSmartCropperUI(QMainWindow):
         except Exception as e:
             self.log(f"❌ Failed to open output folder: {str(e)}")
     
-    def on_file_dropped(self, file_path: str):
-        """Handle file selection"""
-        self.video_path = file_path
+    def on_files_dropped(self, file_paths: List[str]):
+        """Handle file selection - supports multiple files"""
+        self.video_paths = file_paths
         self.process_btn.setEnabled(True)
-        self.log(get_text('log_loaded', self.current_lang).format(Path(file_path).name))
         
-        # Update drop zone
-        self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(Path(file_path).name))
+        if len(file_paths) == 1:
+            self.log(get_text('log_loaded', self.current_lang).format(Path(file_paths[0]).name))
+            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(1))
+        else:
+            names = ', '.join([Path(f).name for f in file_paths[:3]])
+            if len(file_paths) > 3:
+                names += f' ... (+{len(file_paths)-3} more)'
+            self.log(get_text('log_loaded', self.current_lang).format(names))
+            self.log(get_text('log_batch_mode', self.current_lang).format(len(file_paths)))
+            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(len(file_paths)))
     
     def stop_processing(self):
         """Stop video processing"""
@@ -651,7 +663,7 @@ class VideoSmartCropperUI(QMainWindow):
     
     def start_processing(self):
         """Start video processing"""
-        if not self.video_path:
+        if not self.video_paths:
             self.log(get_text('log_no_file', self.current_lang))
             return
         
@@ -672,7 +684,13 @@ class VideoSmartCropperUI(QMainWindow):
         # Get ensemble settings
         use_ensemble = self.ensemble_cb.isChecked()
         
+        # Get turbo mode
+        use_turbo = self.turbo_cb.isChecked()
+        
         self.log(get_text('log_settings', self.current_lang).format(frame_interval, aspect_ratio, confidence))
+        
+        if len(self.video_paths) > 1:
+            self.log(get_text('log_batch_mode', self.current_lang).format(len(self.video_paths)))
         
         if use_ensemble:
             self.log(get_text('log_ensemble_on', self.current_lang))
@@ -680,18 +698,16 @@ class VideoSmartCropperUI(QMainWindow):
         else:
             self.log(get_text('log_single_mode', self.current_lang))
         
+        if use_turbo:
+            self.log(get_text('log_turbo', self.current_lang))
+        
         self.log(get_text('log_init', self.current_lang))
         
         # Import and initialize processors
         try:
             from src.core.text_detector import SubtitleDetector
             from src.core.cropper import SmartCropper
-            from src.core.video_processor import VideoProcessor
-            
-            # Create output directory
-            video_name = Path(self.video_path).stem
-            mode_suffix = "ensemble" if use_ensemble else "yolo"
-            output_dir = Path("output") / f"{video_name}_{aspect_ratio.replace(':', 'x')}_{mode_suffix}"
+            from src.core.unified_processor import UnifiedVideoProcessor
             
             # Initialize detector (ensemble or single)
             if use_ensemble:
@@ -729,29 +745,16 @@ class VideoSmartCropperUI(QMainWindow):
             text_detector = SubtitleDetector() if skip_text else None
             cropper = SmartCropper(target_format=aspect_ratio, min_padding=min_padding)
             
-            # Choose processor type
-            use_turbo = self.turbo_cb.isChecked()
-            
-            if use_turbo:
-                from src.core.optimized_processor import TurboVideoProcessor
-                self.processor = TurboVideoProcessor(
-                    self.video_path,
-                    str(output_dir),
-                    detector,
-                    text_detector,
-                    cropper,
-                    batch_size=4  # Process 4 frames at once
-                )
-                self.log(get_text('log_turbo', self.current_lang))
-            else:
-                from src.core.video_processor import VideoProcessor
-                self.processor = VideoProcessor(
-                    self.video_path,
-                    str(output_dir),
-                    detector,
-                    text_detector,
-                    cropper
-                )
+            # Create unified processor (handles both single and batch, standard and turbo)
+            self.processor = UnifiedVideoProcessor(
+                video_paths=self.video_paths,  # Can be single or multiple videos
+                output_dir="output",
+                detector=detector,
+                text_detector=text_detector,
+                cropper=cropper,
+                use_turbo=use_turbo,
+                batch_size=4
+            )
             
             self.log(get_text('log_success', self.current_lang))
             self.log(get_text('log_processing', self.current_lang))
@@ -769,6 +772,8 @@ class VideoSmartCropperUI(QMainWindow):
             
         except Exception as e:
             self.log(f"❌ Error: {str(e)}")
+            import traceback
+            traceback.print_exc()
             self.process_btn.setEnabled(True)
             self.drop_zone.setEnabled(True)
     
@@ -788,12 +793,22 @@ class VideoSmartCropperUI(QMainWindow):
         self.progress_bar.setValue(100)
         self.log("\n" + "="*50)
         self.log(get_text('log_complete', self.current_lang))
-        self.log(get_text('log_total', self.current_lang).format(stats['saved_frames']))
-        self.log(get_text('log_persons', self.current_lang).format(stats['person_frames']))
-        self.log(get_text('log_animals', self.current_lang).format(stats['animal_frames']))
-        self.log(get_text('log_objects', self.current_lang).format(stats['object_frames']))
-        self.log(get_text('log_skipped_text', self.current_lang).format(stats['skipped_text']))
-        self.log(get_text('log_skipped_none', self.current_lang).format(stats['skipped_no_detection']))
+        
+        # Check if this is batch processing (overall_stats) or single video
+        if 'total_videos' in stats:
+            # Batch processing - show overall summary
+            self.log(f"📹 Processed videos: {stats['processed_videos']}/{stats['total_videos']}")
+            self.log(get_text('log_total', self.current_lang).format(stats['total_frames_saved']))
+            self.log(f"⏱️  Total time: {stats.get('total_time', 0):.1f}s")
+        else:
+            # Single video - show detailed stats
+            self.log(get_text('log_total', self.current_lang).format(stats['saved_frames']))
+            self.log(get_text('log_persons', self.current_lang).format(stats['person_frames']))
+            self.log(get_text('log_animals', self.current_lang).format(stats['animal_frames']))
+            self.log(get_text('log_objects', self.current_lang).format(stats['object_frames']))
+            self.log(get_text('log_skipped_text', self.current_lang).format(stats['skipped_text']))
+            self.log(get_text('log_skipped_none', self.current_lang).format(stats['skipped_no_detection']))
+        
         self.log("="*50)
         
         # Re-enable UI
@@ -846,10 +861,12 @@ class VideoSmartCropperUI(QMainWindow):
     
     def update_drop_zone_text(self):
         """Update drop zone text"""
-        if not self.video_path:
+        if not self.video_paths:
             self.drop_zone.setText(get_text('drop_zone', self.current_lang))
+        elif len(self.video_paths) == 1:
+            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(1))
         else:
-            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(Path(self.video_path).name))
+            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(len(self.video_paths)))
 
 
 def create_app():

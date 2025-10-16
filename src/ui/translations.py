@@ -11,12 +11,14 @@ TRANSLATIONS = {
         'subtitle': 'AI-Powered Dataset Collection for LoRA Training',
         
         # Drop zone
-        'drop_zone': '� Drag & Drop Video File Here\nfor LoRA Dataset Collection',
-        'drop_zone_success': '✅ {}',
-        'drop_zone_error': '❌ Invalid file type. Please drop a video file.',
+        'drop_zone': '🎬 Drag & Drop Video File(s) Here\nfor LoRA Dataset Collection\n(Supports multiple videos)',
+        'drop_zone_success': '✅ {} video(s) selected',
+        'drop_zone_error': '❌ Invalid file type. Please drop video file(s).',
         
         # Buttons
-        'browse_btn': '📁 Browse Video File',
+        'browse_btn': '📁 Browse Video File(s)',
+        'browse_multiple_btn': '📁+ Add Multiple Videos',
+        'clear_videos_btn': '🗑️ Clear List',
         'start_btn': '🚀 Start Processing',
         'stop_btn': '⏹️ Stop Processing',
         'open_output_btn': '📂 Open Output Folder',
@@ -47,8 +49,10 @@ TRANSLATIONS = {
         # Log
         'log_title': '📋 Processing Log:',
         'log_started': '🎉 Application started. Ready to process videos!',
-        'log_loaded': '✅ Video loaded: {}',
-        'log_no_file': '❌ No video file selected!',
+        'log_loaded': '✅ Video(s) loaded: {}',
+        'log_no_file': '❌ No video file(s) selected!',
+        'log_batch_mode': '📹 Batch mode: {} videos queued',
+        'log_current_video': '🎬 Processing video {}/{}: {}',
         'log_settings': '⚙️  Settings: Interval={}, Format={}, Confidence={:.2f}',
         'log_ensemble_on': '🤖 Ensemble Mode: ENABLED',
         'log_ensemble_info': '   Using multiple AI models for higher accuracy...',
@@ -79,12 +83,14 @@ TRANSLATIONS = {
         'subtitle': 'LoRA Eğitimi için Yapay Zeka Destekli Dataset Toplama Aracı',
         
         # Drop zone
-        'drop_zone': '� Video Dosyasını Buraya Sürükleyin\nLoRA Dataset Toplama İçin',
-        'drop_zone_success': '✅ {}',
-        'drop_zone_error': '❌ Geçersiz dosya türü. Lütfen bir video dosyası bırakın.',
+        'drop_zone': '🎬 Video Dosya(ları)nı Buraya Sürükleyin\nLoRA Dataset Toplama İçin\n(Çoklu video destekler)',
+        'drop_zone_success': '✅ {} video seçildi',
+        'drop_zone_error': '❌ Geçersiz dosya türü. Lütfen video dosya(ları) bırakın.',
         
         # Buttons
-        'browse_btn': '📁 Video Dosyası Seç',
+        'browse_btn': '📁 Video Dosya(ları) Seç',
+        'browse_multiple_btn': '📁+ Çoklu Video Ekle',
+        'clear_videos_btn': '🗑️ Listeyi Temizle',
         'start_btn': '🚀 İşlemi Başlat',
         'stop_btn': '⏹️ İşlemi Durdur',
         'open_output_btn': '📂 Çıktı Klasörünü Aç',
@@ -115,8 +121,10 @@ TRANSLATIONS = {
         # Log
         'log_title': '📋 İşlem Günlüğü:',
         'log_started': '🎉 Uygulama başlatıldı. Videoları işlemeye hazır!',
-        'log_loaded': '✅ Video yüklendi: {}',
-        'log_no_file': '❌ Video dosyası seçilmedi!',
+        'log_loaded': '✅ Video(lar) yüklendi: {}',
+        'log_no_file': '❌ Video dosya(ları) seçilmedi!',
+        'log_batch_mode': '📹 Toplu işlem modu: {} video sırada',
+        'log_current_video': '🎬 Video işleniyor {}/{}: {}',
         'log_settings': '⚙️  Ayarlar: Aralık={}, Format={}, Güven={:.2f}',
         'log_ensemble_on': '🤖 Topluluk Modu: AKTİF',
         'log_ensemble_info': '   Daha yüksek doğruluk için birden fazla yapay zeka modeli kullanılıyor...',
