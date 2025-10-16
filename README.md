@@ -532,7 +532,6 @@ performance:
 <td><b>GPU</b></td>
 <td>Optional (CPU mode)</td>
 <td>NVIDIA GTX 1060 6GB</td>
-<td>NVIDIA RTX 3080+ 10GB</td>
 </tr>
 <tr>
 <td><b>Storage</b></td>
@@ -1035,10 +1034,10 @@ Yüzlerce kareyi elle çıkarmak yerine, yapay zekanın işi yapmasına izin ver
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  📹 Video 1  →  ✅ İşlendi  →  💾 150 kare kaydedildi        │
-│  📹 Video 2  →  ✅ İşlendi  →  💾 200 kare kaydedildi        │
-│  📹 Video 3  →  ✅ İşlendi  →  💾 180 kare kaydedildi        │
-│                                                               │
+│  📹 Video 1  →  ✅ İşlendi  →  💾 150 kare kaydedildi       │
+│  📹 Video 2  →  ✅ İşlendi  →  💾 200 kare kaydedildi       │
+│  📹 Video 3  →  ✅ İşlendi  →  💾 180 kare kaydedildi       │
+│                                                              │
 │  ✅ TOPLAM: 3 video, 530 kare 5 dakikada!                   │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -1426,7 +1425,6 @@ performance:
 <td><b>GPU</b></td>
 <td>Opsiyonel (CPU modu)</td>
 <td>NVIDIA GTX 1060 6GB</td>
-<td>NVIDIA RTX 3080+ 10GB</td>
 </tr>
 <tr>
 <td><b>Depolama</b></td>
@@ -1839,230 +1837,6 @@ Bir fikriniz mi var?
 
 **[⬆ Back to top](#-lora-harvester)**
 
-</div>
-
-## 🎯 Amaç
-
-Bu araç, **LoRA (Low-Rank Adaptation) eğitimi için dataset toplama işlemini hızlandırmak** amacıyla oluşturulmuştur. LoRA/Dreambooth ile özel AI modelleri eğitirken yüzlerce kaliteli görüntüye ihtiyacınız vardır. Videolardan manuel olarak kare çıkarmak yerine, bu araç:
-
-✅ Kişileri, hayvanları ve nesneleri otomatik tespit eder  
-✅ Akıllıca dikey formatlara kırpar  
-✅ Düşük kaliteli kareleri ve metin yerleşimlerini atlar  
-✅ Çıktıyı kategorilere göre düzenler  
-✅ Doğruluk için ensemble AI modelleri kullanır  
-
-**Mükemmel kullanım alanları**: Karakter LoRA eğitimi, stil transferi, nesne-özel model ince ayarı ve video kaynaklarından tutarlı dataset oluşturmayı gerektiren her AI eğitimi.
-
----
-
-## ✨ Özellikler
-
-### 🤖 Yapay Zeka Destekli Tespit
-- **YOLOv8 Entegrasyonu**: Son teknoloji nesne tespiti
-- **🆕 Topluluk Modu**: Daha yüksek doğruluk için 3 farklı yapay zeka modeli
-  - **YOLOv8** (Ultralytics) - Hızlı ve doğru
-  - **DETR** (Facebook/Meta) - Transformer tabanlı tespit
-  - **Faster R-CNN** (Torchvision) - Geleneksel R-CNN mimarisi
-- **Konsensüs Oylama**: Birden fazla model her tespiti doğrular
-- **Çoklu Kategori Desteği**: İnsanlar, hayvanlar ve nesneler
-- **GPU Hızlandırma**: CUDA desteği ile 10x daha hızlı işleme
-- **Güven Eşiği**: Ayarlanabilir tespit hassasiyeti
-
-### 🎨 Akıllı Kırpma
-- **Baş Boşluğu Farkındalığı**: Kişiler için optimal çerçeveleme
-- **Özne Merkezleme**: Akıllı özne konumlandırma
-- **Uyarlamalı Zoom**: Kırpma boyutunu otomatik ayarlar
-- **Kalite Puanlama**: Sadece yüksek kaliteli kareleri kaydeder
-
-### 📐 Çoklu Formatlar
-- **9:16** 
-- **3:4**
-- **1:1**
-- **4:5**
-- **16:9**
-- **4:3**
-
-### 📝 Metin Tespiti
-- **Otomatik Altyazı Atlama**: Metin yoğun sahnelerden kaçınır
-- **OCR Entegrasyonu**: Çok dilli EasyOCR desteği
-- **Hızlı Mod**: Performans için hızlı kenar tespiti
-
-### 🖥️ Kullanıcı Arayüzü
-- **Modern PyQt5 GUI**: Sezgisel sürükle-bırak arayüzü
-- **Karanlık Mor Tema**: Göz yormayan tasarım
-- **Türkçe/İngilizce**: Çift dil desteği
-- **Gerçek Zamanlı İlerleme**: Canlı istatistikler ve ilerleme çubuğu
-- **CLI Modu**: Otomasyon için gelişmiş komut satırı arayüzü
-- **Tooltip Yardım**: Her ayar için açıklayıcı ipuçları
-
-### 🗂️ Otomatik Organizasyon
-Otomatik olarak düzenli çıktı yapısı oluşturur:
-```
-output/
-└── video_adi_9x16/
-    ├── persons/      # İnsan tespitleri - Karakter LoRA için mükemmel
-    ├── animals/      # Hayvan tespitleri - Hayvan LoRA eğitimi
-    └── objects/      # Diğer nesneler - Nesne-özel eğitim
-```
-
----
-
-## 🚀 Hızlı Başlangıç
-
-### Seçenek 1: Otomatik Kurulum (Windows)
-```bash
-# Sadece çift tıklayın
-install.bat
-
-# Sonra çalıştırın
-run.bat
-```
-
-### Seçenek 2: Manuel Kurulum
-```bash
-# Sanal ortam oluştur
-python -m venv venv
-
-# Aktif et (Windows)
-venv\Scripts\activate
-
-# Bağımlılıkları yükle
-pip install -r requirements.txt
-```
-
-### GUI Modu
-```bash
-python main.py
-```
-
-### CLI Modu
-```bash
-# Basit kullanım
-python cli.py video.mp4
-
-# LoRA eğitim dataseti için (1:1 format, yüksek kalite)
-python cli.py video.mp4 -f 1:1 -i 20 -c 0.7 --ensemble
-
-# Hızlı işleme
-python cli.py video.mp4 -f 9:16 -i 60 --turbo
-```
-
----
-
-## 📖 Kullanım Örnekleri
-
-### Örnek 1: Karakter LoRA Dataseti
-```bash
-# Yüksek kalite, 1:1 format, doğruluk için ensemble modu
-python cli.py karakter_video.mp4 -f 1:1 -i 15 -c 0.7 --ensemble --turbo
-```
-
-### Örnek 2: Hızlı Dataset Toplama
-```bash
-# Hızlı işleme, iyi kalite
-python cli.py video.mp4 -f 1:1 -i 40 --turbo --batch-size 8
-```
-
-### Örnek 3: Hayvan LoRA Dataseti
-```bash
-# Hayvanlara odaklan, yüksek hassasiyet
-python cli.py evcil_hayvan_video.mp4 -f 1:1 -i 20 -c 0.6 --ensemble
-```
-
-### Örnek 4: Dikey İçerik (TikTok/Reels)
-```bash
-python cli.py icerik.mp4 -f 9:16 -i 30 -c 0.6 --turbo
-```
-
-### Örnek 5: Eğitim İçin Maksimum Kalite
-```bash
-# 3 modelin de anlaşması gerekli, en yüksek hassasiyet
-python cli.py video.mp4 -f 1:1 -i 10 -c 0.8 --ensemble --voting-threshold 3
-```
-
----
-
-## 🎯 CLI Parametreleri
-
-| Parametre | Kısa | Açıklama | Varsayılan |
-|-----------|------|----------|------------|
-| `video` | - | Giriş video dosyası | Zorunlu |
-| `--output` | `-o` | Çıktı dizini | `output` |
-| `--format` | `-f` | En-boy oranı (9:16, 3:4, 1:1, 4:5, 16:9, 4:3) | `9:16` |
-| `--interval` | `-i` | Kare aralığı | `30` |
-| `--confidence` | `-c` | Tespit güveni (0-1) | `0.5` |
-| `--padding` | `-p` | Minimum dolgu (piksel) | `500` |
-| `--model` | `-m` | YOLO model boyutu | `yolov8n.pt` |
-| `--ensemble` | - | Topluluk modunu aktifleştir | False |
-| `--ensemble-models` | - | Topluluk için modeller | 3'ü de |
-| `--voting-threshold` | - | Min model anlaşması | `2` |
-| `--turbo` | - | Turbo modu aktif (2-3x hızlı) | False |
-| `--batch-size` | - | Turbo modu toplu boyutu | `4` |
-| `--no-skip-text` | - | Metin karelerini atlama | False |
-
----
-
-## 🚀 LoRA Dataset Oluşturma İpuçları
-
-### LoRA Eğitimi İçin
-```bash
-# Dengeli: İyi kalite, makul hız
-python cli.py video.mp4 -f 1:1 -i 25 -c 0.6 --turbo
-
-# Yüksek kalite: Eğitim için en iyisi
-python cli.py video.mp4 -f 1:1 -i 15 -c 0.7 --ensemble --turbo
-
-# Hızlı toplama: Hızlı iterasyon
-python cli.py video.mp4 -f 1:1 -i 60 --turbo --batch-size 8
-```
-
-### GPU vs CPU
-- **GPU**: ~10x daha hızlı, ensemble modu için önerilir
-- **CPU**: Çalışır ama daha yavaş, kare aralığını artırın
-
----
-
-## 🎬 Kullanım Alanları
-
-- **LoRA Eğitimi**: Stable Diffusion LoRA için hızlı dataset toplama
-- **Dreambooth**: Karakter/nesne dataset hazırlama
-- **AI Model Eğitimi**: Video kaynaklarından tutarlı dataset oluşturma
-
----
-
-## 📝 Lisans
-
-GNU Genel Kamu Lisansı v3.0 - copyleft gereklilikleri ile kişisel ve ticari kullanım için ücretsiz
-
-Bu program özgür bir yazılımdır: Free Software Foundation tarafından yayınlanan GNU Genel Kamu Lisansı'nın 3. sürümü şartları altında yeniden dağıtabilir ve/veya değiştirebilirsiniz.
-
-Detaylar için [LICENSE](LICENSE) dosyasına bakın.
-
----
-
-## 🤝 Katkıda Bulunma
-
-Katkılarınızı bekliyoruz! Lütfen [GitHub](https://github.com/AllastorV/LoRA-Harvester)'da sorunları ve pull request'leri göndermekten çekinmeyin.
-
----
-
-## 📧 Destek
-
-Sorunlar ve sorular için:
-1. Dokümantasyon dosyalarını kontrol edin
-2. Sorun giderme bölümünü inceleyin
-3. [GitHub](https://github.com/AllastorV/LoRA-Harvester/issues)'da issue açın
-
----
-
-## 🌟 Teşekkürler
-
-- **YOLOv8** by Ultralytics
-- **DETR** by Facebook/Meta
-- **Faster R-CNN** by Torchvision
-- **EasyOCR** metin tespiti için
-- **PyTorch** derin öğrenme için
-- **OpenCV** video işleme için
 
 ---
 
@@ -2073,6 +1847,7 @@ Sorunlar ve sorular için:
 *Faydalı bulursanız ⭐ yıldız verin! / Star ⭐ if you find it useful!*
 
 </div>
+
 
 
 
