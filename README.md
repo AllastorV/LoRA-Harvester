@@ -536,7 +536,7 @@ performance:
 <tr>
 <td><b>Storage</b></td>
 <td>10 GB free</td>
-<td>50 GB free</td>
+<td>20 GB free</td>
 </tr>
 </table>
 
@@ -1429,7 +1429,7 @@ performance:
 <tr>
 <td><b>Depolama</b></td>
 <td>10 GB boş</td>
-<td>50 GB boş</td>
+<td>20 GB boş</td>
 </tr>
 </table>
 
@@ -1847,6 +1847,7 @@ Bir fikriniz mi var?
 *Faydalı bulursanız ⭐ yıldız verin! / Star ⭐ if you find it useful!*
 
 </div>
+
 
 
 
