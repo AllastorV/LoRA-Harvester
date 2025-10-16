@@ -4,7 +4,7 @@
 
 
 ### 🎯 AI-Powered Video Processing Tool for LoRA Training Dataset Creation
-### 🎯 LoRA Eğitim Dataseti Oluşturma için Yapay Zeka Destekli Video İşleme Aracı
+ 🎯 LoRA Eğitim Dataseti Oluşturma için Yapay Zeka Destekli Video İşleme Aracı
 
 [![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
@@ -16,34 +16,15 @@
 <img src="https://img.shields.io/badge/Batch-Processing-success?style=for-the-badge&logo=files&logoColor=white" alt="Batch Processing">
 
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  🎬 Video Input  →  🤖 AI Detection  →  ✂️ Smart Crop  →  💾 Dataset  │
-└─────────────────────────────────────────────────────────────────┘
-```
+
 
 **⚡ Accelerate LoRA training dataset collection with AI-powered smart cropping**
 
-**⚡ LoRA eğitim dataseti toplama işlemini yapay zeka destekli akıllı kırpma ile hızlandırın**
+⚡ LoRA eğitim dataseti toplama işlemini yapay zeka destekli akıllı kırpma ile hızlandırın**
 
 ---
 
-<table>
-<tr>
-<td align="center">
-<img src="https://img.shields.io/badge/🎯-Single_Video-blue?style=for-the-badge" alt="Single Video">
-</td>
-<td align="center">
-<img src="https://img.shields.io/badge/📹-Batch_Processing-green?style=for-the-badge" alt="Batch Processing">
-</td>
-<td align="center">
-<img src="https://img.shields.io/badge/🤖-Ensemble_Mode-purple?style=for-the-badge" alt="Ensemble Mode">
-</td>
-<td align="center">
-<img src="https://img.shields.io/badge/⚡-Turbo_Mode-orange?style=for-the-badge" alt="Turbo Mode">
-</td>
-</tr>
-</table>
+
 
 **[📖 Documentation](#english) | [📖 Dokümantasyon](#turkce) | [🚀 Quick Start](#quick-start) | [💡 Examples](#usage-examples)**
 
@@ -90,7 +71,7 @@ Instead of manually extracting hundreds of frames, let AI do the heavy lifting:
 ### 🎬 Perfect For:
 ```
 ┌─────────────────────┬──────────────────────┬─────────────────────┐
-│  👤 Character LoRA  │  🐾 Animal/Pet LoRA  │  🎨 Style Transfer  │
+│  👤 Character LoRA  │  🐾 Animal/Pet LoRA  │  🎨 Style Transfer │
 │  Face training      │  Pet recognition     │  Artistic styles    │
 │  Portrait datasets  │  Wildlife datasets   │  Object datasets    │
 └─────────────────────┴──────────────────────┴─────────────────────┘
@@ -160,10 +141,10 @@ Instead of manually extracting hundreds of frames, let AI do the heavy lifting:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  📹 Video 1  →  ✅ Processed  →  💾 150 frames saved         │
-│  📹 Video 2  →  ✅ Processed  →  💾 200 frames saved         │
-│  📹 Video 3  →  ✅ Processed  →  💾 180 frames saved         │
-│                                                               │
+│  📹 Video 1  →  ✅ Processed  →  💾 150 frames sav         │
+│  📹 Video 2  →  ✅ Processed  →  💾 200 frames saved       │
+│  📹 Video 3  →  ✅ Processed  →  💾 180 frames saved       │
+│                                                              │
 │  ✅ TOTAL: 3 videos, 530 frames in 5 minutes!               │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -675,17 +656,7 @@ Train style models
 ✅ Object consistency  
 ✅ Scene datasets  
 
-</td>
-<td align="center" width="25%">
 
-### 📱 Content Creation
-**Social Media**
-
-Repurpose videos
-
-✅ TikTok/Reels  
-✅ Instagram posts  
-✅ YouTube Shorts  
 
 </td>
 </tr>
@@ -994,9 +965,9 @@ Yüzlerce kareyi elle çıkarmak yerine, yapay zekanın işi yapmasına izin ver
 ### 🎬 Mükemmel Kullanım Alanları:
 ```
 ┌─────────────────────┬──────────────────────┬─────────────────────┐
-│  👤 Karakter LoRA   │  🐾 Hayvan/Pet LoRA  │  🎨 Stil Transferi  │
+│  👤 Karakter LoRA   │  🐾 Hayvan/Pet LoRA  │  🎨 Stil Transferi │
 │  Yüz eğitimi        │  Evcil hayvan tanıma │  Sanatsal stiller   │
-│  Portre datasetleri │  Yaban hayatı       │  Nesne datasetleri  │
+│  Portre datasetleri │  Yaban hayatı       │  Nesne datasetleri   │
 └─────────────────────┴──────────────────────┴─────────────────────┘
 ```
 
@@ -1582,14 +1553,6 @@ Stil modelleri eğit
 </td>
 <td align="center" width="25%">
 
-### 📱 İçerik Üretimi
-**Sosyal Medya**
-
-Videoları yeniden kullan
-
-✅ TikTok/Reels  
-✅ Instagram gönderileri  
-✅ YouTube Shorts  
 
 </td>
 </tr>
@@ -2110,6 +2073,7 @@ Sorunlar ve sorular için:
 *Faydalı bulursanız ⭐ yıldız verin! / Star ⭐ if you find it useful!*
 
 </div>
+
 
 
 
