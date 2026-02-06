@@ -1,0 +1,38 @@
+# Video Processing & Computer Vision (GPU Supported)
+opencv-python>=4.8.0
+ultralytics>=8.0.0  # YOLOv8 with GPU support
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Ensemble Models - Multiple AI Architectures
+transformers>=4.30.0  # DETR + BLIP models
+timm>=0.9.0  # For DETR image models
+
+# Image Processing
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# OCR for Subtitle Detection
+easyocr>=1.7.0
+
+# UI Framework
+PyQt5>=5.15.9
+
+# Utilities
+tqdm>=4.65.0
+pyyaml>=6.0
+
+# ============ V2.0 Dependencies ============
+
+# BLIP Captioning (uses transformers - already included above)
+# No separate package needed, BLIP models loaded via transformers
+
+# WD14 / Danbooru Tagger (ONNX Runtime)
+onnxruntime>=1.15.0
+# onnxruntime-gpu  # Install separately if you have CUDA: pip install onnxruntime-gpu
+
+# Image hashing for duplicate detection
+imagehash>=4.3.0
+
+# Async I/O improvements
+aiofiles>=23.0.0

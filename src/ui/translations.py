@@ -1,0 +1,395 @@
+"""
+Translation Module for LoRA-Harvester
+AI-Powered Dataset Collection Tool - Supports Turkish and English
+"""
+
+TRANSLATIONS = {
+    'en': {
+        # Main window
+        'app_title': '🌾 LoRA-Harvester - AI Powered Dataset Collection',
+        'title': '🌾 LoRA-Harvester',
+        'subtitle': 'AI-Powered Dataset Collection for LoRA Training',
+        
+        # Drop zone
+        'drop_zone': '🎬 Drag & Drop Video File(s) Here\nfor LoRA Dataset Collection\n(Supports multiple videos)',
+        'drop_zone_success': '✅ {} video(s) selected',
+        'drop_zone_error': '❌ Invalid file type. Please drop video file(s).',
+        
+        # Buttons
+        'browse_btn': '📁 Browse Video File(s)',
+        'browse_multiple_btn': '📁+ Add Multiple Videos',
+        'clear_videos_btn': '🗑️ Clear List',
+        'start_btn': '🚀 Start Processing',
+        'stop_btn': '⏹ Stop Processing',
+        'open_output_btn': '📂 Open Output Folder',
+        
+        # Settings group
+        'settings_title': '⚙️ Processing Settings',
+        'frame_interval': 'Frame Interval:',
+        'frame_interval_tooltip': 'Process every N frames. Higher = faster but may miss some scenes',
+        'output_format': 'Output Format:',
+        'output_format_tooltip': 'Select aspect ratio for output videos',
+        'confidence': 'Detection Confidence:',
+        'confidence_tooltip': 'Minimum confidence for object detection (10-95%). Higher = stricter',
+        'ensemble_mode': '🤖 Enable Ensemble Mode',
+        'ensemble_mode_tooltip': 'Uses 3 AI models (YOLO + DETR + Faster R-CNN) for higher accuracy',
+        'skip_subtitle': 'Skip frames with subtitles/text',
+        'skip_subtitle_tooltip': 'Automatically skip frames containing text or subtitles',
+        'turbo_mode': '⚡ Turbo Mode',
+        'turbo_mode_tooltip': 'GPU batch processing for 2-3x speed boost',
+        'min_padding': 'Minimum Padding:',
+        'min_padding_tooltip': 'Minimum space around detected objects (in pixels)',
+        
+        # Ensemble settings
+        'ensemble_settings': 'Ensemble Settings',
+        'active_models': 'Active Models:',
+        'voting_threshold': 'Voting Threshold:',
+        'voting_threshold_tooltip': 'Minimum number of models that must agree on a detection',
+        
+        # Log
+        'log_title': '📋 Processing Log:',
+        'log_started': '🎉 Application started. Ready to process videos!',
+        'log_loaded': '✅ Video(s) loaded: {}',
+        'log_no_file': '❌ No video file(s) selected!',
+        'log_batch_mode': '📹 Batch mode: {} videos queued',
+        'log_current_video': '🎬 Processing video {}/{}: {}',
+        'log_settings': '⚙️  Settings: Interval={}, Format={}, Confidence={:.2f}',
+        'log_ensemble_on': '🤖 Ensemble Mode: ENABLED',
+        'log_ensemble_info': '   Using multiple AI models for higher accuracy...',
+        'log_single_mode': '🎯 Single Model Mode: YOLOv8',
+        'log_init': '🔄 Initializing AI models...',
+        'log_models_loaded': '✅ Ensemble models loaded: {}',
+        'log_voting': '🗳️  Voting threshold: {}/{} models must agree',
+        'log_success': '✅ Models loaded successfully!',
+        'log_processing': '🎬 Starting video processing...',
+        'log_turbo': '⚡ Turbo mode activated (batch processing)',
+        'log_stopping': '⏹️  Stopping processing...',
+        'log_progress': '📊 Progress: {:.1f}% | Saved: {} | Persons: {} | Animals: {} | Objects: {}',
+        'log_complete': '🎉 PROCESSING COMPLETE!',
+        'log_total': '📁 Total saved: {} frames',
+        'log_persons': '   └─ Persons: {}',
+        'log_animals': '   └─ Animals: {}',
+        'log_objects': '   └─ Objects: {}',
+        'log_skipped_text': '⏭️  Skipped (text): {}',
+        'log_skipped_none': '⏭️  Skipped (no detection): {}',
+        'log_error': '❌ ERROR: {}',
+        'log_error_model': '❌ Error: At least one model must be selected!',
+        
+        # Quality Analysis (NEW v2.0)
+        'quality_title': '🔍 Quality Analysis',
+        'quality_enabled': 'Enable Quality Check',
+        'quality_enabled_tooltip': 'Filter out blurry, dark, or duplicate frames',
+        'blur_threshold': 'Blur Threshold:',
+        'blur_threshold_tooltip': 'Minimum sharpness score. Higher = sharper required',
+        'brightness_range': 'Brightness Range:',
+        'brightness_tooltip': 'Acceptable brightness range (0-255)',
+        'skip_duplicates': 'Skip Duplicates',
+        'skip_duplicates_tooltip': 'Skip frames that are too similar to previous ones',
+        'log_skipped_quality': '⏭️  Skipped (quality): {}',
+        'log_skipped_duplicate': '⏭️  Skipped (duplicate): {}',
+        'log_avg_quality': '📊 Average quality score: {:.1f}/100',
+        
+        # Scene Detection (NEW v2.0)
+        'scene_detection': '🎬 Scene Detection',
+        'scene_enabled': 'Use Scene Detection',
+        'scene_enabled_tooltip': 'Extract frames at scene changes instead of fixed intervals',
+        'scene_threshold': 'Scene Threshold:',
+        'scene_threshold_tooltip': 'Sensitivity for detecting scene changes',
+        'log_scene_changes': '🎬 Scene changes detected: {}',
+        
+        # Captioning (NEW v2.0)
+        'caption_title': '📝 Auto Captioning',
+        'caption_enabled': 'Enable Auto Captioning',
+        'caption_enabled_tooltip': 'Generate captions/tags for saved frames',
+        'caption_mode': 'Caption Mode:',
+        'caption_mode_tooltip': 'How to combine BLIP and WD14 outputs',
+        'caption_modes': {
+            'tags_only': 'Tags Only (WD14)',
+            'blip_only': 'BLIP Only',
+            'blip_first': 'BLIP + Tags',
+            'tags_first': 'Tags + BLIP',
+            'combined': 'Combined'
+        },
+        'blip_enabled': 'BLIP (Natural Language)',
+        'blip_model': 'BLIP Model:',
+        'wd14_enabled': 'WD14/Danbooru Tags',
+        'wd14_model': 'WD14 Model:',
+        
+        # Tag Settings (NEW v2.0)
+        'tag_settings_title': '🏷️ Tag Settings',
+        'trigger_word': 'Trigger Word:',
+        'trigger_word_tooltip': 'Added at the beginning of every caption (e.g., "sks person")',
+        'max_tags': 'Max Tags:',
+        'max_tags_tooltip': 'Maximum number of tags to include',
+        'min_confidence': 'Min Confidence:',
+        'min_confidence_tooltip': 'Minimum tag confidence (0.0-1.0)',
+        'negative_tags': 'Negative Tags:',
+        'negative_tags_tooltip': 'Tags to exclude (comma-separated, supports wildcards)',
+        'priority_tags': 'Priority Tags:',
+        'priority_tags_tooltip': 'Tags always included if detected (comma-separated)',
+        'tag_preset': 'Preset:',
+        'tag_preset_tooltip': 'Load predefined tag settings',
+        'presets': {
+            'none': '-- Select Preset --',
+            'anime_character': 'Anime Character',
+            'style_lora': 'Style LoRA',
+            'realistic_photo': 'Realistic Photo',
+            'concept_art': 'Concept Art'
+        },
+        'keep_character_tags': 'Keep Character Tags',
+        'keep_series_tags': 'Keep Series/Copyright Tags',
+        'include_quality_tags': 'Include Quality Tags',
+        'include_rating_tags': 'Include Rating Tags',
+        'tag_separator': 'Tag Separator:',
+        'use_underscores': 'Use Underscores',
+        'caption_prefix': 'Caption Prefix:',
+        'caption_suffix': 'Caption Suffix:',
+        'save_json': 'Save Detailed JSON',
+        'use_blip': 'BLIP Caption',
+        'use_wd14': 'WD14/Danbooru Tags',
+        
+        # Tooltips for Captioning Page
+        'mode_tooltip': 'tags_only: Only Danbooru tags\nblip_first: BLIP description + tags\ntags_first: Tags + BLIP description\ncombined: Merge both intelligently',
+        'trigger_tooltip': 'This word is added to the beginning of every caption. Used for LoRA training (e.g., "sks person", "ohwx style")',
+        'max_tags_tooltip': 'Maximum number of tags to include in the caption. More tags = more detail but longer captions',
+        'confidence_tooltip': 'Minimum confidence threshold for tags (0.1-0.9). Higher = fewer but more accurate tags',
+        'negative_tooltip': 'Tags to exclude from captions. Separate with commas. Example: watermark, signature, text',
+        'blip_tooltip': 'BLIP generates natural language descriptions of images. Good for style and scene description',
+        'blip_model_tooltip': 'base: Faster, less detail\nlarge: Slower, more detailed descriptions',
+        'wd14_tooltip': 'WD14/Danbooru generates anime-style tags. Great for character features, poses, clothing',
+        'wd14_model_tooltip': 'swinv2-v3: 🏆 Best accuracy, recommended\nconvnext-v3: ⚡ Fast & accurate, good balance\nvit-v3: 📊 Standard ViT architecture\nmoat-v2: 🎯 High precision, older version\nswinv2-v2: 💾 Legacy model, stable',
+        'keep_char_tooltip': 'Keep character name tags like "hatsune_miku", "naruto". Useful for character LoRAs',
+        'json_tooltip': 'Save detailed JSON file with all tag scores and metadata for each image',
+        'recursive_tooltip': 'Also search for images in subfolders',
+        'overwrite_tooltip': 'Overwrite existing .txt caption files. If unchecked, skips already captioned images',
+        'log_captioning': '📝 Running auto-captioning...',
+        'log_caption_complete': '📝 Captioning complete: {} images',
+        
+        # Checkpoint/Resume (NEW v2.0)
+        'checkpoint_title': '💾 Checkpoint',
+        'checkpoint_found': 'Resume from frame {}?',
+        'checkpoint_resume': 'Resume',
+        'checkpoint_restart': 'Start Fresh',
+        
+        # Page Navigation (NEW v2.0)
+        'page_video_processing': '🎬 Video Processing',
+        'page_captioning': '🏷️ Image Captioning',
+        
+        # Standalone Captioning Page (NEW v2.0)
+        'captioning_standalone_title': '🏷️ Standalone Image Captioning',
+        'captioning_standalone_desc': 'Caption your own images from any folder',
+        'select_input_folder': '📂 Select Image Folder',
+        'input_folder_label': 'Input Folder:',
+        'no_folder_selected': 'No folder selected',
+        'drag_drop_folder': 'Drag & drop folder here or click button →',
+        'images_found': '✅ {} images found',
+        'folder_selected': 'Folder selected',
+        'start_captioning': '⚡ Start Captioning',
+        'stop_captioning': 'Stop',
+        'overwrite_existing': 'Overwrite Existing',
+        'recursive_search': 'Include Subfolders',
+        'captioning_progress': 'Captioning: {}/{}',
+        'captioning_complete': '✅ Captioning complete! {} images processed',
+        'captioning_error': '❌ Error: {}',
+        'step1_select_folder': '📁 Step 1: Select Folder',
+        'step2_settings': '⚙️ Step 2: Settings',
+        'step3_start': '🚀 Step 3: Start',
+    },
+    
+    'tr': {
+        # Main window
+        'app_title': '🌾 LoRA-Harvester - Yapay Zeka Destekli Dataset Toplama',
+        'title': '🌾 LoRA-Harvester',
+        'subtitle': 'LoRA Eğitimi için Yapay Zeka Destekli Dataset Toplama Aracı',
+        
+        # Drop zone
+        'drop_zone': '🎬 Video Dosya(ları)nı Buraya Sürükleyin\nLoRA Dataset Toplama İçin\n(Çoklu video destekler)',
+        'drop_zone_success': '✅ {} video seçildi',
+        'drop_zone_error': '❌ Geçersiz dosya türü. Lütfen video dosya(ları) bırakın.',
+        
+        # Buttons
+        'browse_btn': '📁 Video Dosya(ları) Seç',
+        'browse_multiple_btn': '📁+ Çoklu Video Ekle',
+        'clear_videos_btn': '🗑️ Listeyi Temizle',
+        'start_btn': '🚀 İşlemi Başlat',
+        'stop_btn': '⏹ İşlemi Durdur',
+        'open_output_btn': '📂 Çıktı Klasörünü Aç',
+        
+        # Settings group
+        'settings_title': '⚙️ İşleme Ayarları',
+        'frame_interval': 'Kare Aralığı:',
+        'frame_interval_tooltip': 'Her N karede bir işle. Yüksek = daha hızlı ama bazı sahneleri kaçırabilir',
+        'output_format': 'Çıktı Formatı:',
+        'output_format_tooltip': 'Çıktı videoları için en-boy oranı seçin',
+        'confidence': 'Tespit Güveni:',
+        'confidence_tooltip': 'Nesne tespiti için minimum güven (%10-95). Yüksek = daha katı',
+        'ensemble_mode': '🤖 Topluluk Modu Aktif',
+        'ensemble_mode_tooltip': '3 yapay zeka modeli (YOLO + DETR + Faster R-CNN) kullanarak daha yüksek doğruluk',
+        'skip_subtitle': 'Altyazılı kareleri atla',
+        'skip_subtitle_tooltip': 'Metin veya altyazı içeren kareleri otomatik atla',
+        'turbo_mode': '⚡ Turbo Modu',
+        'turbo_mode_tooltip': '2-3x hız artışı için GPU toplu işleme',
+        'min_padding': 'Minimum Dolgu:',
+        'min_padding_tooltip': 'Tespit edilen nesnelerin etrafındaki minimum boşluk (piksel)',
+        
+        # Ensemble settings
+        'ensemble_settings': 'Topluluk Ayarları',
+        'active_models': 'Aktif Modeller:',
+        'voting_threshold': 'Oylama Eşiği:',
+        'voting_threshold_tooltip': 'Bir tespitin kabul edilmesi için gerekli minimum model sayısı',
+        
+        # Log
+        'log_title': '📋 İşlem Günlüğü:',
+        'log_started': '🎉 Uygulama başlatıldı. Videoları işlemeye hazır!',
+        'log_loaded': '✅ Video(lar) yüklendi: {}',
+        'log_no_file': '❌ Video dosya(ları) seçilmedi!',
+        'log_batch_mode': '📹 Toplu işlem modu: {} video sırada',
+        'log_current_video': '🎬 Video işleniyor {}/{}: {}',
+        'log_settings': '⚙️  Ayarlar: Aralık={}, Format={}, Güven={:.2f}',
+        'log_ensemble_on': '🤖 Topluluk Modu: AKTİF',
+        'log_ensemble_info': '   Daha yüksek doğruluk için birden fazla yapay zeka modeli kullanılıyor...',
+        'log_single_mode': '🎯 Tekli Model Modu: YOLOv8',
+        'log_init': '🔄 Yapay zeka modelleri başlatılıyor...',
+        'log_models_loaded': '✅ Topluluk modelleri yüklendi: {}',
+        'log_voting': '🗳️  Oylama eşiği: {}/{} modelin anlaşması gerekli',
+        'log_success': '✅ Modeller başarıyla yüklendi!',
+        'log_processing': '🎬 Video işleme başlatılıyor...',
+        'log_turbo': '⚡ Turbo modu aktif (toplu işleme)',
+        'log_stopping': '⏹️  İşlem durduruluyor...',
+        'log_progress': '📊 İlerleme: {:.1f}% | Kaydedilen: {} | Kişiler: {} | Hayvanlar: {} | Nesneler: {}',
+        'log_complete': '🎉 İŞLEM TAMAMLANDI!',
+        'log_total': '📁 Toplam kaydedilen: {} kare',
+        'log_persons': '   └─ Kişiler: {}',
+        'log_animals': '   └─ Hayvanlar: {}',
+        'log_objects': '   └─ Nesneler: {}',
+        'log_skipped_text': '⏭️  Atlanan (metin): {}',
+        'log_skipped_none': '⏭️  Atlanan (tespit yok): {}',
+        'log_error': '❌ HATA: {}',
+        'log_error_model': '❌ Hata: En az bir model seçilmelidir!',
+        
+        # Quality Analysis (NEW v2.0)
+        'quality_title': '🔍 Kalite Analizi',
+        'quality_enabled': 'Kalite Kontrolü Aktif',
+        'quality_enabled_tooltip': 'Bulanık, karanlık veya tekrar eden kareleri filtrele',
+        'blur_threshold': 'Bulanıklık Eşiği:',
+        'blur_threshold_tooltip': 'Minimum netlik skoru. Yüksek = daha net gerekli',
+        'brightness_range': 'Parlaklık Aralığı:',
+        'brightness_tooltip': 'Kabul edilebilir parlaklık aralığı (0-255)',
+        'skip_duplicates': 'Tekrarları Atla',
+        'skip_duplicates_tooltip': 'Önceki karelere çok benzeyen kareleri atla',
+        'log_skipped_quality': '⏭️  Atlanan (kalite): {}',
+        'log_skipped_duplicate': '⏭️  Atlanan (tekrar): {}',
+        'log_avg_quality': '📊 Ortalama kalite skoru: {:.1f}/100',
+        
+        # Scene Detection (NEW v2.0)
+        'scene_detection': '🎬 Sahne Algılama',
+        'scene_enabled': 'Sahne Algılama Kullan',
+        'scene_enabled_tooltip': 'Sabit aralıklar yerine sahne değişimlerinde kare çıkar',
+        'scene_threshold': 'Sahne Eşiği:',
+        'scene_threshold_tooltip': 'Sahne değişimi algılama hassasiyeti',
+        'log_scene_changes': '🎬 Algılanan sahne değişimleri: {}',
+        
+        # Captioning (NEW v2.0)
+        'caption_title': '📝 Otomatik Etiketleme',
+        'caption_enabled': 'Otomatik Etiketleme Aktif',
+        'caption_enabled_tooltip': 'Kaydedilen kareler için açıklama/etiket oluştur',
+        'caption_mode': 'Etiket Modu:',
+        'caption_mode_tooltip': 'BLIP ve WD14 çıktılarını nasıl birleştireceğinizi seçin',
+        'caption_modes': {
+            'tags_only': 'Sadece Etiketler (WD14)',
+            'blip_only': 'Sadece BLIP',
+            'blip_first': 'BLIP + Etiketler',
+            'tags_first': 'Etiketler + BLIP',
+            'combined': 'Birleşik'
+        },
+        'blip_enabled': 'BLIP (Doğal Dil)',
+        'blip_model': 'BLIP Modeli:',
+        'wd14_enabled': 'WD14/Danbooru Etiketleri',
+        'wd14_model': 'WD14 Modeli:',
+        
+        # Tag Settings (NEW v2.0)
+        'tag_settings_title': '🏷️ Etiket Ayarları',
+        'trigger_word': 'Tetikleyici Kelime:',
+        'trigger_word_tooltip': 'Her açıklamanın başına eklenir (ör. "sks kişi")',
+        'max_tags': 'Maks Etiket:',
+        'max_tags_tooltip': 'Dahil edilecek maksimum etiket sayısı',
+        'min_confidence': 'Min Güven:',
+        'min_confidence_tooltip': 'Minimum etiket güveni (0.0-1.0)',
+        'negative_tags': 'Negatif Etiketler:',
+        'negative_tags_tooltip': 'Hariç tutulacak etiketler (virgülle ayrılmış, joker destekler)',
+        'priority_tags': 'Öncelikli Etiketler:',
+        'priority_tags_tooltip': 'Tespit edilirse her zaman dahil edilecek etiketler',
+        'tag_preset': 'Hazır Ayar:',
+        'tag_preset_tooltip': 'Önceden tanımlı etiket ayarlarını yükle',
+        'presets': {
+            'none': '-- Hazır Ayar Seç --',
+            'anime_character': 'Anime Karakter',
+            'style_lora': 'Stil LoRA',
+            'realistic_photo': 'Gerçekçi Fotoğraf',
+            'concept_art': 'Konsept Sanat'
+        },
+        'keep_character_tags': 'Karakter Etiketlerini Koru',
+        'keep_series_tags': 'Seri/Telif Etiketlerini Koru',
+        'include_quality_tags': 'Kalite Etiketlerini Dahil Et',
+        'include_rating_tags': 'Derecelendirme Etiketlerini Dahil Et',
+        'tag_separator': 'Etiket Ayırıcı:',
+        'use_underscores': 'Alt Çizgi Kullan',
+        'caption_prefix': 'Açıklama Öneki:',
+        'caption_suffix': 'Açıklama Soneki:',
+        'save_json': 'Detaylı JSON Kaydet',
+        'use_blip': 'BLIP Açıklama',
+        'use_wd14': 'WD14/Danbooru Etiketler',
+        
+        # Tooltips for Captioning Page
+        'mode_tooltip': 'tags_only: Sadece Danbooru etiketleri\nblip_first: BLIP açıklama + etiketler\ntags_first: Etiketler + BLIP açıklama\ncombined: Her ikisini akıllıca birleştir',
+        'trigger_tooltip': 'Bu kelime her açıklamanın başına eklenir. LoRA eğitimi için kullanılır (örn: "sks person", "ohwx style")',
+        'max_tags_tooltip': 'Açıklamaya dahil edilecek maksimum etiket sayısı. Fazla etiket = daha detaylı ama uzun açıklama',
+        'confidence_tooltip': 'Etiketler için minimum güven eşiği (0.1-0.9). Yüksek = daha az ama daha doğru etiket',
+        'negative_tooltip': 'Açıklamalardan hariç tutulacak etiketler. Virgülle ayırın. Örnek: watermark, signature, text',
+        'blip_tooltip': 'BLIP görsellerin doğal dil açıklamalarını üretir. Stil ve sahne açıklaması için iyi',
+        'blip_model_tooltip': 'base: Daha hızlı, daha az detay\\nlarge: Daha yavaş, daha detaylı açıklamalar',
+        'wd14_tooltip': 'WD14/Danbooru anime tarzı etiketler üretir. Karakter özellikleri, pozlar, kıyafetler için harika',
+        'wd14_model_tooltip': 'swinv2-v3: 🏆 En iyi doğruluk, önerilen\\nconvnext-v3: ⚡ Hızlı ve doğru, iyi denge\\nvit-v3: 📊 Standart ViT mimarisi\\nmoat-v2: 🎯 Yüksek hassasiyet, eski versiyon\\nswinv2-v2: 💾 Eski model, kararlı',
+        'keep_char_tooltip': '"hatsune_miku", "naruto" gibi karakter isim etiketlerini koru. Karakter LoRA\'ları için faydalı',
+        'json_tooltip': 'Her görsel için tüm etiket skorları ve meta verileri içeren detaylı JSON dosyası kaydet',
+        'recursive_tooltip': 'Alt klasörlerdeki görselleri de ara',
+        'overwrite_tooltip': 'Mevcut .txt açıklama dosyalarının üzerine yaz. Kapalıysa zaten açıklaması olan görselleri atlar',
+        'log_captioning': '📝 Otomatik etiketleme çalışıyor...',
+        'log_caption_complete': '📝 Etiketleme tamamlandı: {} görsel',
+        
+        # Checkpoint/Resume (NEW v2.0)
+        'checkpoint_title': '💾 Kontrol Noktası',
+        'checkpoint_found': 'Kare {}\'dan devam edilsin mi?',
+        'checkpoint_resume': 'Devam Et',
+        'checkpoint_restart': 'Baştan Başla',
+        
+        # Page Navigation (NEW v2.0)
+        'page_video_processing': '🎬 Video İşleme',
+        'page_captioning': '🏷️ Görsel Etiketleme',
+        
+        # Standalone Captioning Page (NEW v2.0)
+        'captioning_standalone_title': '🏷️ Bağımsız Görsel Etiketleme',
+        'captioning_standalone_desc': 'Herhangi bir klasördeki kendi görsellerinizi etiketleyin',
+        'select_input_folder': '📂 Görsel Klasörü Seç',
+        'input_folder_label': 'Giriş Klasörü:',
+        'no_folder_selected': 'Klasör seçilmedi',
+        'drag_drop_folder': 'Klasörü buraya sürükle veya düğmeye tıkla →',
+        'images_found': '✅ {} görsel bulundu',
+        'folder_selected': 'Klasör seçildi',
+        'start_captioning': '⚡ Etiketlemeyi Başlat',
+        'stop_captioning': 'Durdur',
+        'overwrite_existing': 'Üzerine Yaz',
+        'recursive_search': 'Alt Klasörler',
+        'captioning_progress': 'Etiketleniyor: {}/{}',
+        'captioning_complete': '✅ Etiketleme tamamlandı! {} görsel işlendi',
+        'captioning_error': '❌ Hata: {}',
+        'step1_select_folder': '📁 Adım 1: Klasör Seç',
+        'step2_settings': '⚙️ Adım 2: Ayarlar',
+        'step3_start': '🚀 Adım 3: Başlat',
+    }
+}
+
+
+def get_text(key: str, lang: str = 'en') -> str:
+    """Get translated text"""
+    return TRANSLATIONS.get(lang, TRANSLATIONS['en']).get(key, key)
