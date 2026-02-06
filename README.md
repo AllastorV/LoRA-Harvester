@@ -1152,6 +1152,7 @@ Have an idea?
 </tr>
 </table>
 
+---
 
 <div align="center">
 
@@ -1160,6 +1161,7 @@ Have an idea?
 * Star ⭐ if you find it useful!*
 
 </div>
+---
 
 ---
 
@@ -2292,7 +2294,7 @@ Bir fikriniz mi var?
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**[⬆ Back to top](#-🌾-LoRA-Harvester-v2.0)**
+**[⬆ Back to top](#-LoRA-Harvester-v2.0)**
 
 
 ---
@@ -2304,6 +2306,7 @@ Bir fikriniz mi var?
 *Faydalı bulursanız ⭐ yıldız verin!*
 
 </div>
+
 
 
 
