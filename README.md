@@ -1,4 +1,4 @@
-# 🌾 LoRA-Harvester
+# 🌾 LoRA-Harvester v2.0
 
 <div align="center">
 
@@ -15,7 +15,17 @@
 <img src="https://img.shields.io/badge/LoRA-Training-ff69b4?style=for-the-badge&logo=pytorch&logoColor=white" alt="LoRA Training">
 <img src="https://img.shields.io/badge/Batch-Processing-success?style=for-the-badge&logo=files&logoColor=white" alt="Batch Processing">
 
+### 🆕 v2.0 New Features | Yeni Özellikler
 
+| Feature | Description | Status |
+|---------|-------------|--------|
+| 📝 **BLIP + WD14 Captioning** | Auto-caption with natural language & Danbooru tags | ✅ Full |
+| 🏷️ **Advanced Tag Settings** | Trigger words, negative tags, presets, max limits | ✅ Full |
+| 🔍 **Quality Analysis** | Blur detection, brightness filter, duplicate skip | ✅ Full |
+| ⚡ **Async I/O** | Background frame saving for faster processing | ✅ Full |
+| 💾 **Checkpoint/Resume** | Resume interrupted processing | ✅ Full |
+| 🎨 **Caption Presets** | anime_character, realistic_person, object, style | ✅ Full |
+| 🚫 **Negative Tags** | Exclude unwanted tags with wildcard support | ✅ Full |
 
 
 **⚡ Accelerate LoRA training dataset collection with AI-powered smart cropping**
@@ -299,6 +309,30 @@ python cli.py test.mp4 -f 1:1 -i 90
 ```
 **Result**: Quick test in 30 seconds
 
+#### Example 6: Auto-Captioning with Tags (NEW v2.0)
+```bash
+python cli.py video.mp4 -f 1:1 -i 30 --caption --trigger "sks person"
+```
+**Result**: Frames with WD14 Danbooru tags + trigger word
+
+#### Example 7: Full v2.0 Features
+```bash
+python cli.py videos/*.mp4 -f 1:1 -i 20 --quality --no-blur --no-duplicates \
+    --caption --trigger "my_character" --max-tags 25 \
+    --negative-tags "watermark,signature,text" --ensemble --turbo
+```
+**Result**: High-quality filtered frames with custom captions
+
+#### Example 8: Using Caption Presets
+```bash
+# Anime character preset
+python cli.py anime.mp4 --caption --preset anime_character
+
+# Realistic person preset
+python cli.py portrait.mp4 --caption --preset realistic_person
+```
+**Result**: Pre-configured caption settings for specific use cases
+
 </details>
 
 ---
@@ -327,6 +361,15 @@ python cli.py test.mp4 -f 1:1 -i 90
 | `--no-turbo` | - | flag | OFF | 🐌 Disable turbo mode |
 | `--batch-size` | - | 1-16 | `4` | 📦 Frames per batch |
 | `--no-skip-text` | - | flag | OFF | 📝 Process text frames |
+| `--quality` | - | flag | OFF | 💎 Enable quality analysis |
+| `--no-blur` | - | flag | OFF | 🔍 Skip blurry frames |
+| `--no-duplicates` | - | flag | OFF | 🎯 Skip duplicate frames |
+| `--caption` | - | flag | OFF | 📝 Enable auto-captioning |
+| `--caption-mode` | - | tags_only, blip_only, combined | `tags_only` | 🏷️ Caption mode |
+| `--trigger` | - | text | `""` | 🎯 Trigger word for captions |
+| `--max-tags` | - | 1-50 | `30` | 📊 Max tags per caption |
+| `--preset` | - | anime_character, realistic_person, etc. | - | 🎨 Use caption preset |
+| `--negative-tags` | - | comma-separated | - | 🚫 Tags to exclude |
 
 <div align="center">
 
@@ -394,10 +437,15 @@ python cli.py test.mp4 -f 1:1 -i 90
 │
 ├── 🧠 Core Engine (src/core/)
 │   ├── unified_processor.py         # ⭐ All-in-one processor
+│   ├── enhanced_processor.py        # ⭐ Enhanced processor with v2.0 features
 │   ├── detector.py                  # YOLOv8 detection
 │   ├── ensemble_detector.py         # Multi-model ensemble
 │   ├── text_detector.py             # Subtitle detection
-│   └── cropper.py                   # Smart cropping
+│   ├── cropper.py                   # Smart cropping
+│   ├── advanced_captioner.py        # 📝 BLIP + WD14 captioning
+│   ├── quality_analyzer.py          # 💎 Quality analysis & filtering
+│   ├── video_processor.py           # 🎬 Video processing engine
+│   └── optimized_processor.py       # ⚡ Optimized batch processing
 │
 ├── 🎨 User Interface (src/ui/)
 │   ├── main_window.py               # PyQt5 GUI (batch support)
@@ -498,13 +546,171 @@ performance:
   turbo_mode: true                 # Batch processing
   batch_size: 4                    # Frames per batch
   use_fp16: true                   # Half precision (if supported)
+
+# Quality Analysis (NEW v2.0)
+quality:
+  enabled: true                    # Enable quality filtering
+  blur_threshold: 80.0             # Min sharpness (Laplacian variance)
+  brightness_min: 35               # Min brightness (0-255)
+  brightness_max: 225              # Max brightness (0-255)
+  duplicate_threshold: 0.90        # Similarity threshold for duplicates
+  min_contrast: 20                 # Minimum contrast level
+
+# Captioning (NEW v2.0)
+captioning:
+  enabled: false                   # Enable auto-captioning
+  mode: "tags_only"                # tags_only, blip_only, combined
+  
+  # BLIP Settings (Natural Language)
+  blip:
+    enabled: true
+    model: "blip-base"             # blip-base, blip-large
+    max_length: 75
+  
+  # WD14 Tagger (Danbooru Tags)
+  wd14:
+    enabled: true
+    model: "wd-v1-4-vit-tagger-v2"
+  
+  # Tag Settings
+  tags:
+    trigger_word: ""               # Added to every caption
+    max_tags: 30                   # Max tags per image
+    min_confidence: 0.35           # Min confidence (0.0-1.0)
+    negative_tags: []              # Tags to exclude
 ```
 
 </details>
 
 ---
 
-## 🔧 System Requirements
+## � Auto-Captioning Guide (NEW v2.0)
+
+<div align="center">
+
+### 🎨 **BLIP + WD14 Dual Captioning System**
+
+</div>
+
+The v2.0 release includes powerful auto-captioning using two AI models:
+- **BLIP**: Natural language descriptions (English)
+- **WD14 Tagger**: Danbooru-style tags (anime/booru format)
+
+<details open>
+<summary><b>🎯 Caption Modes</b></summary>
+
+| Mode | Description | Output Example |
+|------|-------------|----------------|
+| `tags_only` | WD14 tags only | `sks person, 1girl, solo, long hair, blue eyes, smile` |
+| `blip_only` | BLIP description only | `A young woman with long hair smiling at camera` |
+| `blip_first` | BLIP + tags | `A young woman with long hair smiling at camera, 1girl, solo, smile` |
+| `tags_first` | Tags + BLIP | `sks person, 1girl, solo, smile, A young woman with long hair` |
+| `combined` | Both in separate lines | Line 1: BLIP, Line 2: Tags |
+
+</details>
+
+<details>
+<summary><b>🏷️ Tag Settings</b></summary>
+
+```bash
+# Basic captioning
+python cli.py video.mp4 --caption
+
+# With trigger word
+python cli.py video.mp4 --caption --trigger "sks person"
+
+# Limit tags
+python cli.py video.mp4 --caption --max-tags 20
+
+# Exclude unwanted tags
+python cli.py video.mp4 --caption --negative-tags "watermark,signature,text"
+
+# Wildcard exclusions
+python cli.py video.mp4 --caption --negative-tags "watermark*,*signature*"
+```
+
+</details>
+
+<details>
+<summary><b>🎨 Caption Presets</b></summary>
+
+Use pre-configured settings for common scenarios:
+
+```bash
+# Anime character training
+python cli.py video.mp4 --caption --preset anime_character
+
+# Realistic person/portrait
+python cli.py video.mp4 --caption --preset realistic_person
+
+# Object/product dataset
+python cli.py video.mp4 --caption --preset object
+
+# Style transfer
+python cli.py video.mp4 --caption --preset style
+```
+
+**Available Presets:**
+- `anime_character`: WD14 tags, max 30 tags, anime-focused
+- `realistic_person`: BLIP + tags combined, portrait-focused
+- `object`: Descriptive BLIP captions
+- `style`: Style-focused tags and descriptions
+- `general`: Balanced BLIP + WD14 tags
+
+</details>
+
+<details>
+<summary><b>💡 Advanced Examples</b></summary>
+
+#### Full LoRA Training Pipeline
+```bash
+# Character LoRA with captions
+python cli.py character_videos/*.mp4 \
+    -f 1:1 -i 20 --quality --no-blur --no-duplicates \
+    --caption --trigger "sks person" --max-tags 25 \
+    --negative-tags "watermark,text,signature,logo" \
+    --ensemble --turbo
+```
+
+#### Anime Dataset
+```bash
+python cli.py anime_scenes/*.mp4 \
+    --caption --preset anime_character \
+    --trigger "charactername" \
+    --negative-tags "censored,mosaic*,watermark*"
+```
+
+#### Product/Object Dataset
+```bash
+python cli.py product_video.mp4 \
+    --caption --preset object \
+    --caption-mode blip_only \
+    -f 1:1
+```
+
+</details>
+
+<div align="center">
+
+### 📄 **Output Format**
+
+</div>
+
+For each saved frame `output/frame_001.jpg`, a caption file is created:
+
+**frame_001.txt:**
+```
+sks person, 1girl, solo, long hair, blue eyes, smile, looking at viewer
+```
+
+Or with BLIP:
+```
+A beautiful young woman with long hair and blue eyes smiling at the camera
+```
+
+---
+
+## �🔧 System Requirements
 
 <div align="center">
 
@@ -763,6 +969,29 @@ python cli.py video.mp4 -c 0.7
 
 # Option 3: Combine both
 python cli.py video.mp4 --ensemble --voting-threshold 3 -c 0.7
+```
+
+</details>
+
+<details>
+<summary><b>📝 Captioning Not Working (NEW v2.0)</b></summary>
+
+**Problem**: No caption files generated or errors
+
+**Solutions**:
+```bash
+# Option 1: Check if captioning is enabled
+python cli.py video.mp4 --caption
+
+# Option 2: Install ONNX runtime for WD14
+pip install onnxruntime
+
+# Option 3: Try BLIP-only mode
+python cli.py video.mp4 --caption --caption-mode blip_only
+
+# Option 4: Check model download
+# Models download automatically on first run
+# Check internet connection if stuck
 ```
 
 </details>
@@ -1192,6 +1421,30 @@ python cli.py test.mp4 -f 1:1 -i 90
 ```
 **Sonuç**: 30 saniyede hızlı test
 
+#### Örnek 6: Otomatik Etiketleme ile (YENİ v2.0)
+```bash
+python cli.py video.mp4 -f 1:1 -i 30 --caption --trigger "sks person"
+```
+**Sonuç**: WD14 Danbooru etiketleri + tetikleyici kelime ile kareler
+
+#### Örnek 7: Tam v2.0 Özellikleri
+```bash
+python cli.py videolar/*.mp4 -f 1:1 -i 20 --quality --no-blur --no-duplicates \
+    --caption --trigger "benim_karakterim" --max-tags 25 \
+    --negative-tags "filigran,imza,metin" --ensemble --turbo
+```
+**Sonuç**: Özel açıklamalı yüksek kalite filtrelenmiş kareler
+
+#### Örnek 8: Açıklama Ön Ayarları Kullanma
+```bash
+# Anime karakter ön ayarı
+python cli.py anime.mp4 --caption --preset anime_character
+
+# Gerçekçi portre ön ayarı
+python cli.py portre.mp4 --caption --preset realistic_person
+```
+**Sonuç**: Belirli kullanım durumları için önceden yapılandırılmış açıklama ayarları
+
 </details>
 
 ---
@@ -1220,6 +1473,15 @@ python cli.py test.mp4 -f 1:1 -i 90
 | `--no-turbo` | - | bayrak | KAPALI | 🐌 Turbo modunu kapat |
 | `--batch-size` | - | 1-16 | `4` | 📦 Toplu başına kare |
 | `--no-skip-text` | - | bayrak | KAPALI | 📝 Metin karelerini işle |
+| `--quality` | - | bayrak | KAPALI | 💎 Kalite analizini aktif et |
+| `--no-blur` | - | bayrak | KAPALI | 🔍 Bulanık kareleri atla |
+| `--no-duplicates` | - | bayrak | KAPALI | 🎯 Kopya kareleri atla |
+| `--caption` | - | bayrak | KAPALI | 📝 Otomatik açıklamayı aktif et |
+| `--caption-mode` | - | tags_only, blip_only, combined | `tags_only` | 🏷️ Açıklama modu |
+| `--trigger` | - | metin | `""` | 🎯 Açıklamalar için tetikleyici kelime |
+| `--max-tags` | - | 1-50 | `30` | 📊 Açıklama başına max etiket |
+| `--preset` | - | anime_character, realistic_person, vb. | - | 🎨 Açıklama ön ayarı kullan |
+| `--negative-tags` | - | virgülle ayrılmış | - | 🚫 Hariç tutulacak etiketler |
 
 <div align="center">
 
@@ -1287,10 +1549,15 @@ python cli.py test.mp4 -f 1:1 -i 90
 │
 ├── 🧠 Çekirdek Motor (src/core/)
 │   ├── unified_processor.py         # ⭐ Hepsi bir arada işlemci
+│   ├── enhanced_processor.py        # ⭐ v2.0 özellikleriyle gelişmiş işlemci
 │   ├── detector.py                  # YOLOv8 tespiti
 │   ├── ensemble_detector.py         # Çoklu-model ensemble
 │   ├── text_detector.py             # Altyazı tespiti
-│   └── cropper.py                   # Akıllı kırpma
+│   ├── cropper.py                   # Akıllı kırpma
+│   ├── advanced_captioner.py        # 📝 BLIP + WD14 açıklama
+│   ├── quality_analyzer.py          # 💎 Kalite analizi & filtreleme
+│   ├── video_processor.py           # 🎬 Video işleme motoru
+│   └── optimized_processor.py       # ⚡ Optimize toplu işleme
 │
 ├── 🎨 Kullanıcı Arayüzü (src/ui/)
 │   ├── main_window.py               # PyQt5 GUI (toplu destek)
@@ -1391,13 +1658,171 @@ performance:
   turbo_mode: true                 # Toplu işleme
   batch_size: 4                    # Toplu başına kare
   use_fp16: true                   # Yarı hassasiyet (destekleniyorsa)
+
+# Kalite Analizi (YENİ v2.0)
+quality:
+  enabled: true                    # Kalite filtrelemeyi etkinleştir
+  blur_threshold: 80.0             # Min keskinlik (Laplacian varyans)
+  brightness_min: 35               # Min parlaklık (0-255)
+  brightness_max: 225              # Max parlaklık (0-255)
+  duplicate_threshold: 0.90        # Kopya tespiti için benzerlik eşiği
+  min_contrast: 20                 # Minimum kontrast seviyesi
+
+# Açıklama/Captioning (YENİ v2.0)
+captioning:
+  enabled: false                   # Otomatik açıklama etkinleştir
+  mode: "tags_only"                # tags_only, blip_only, combined
+  
+  # BLIP Ayarları (Doğal Dil)
+  blip:
+    enabled: true
+    model: "blip-base"             # blip-base, blip-large
+    max_length: 75
+  
+  # WD14 Etiketleyici (Danbooru Etiketleri)
+  wd14:
+    enabled: true
+    model: "wd-v1-4-vit-tagger-v2"
+  
+  # Etiket Ayarları
+  tags:
+    trigger_word: ""               # Her açıklamaya eklenir
+    max_tags: 30                   # Görüntü başına max etiket
+    min_confidence: 0.35           # Min güven (0.0-1.0)
+    negative_tags: []              # Hariç tutulacak etiketler
 ```
 
 </details>
 
 ---
 
-## 🔧 Sistem Gereksinimleri
+## � Otomatik Açıklama Kılavuzu (YENİ v2.0)
+
+<div align="center">
+
+### 🎨 **BLIP + WD14 İkili Açıklama Sistemi**
+
+</div>
+
+v2.0 sürümü iki yapay zeka modeli kullanarak güçlü otomatik açıklama içerir:
+- **BLIP**: Doğal dil açıklamaları (İngilizce)
+- **WD14 Tagger**: Danbooru tarzı etiketler (anime/booru formatı)
+
+<details open>
+<summary><b>🎯 Açıklama Modları</b></summary>
+
+| Mod | Açıklama | Çıktı Örneği |
+|-----|----------|--------------|
+| `tags_only` | Sadece WD14 etiketleri | `sks person, 1girl, solo, long hair, blue eyes, smile` |
+| `blip_only` | Sadece BLIP açıklaması | `A young woman with long hair smiling at camera` |
+| `blip_first` | BLIP + etiketler | `A young woman with long hair smiling at camera, 1girl, solo, smile` |
+| `tags_first` | Etiketler + BLIP | `sks person, 1girl, solo, smile, A young woman with long hair` |
+| `combined` | İkisi de ayrı satırlarda | Satır 1: BLIP, Satır 2: Etiketler |
+
+</details>
+
+<details>
+<summary><b>🏷️ Etiket Ayarları</b></summary>
+
+```bash
+# Basit açıklama
+python cli.py video.mp4 --caption
+
+# Tetikleyici kelime ile
+python cli.py video.mp4 --caption --trigger "sks person"
+
+# Etiket sayısını sınırla
+python cli.py video.mp4 --caption --max-tags 20
+
+# İstenmeyen etiketleri hariç tut
+python cli.py video.mp4 --caption --negative-tags "watermark,signature,text"
+
+# Joker karakter hariç tutma
+python cli.py video.mp4 --caption --negative-tags "watermark*,*signature*"
+```
+
+</details>
+
+<details>
+<summary><b>🎨 Açıklama Ön Ayarları</b></summary>
+
+Yaygın senaryolar için önceden yapılandırılmış ayarları kullanın:
+
+```bash
+# Anime karakter eğitimi
+python cli.py video.mp4 --caption --preset anime_character
+
+# Gerçekçi kişi/portre
+python cli.py video.mp4 --caption --preset realistic_person
+
+# Nesne/ürün dataseti
+python cli.py video.mp4 --caption --preset object
+
+# Stil transferi
+python cli.py video.mp4 --caption --preset style
+```
+
+**Mevcut Ön Ayarlar:**
+- `anime_character`: WD14 etiketleri, max 30 etiket, anime odaklı
+- `realistic_person`: BLIP + etiketler birleşik, portre odaklı
+- `object`: Açıklayıcı BLIP açıklamaları
+- `style`: Stil odaklı etiketler ve açıklamalar
+- `general`: Dengeli BLIP + WD14 etiketleri
+
+</details>
+
+<details>
+<summary><b>💡 Gelişmiş Örnekler</b></summary>
+
+#### Tam LoRA Eğitim Hattı
+```bash
+# Açıklamalı karakter LoRA
+python cli.py karakter_videolari/*.mp4 \
+    -f 1:1 -i 20 --quality --no-blur --no-duplicates \
+    --caption --trigger "sks person" --max-tags 25 \
+    --negative-tags "filigran,metin,imza,logo" \
+    --ensemble --turbo
+```
+
+#### Anime Dataseti
+```bash
+python cli.py anime_sahneleri/*.mp4 \
+    --caption --preset anime_character \
+    --trigger "karakteradi" \
+    --negative-tags "sansurlu,mozaik*,filigran*"
+```
+
+#### Ürün/Nesne Dataseti
+```bash
+python cli.py urun_video.mp4 \
+    --caption --preset object \
+    --caption-mode blip_only \
+    -f 1:1
+```
+
+</details>
+
+<div align="center">
+
+### 📄 **Çıktı Formatı**
+
+</div>
+
+Kaydedilen her kare için `output/frame_001.jpg`, bir açıklama dosyası oluşturulur:
+
+**frame_001.txt:**
+```
+sks person, 1girl, solo, long hair, blue eyes, smile, looking at viewer
+```
+
+Veya BLIP ile:
+```
+A beautiful young woman with long hair and blue eyes smiling at the camera
+```
+
+---
+
+## �🔧 Sistem Gereksinimleri
 
 <div align="center">
 
@@ -1658,6 +2083,29 @@ python cli.py video.mp4 -c 0.7
 
 # Seçenek 3: İkisini birleştir
 python cli.py video.mp4 --ensemble --voting-threshold 3 -c 0.7
+```
+
+</details>
+
+<details>
+<summary><b>📝 Açıklama Çalışmıyor (YENİ v2.0)</b></summary>
+
+**Problem**: Açıklama dosyaları oluşturulmuyor veya hatalar var
+
+**Çözümler**:
+```bash
+# Seçenek 1: Açıklamanın etkin olup olmadığını kontrol et
+python cli.py video.mp4 --caption
+
+# Seçenek 2: WD14 için ONNX runtime kur
+pip install onnxruntime
+
+# Seçenek 3: Sadece BLIP modunu dene
+python cli.py video.mp4 --caption --caption-mode blip_only
+
+# Seçenek 4: Model indirmeyi kontrol et
+# Modeller ilk çalıştırmada otomatik indirilir
+# Takılırsa internet bağlantısını kontrol et
 ```
 
 </details>
