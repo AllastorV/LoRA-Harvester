@@ -1152,6 +1152,15 @@ Have an idea?
 </tr>
 </table>
 
+
+<div align="center">
+
+**[GitHub @AllastorV](https://github.com/AllastorV)**
+
+* Star ⭐ if you find it useful!*
+
+</div>
+
 ---
 
 <a name="turkce"></a>
@@ -2283,7 +2292,7 @@ Bir fikriniz mi var?
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**[⬆ Back to top](#-lora-harvester)**
+**[⬆ Back to top](#-🌾-LoRA-Harvester-v2.0)**
 
 
 ---
@@ -2292,9 +2301,10 @@ Bir fikriniz mi var?
 
 **[GitHub @AllastorV](https://github.com/AllastorV)**
 
-*Faydalı bulursanız ⭐ yıldız verin! / Star ⭐ if you find it useful!*
+*Faydalı bulursanız ⭐ yıldız verin!*
 
 </div>
+
 
 
 
