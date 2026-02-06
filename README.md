@@ -1,3 +1,5 @@
+<a id="top"></a>
+
 # 🌾 LoRA-Harvester v2.0
 
 <div align="center">
@@ -2296,7 +2298,7 @@ Bir fikriniz mi var?
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**[⬆ Back to top](#🌾-LoRA-Harvester-v2.0)**
+**[⬆ Back to top](#top)**
 
 
 ---
@@ -2308,6 +2310,7 @@ Bir fikriniz mi var?
 *Faydalı bulursanız ⭐ yıldız verin!*
 
 </div>
+
 
 
 
