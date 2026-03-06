@@ -4,11 +4,9 @@ Handles video frame extraction, processing, and saving
 """
 
 import cv2
-import os
 import numpy as np
 from pathlib import Path
-from typing import Optional, Callable, Dict, List
-from datetime import datetime
+from typing import Optional, Callable, Dict
 
 
 class VideoProcessor:
@@ -148,18 +146,10 @@ class VideoProcessor:
                     progress_callback(progress, self.stats)
                 
                 # Skip text frames if enabled
-                if skip_text:
-                    # Quick check first
-                    if use_quick_text_check and self.text_detector.quick_text_check(frame):
+                if skip_text and self.text_detector:
+                    if self.text_detector.quick_text_check(frame):
                         self.stats['skipped_text'] += 1
                         continue
-                    
-                    # Deep check if quick check passed but we want to be sure
-                    # (Optional: uncomment for more accuracy but slower processing)
-                    # has_text, _ = self.text_detector.has_text(frame)
-                    # if has_text:
-                    #     self.stats['skipped_text'] += 1
-                    #     continue
                 
                 # Detect objects
                 detections = self.detector.detect(frame)

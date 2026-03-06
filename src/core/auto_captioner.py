@@ -4,7 +4,6 @@ Generates captions for images using BLIP model
 Useful for training with captions (SD-scripts, kohya-ss, etc.)
 """
 
-import os
 import torch
 from pathlib import Path
 from typing import Optional, List, Dict

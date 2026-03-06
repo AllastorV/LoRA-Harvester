@@ -11,8 +11,9 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
-from typing import Dict, List
+from typing import Dict
 from src.ui.translations import get_text
+from src.ui import theme
 
 
 class QualitySettingsPanel(QGroupBox):
@@ -27,25 +28,14 @@ class QualitySettingsPanel(QGroupBox):
     
     def init_ui(self):
         """Initialize UI"""
-        self.setStyleSheet("""
-            QGroupBox {
-                font-size: 12px;
-                font-weight: bold;
-                border: 2px solid #3498db;
-                border-radius: 5px;
-                margin-top: 5px;
-                padding-top: 10px;
-                background-color: #2c2c3e;
-                color: #3498db;
-            }
-        """)
+        self.setStyleSheet(theme.panel_group())
         
         layout = QVBoxLayout()
         
         # Enable checkbox
         enable_layout = QHBoxLayout()
         self.enable_cb = QCheckBox(get_text('quality_enabled', self.lang))
-        self.enable_cb.setStyleSheet("color: #ecf0f1; font-weight: bold;")
+        self.enable_cb.setStyleSheet(theme.label_accent())
         self.enable_cb.toggled.connect(self._on_enable_toggled)
         enable_layout.addWidget(self.enable_cb)
         enable_layout.addStretch()
@@ -59,7 +49,7 @@ class QualitySettingsPanel(QGroupBox):
         # Blur threshold
         blur_layout = QHBoxLayout()
         self.blur_label = QLabel(get_text('blur_threshold', self.lang))
-        self.blur_label.setStyleSheet("color: #ecf0f1;")
+        self.blur_label.setStyleSheet(theme.label_default())
         self.blur_spinbox = QDoubleSpinBox()
         self.blur_spinbox.setRange(10, 500)
         self.blur_spinbox.setValue(80.0)
@@ -72,7 +62,7 @@ class QualitySettingsPanel(QGroupBox):
         # Brightness range
         bright_layout = QHBoxLayout()
         self.bright_label = QLabel(get_text('brightness_range', self.lang))
-        self.bright_label.setStyleSheet("color: #ecf0f1;")
+        self.bright_label.setStyleSheet(theme.label_default())
         self.bright_min = QSpinBox()
         self.bright_min.setRange(0, 255)
         self.bright_min.setValue(35)
@@ -92,7 +82,7 @@ class QualitySettingsPanel(QGroupBox):
         dup_layout = QHBoxLayout()
         self.skip_dup_cb = QCheckBox(get_text('skip_duplicates', self.lang))
         self.skip_dup_cb.setChecked(True)
-        self.skip_dup_cb.setStyleSheet("color: #ecf0f1;")
+        self.skip_dup_cb.setStyleSheet(theme.label_default())
         dup_layout.addWidget(self.skip_dup_cb)
         dup_layout.addStretch()
         settings_layout.addLayout(dup_layout)
@@ -101,16 +91,7 @@ class QualitySettingsPanel(QGroupBox):
         self.setLayout(layout)
     
     def _spinbox_style(self) -> str:
-        return """
-            QSpinBox, QDoubleSpinBox {
-                padding: 3px;
-                border: 1px solid #3498db;
-                border-radius: 3px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                min-width: 60px;
-            }
-        """
+        return theme.spinbox_compact()
     
     def _on_enable_toggled(self, checked: bool):
         self.settings_widget.setVisible(checked)
@@ -147,25 +128,14 @@ class CaptioningSettingsPanel(QGroupBox):
     
     def init_ui(self):
         """Initialize UI"""
-        self.setStyleSheet("""
-            QGroupBox {
-                font-size: 12px;
-                font-weight: bold;
-                border: 2px solid #27ae60;
-                border-radius: 5px;
-                margin-top: 5px;
-                padding-top: 10px;
-                background-color: #2c2c3e;
-                color: #27ae60;
-            }
-        """)
+        self.setStyleSheet(theme.panel_group())
         
         layout = QVBoxLayout()
         
         # Enable checkbox
         enable_layout = QHBoxLayout()
         self.enable_cb = QCheckBox(get_text('caption_enabled', self.lang))
-        self.enable_cb.setStyleSheet("color: #ecf0f1; font-weight: bold;")
+        self.enable_cb.setStyleSheet(theme.label_accent())
         self.enable_cb.toggled.connect(self._on_enable_toggled)
         enable_layout.addWidget(self.enable_cb)
         enable_layout.addStretch()
@@ -179,7 +149,7 @@ class CaptioningSettingsPanel(QGroupBox):
         # Caption mode
         mode_layout = QHBoxLayout()
         self.mode_label = QLabel(get_text('caption_mode', self.lang))
-        self.mode_label.setStyleSheet("color: #ecf0f1;")
+        self.mode_label.setStyleSheet(theme.label_default())
         self.mode_combo = QComboBox()
         self.mode_combo.addItems([
             'tags_only', 'blip_only', 'blip_first', 'tags_first', 'combined'
@@ -194,7 +164,7 @@ class CaptioningSettingsPanel(QGroupBox):
         blip_layout = QHBoxLayout()
         self.blip_cb = QCheckBox(get_text('blip_enabled', self.lang))
         self.blip_cb.setChecked(True)
-        self.blip_cb.setStyleSheet("color: #ecf0f1;")
+        self.blip_cb.setStyleSheet(theme.label_default())
         self.blip_combo = QComboBox()
         self.blip_combo.addItems(['blip-base', 'blip-large'])
         self.blip_combo.setStyleSheet(self._combo_style())
@@ -207,7 +177,7 @@ class CaptioningSettingsPanel(QGroupBox):
         wd14_layout = QHBoxLayout()
         self.wd14_cb = QCheckBox(get_text('wd14_enabled', self.lang))
         self.wd14_cb.setChecked(True)
-        self.wd14_cb.setStyleSheet("color: #ecf0f1;")
+        self.wd14_cb.setStyleSheet(theme.label_default())
         self.wd14_combo = QComboBox()
         self.wd14_combo.addItems([
             'wd-v1-4-vit-tagger-v2',
@@ -224,21 +194,7 @@ class CaptioningSettingsPanel(QGroupBox):
         self.setLayout(layout)
     
     def _combo_style(self) -> str:
-        return """
-            QComboBox {
-                padding: 5px;
-                border: 1px solid #27ae60;
-                border-radius: 3px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                min-width: 120px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #3d3d5c;
-                color: #ecf0f1;
-                selection-background-color: #27ae60;
-            }
-        """
+        return theme.combo_compact()
     
     def _on_enable_toggled(self, checked: bool):
         self.settings_widget.setVisible(checked)
@@ -276,25 +232,14 @@ class TagSettingsPanel(QGroupBox):
     
     def init_ui(self):
         """Initialize UI"""
-        self.setStyleSheet("""
-            QGroupBox {
-                font-size: 12px;
-                font-weight: bold;
-                border: 2px solid #e67e22;
-                border-radius: 5px;
-                margin-top: 5px;
-                padding-top: 10px;
-                background-color: #2c2c3e;
-                color: #e67e22;
-            }
-        """)
+        self.setStyleSheet(theme.panel_group())
         
         layout = QVBoxLayout()
         
         # Preset selector
         preset_layout = QHBoxLayout()
         self.preset_label = QLabel(get_text('tag_preset', self.lang))
-        self.preset_label.setStyleSheet("color: #ecf0f1;")
+        self.preset_label.setStyleSheet(theme.label_default())
         self.preset_combo = QComboBox()
         self.preset_combo.addItems([
             '-- Select Preset --',
@@ -313,7 +258,7 @@ class TagSettingsPanel(QGroupBox):
         # Trigger word
         trigger_layout = QHBoxLayout()
         self.trigger_label = QLabel(get_text('trigger_word', self.lang))
-        self.trigger_label.setStyleSheet("color: #ecf0f1;")
+        self.trigger_label.setStyleSheet(theme.label_default())
         self.trigger_edit = QLineEdit()
         self.trigger_edit.setPlaceholderText("e.g., sks person, my_character")
         self.trigger_edit.setStyleSheet(self._edit_style())
@@ -324,14 +269,14 @@ class TagSettingsPanel(QGroupBox):
         # Max tags and confidence
         limits_layout = QHBoxLayout()
         self.max_tags_label = QLabel(get_text('max_tags', self.lang))
-        self.max_tags_label.setStyleSheet("color: #ecf0f1;")
+        self.max_tags_label.setStyleSheet(theme.label_default())
         self.max_tags_spin = QSpinBox()
         self.max_tags_spin.setRange(5, 100)
         self.max_tags_spin.setValue(30)
         self.max_tags_spin.setStyleSheet(self._spinbox_style())
         
         self.conf_label = QLabel(get_text('min_confidence', self.lang))
-        self.conf_label.setStyleSheet("color: #ecf0f1;")
+        self.conf_label.setStyleSheet(theme.label_default())
         self.conf_spin = QDoubleSpinBox()
         self.conf_spin.setRange(0.1, 0.9)
         self.conf_spin.setValue(0.35)
@@ -349,10 +294,10 @@ class TagSettingsPanel(QGroupBox):
         neg_layout = QVBoxLayout()
         neg_header = QHBoxLayout()
         self.neg_label = QLabel(get_text('negative_tags', self.lang))
-        self.neg_label.setStyleSheet("color: #ecf0f1;")
+        self.neg_label.setStyleSheet(theme.label_default())
         self.neg_help = QLabel("ℹ️")
         self.neg_help.setToolTip(get_text('negative_tags_tooltip', self.lang))
-        self.neg_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.neg_help.setStyleSheet(theme.info_icon())
         self.neg_help.setCursor(Qt.WhatsThisCursor)
         neg_header.addWidget(self.neg_label)
         neg_header.addWidget(self.neg_help)
@@ -360,17 +305,10 @@ class TagSettingsPanel(QGroupBox):
         neg_layout.addLayout(neg_header)
         
         self.neg_edit = QTextEdit()
-        self.neg_edit.setMaximumHeight(60)
+        self.neg_edit.setMinimumHeight(45)
+        self.neg_edit.setMaximumHeight(90)
         self.neg_edit.setPlaceholderText("watermark, signature, text, username...")
-        self.neg_edit.setStyleSheet("""
-            QTextEdit {
-                border: 1px solid #e67e22;
-                border-radius: 3px;
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-                padding: 5px;
-            }
-        """)
+        self.neg_edit.setStyleSheet(theme.text_edit_input())
         # Set default negative tags
         self.neg_edit.setPlainText("watermark, signature, text, username, artist_name, twitter_username, patreon_username, dated")
         neg_layout.addWidget(self.neg_edit)
@@ -380,7 +318,7 @@ class TagSettingsPanel(QGroupBox):
         priority_layout = QVBoxLayout()
         priority_header = QHBoxLayout()
         self.priority_label = QLabel(get_text('priority_tags', self.lang))
-        self.priority_label.setStyleSheet("color: #ecf0f1;")
+        self.priority_label.setStyleSheet(theme.label_default())
         priority_header.addWidget(self.priority_label)
         priority_header.addStretch()
         priority_layout.addLayout(priority_header)
@@ -395,9 +333,9 @@ class TagSettingsPanel(QGroupBox):
         cb_layout1 = QHBoxLayout()
         self.keep_char_cb = QCheckBox(get_text('keep_character_tags', self.lang))
         self.keep_char_cb.setChecked(True)
-        self.keep_char_cb.setStyleSheet("color: #ecf0f1;")
+        self.keep_char_cb.setStyleSheet(theme.label_default())
         self.keep_series_cb = QCheckBox(get_text('keep_series_tags', self.lang))
-        self.keep_series_cb.setStyleSheet("color: #ecf0f1;")
+        self.keep_series_cb.setStyleSheet(theme.label_default())
         cb_layout1.addWidget(self.keep_char_cb)
         cb_layout1.addWidget(self.keep_series_cb)
         cb_layout1.addStretch()
@@ -406,9 +344,9 @@ class TagSettingsPanel(QGroupBox):
         # Checkboxes row 2
         cb_layout2 = QHBoxLayout()
         self.quality_tags_cb = QCheckBox(get_text('include_quality_tags', self.lang))
-        self.quality_tags_cb.setStyleSheet("color: #ecf0f1;")
+        self.quality_tags_cb.setStyleSheet(theme.label_default())
         self.rating_tags_cb = QCheckBox(get_text('include_rating_tags', self.lang))
-        self.rating_tags_cb.setStyleSheet("color: #ecf0f1;")
+        self.rating_tags_cb.setStyleSheet(theme.label_default())
         cb_layout2.addWidget(self.quality_tags_cb)
         cb_layout2.addWidget(self.rating_tags_cb)
         cb_layout2.addStretch()
@@ -418,9 +356,9 @@ class TagSettingsPanel(QGroupBox):
         format_layout = QHBoxLayout()
         self.underscore_cb = QCheckBox(get_text('use_underscores', self.lang))
         self.underscore_cb.setChecked(True)
-        self.underscore_cb.setStyleSheet("color: #ecf0f1;")
+        self.underscore_cb.setStyleSheet(theme.label_default())
         self.json_cb = QCheckBox(get_text('save_json', self.lang))
-        self.json_cb.setStyleSheet("color: #ecf0f1;")
+        self.json_cb.setStyleSheet(theme.label_default())
         format_layout.addWidget(self.underscore_cb)
         format_layout.addWidget(self.json_cb)
         format_layout.addStretch()
@@ -429,16 +367,16 @@ class TagSettingsPanel(QGroupBox):
         # Prefix/Suffix
         prefix_layout = QHBoxLayout()
         self.prefix_label = QLabel(get_text('caption_prefix', self.lang))
-        self.prefix_label.setStyleSheet("color: #ecf0f1;")
+        self.prefix_label.setStyleSheet(theme.label_default())
         self.prefix_edit = QLineEdit()
         self.prefix_edit.setStyleSheet(self._edit_style())
-        self.prefix_edit.setMaximumWidth(150)
+        self.prefix_edit.setMaximumWidth(200)
         
         self.suffix_label = QLabel(get_text('caption_suffix', self.lang))
-        self.suffix_label.setStyleSheet("color: #ecf0f1;")
+        self.suffix_label.setStyleSheet(theme.label_default())
         self.suffix_edit = QLineEdit()
         self.suffix_edit.setStyleSheet(self._edit_style())
-        self.suffix_edit.setMaximumWidth(150)
+        self.suffix_edit.setMaximumWidth(200)
         
         prefix_layout.addWidget(self.prefix_label)
         prefix_layout.addWidget(self.prefix_edit)
@@ -450,44 +388,13 @@ class TagSettingsPanel(QGroupBox):
         self.setLayout(layout)
     
     def _combo_style(self) -> str:
-        return """
-            QComboBox {
-                padding: 5px;
-                border: 1px solid #e67e22;
-                border-radius: 3px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                min-width: 120px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #3d3d5c;
-                color: #ecf0f1;
-                selection-background-color: #e67e22;
-            }
-        """
+        return theme.combo_compact()
     
     def _edit_style(self) -> str:
-        return """
-            QLineEdit {
-                padding: 5px;
-                border: 1px solid #e67e22;
-                border-radius: 3px;
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-            }
-        """
+        return theme.line_edit_compact()
     
     def _spinbox_style(self) -> str:
-        return """
-            QSpinBox, QDoubleSpinBox {
-                padding: 3px;
-                border: 1px solid #e67e22;
-                border-radius: 3px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                min-width: 60px;
-            }
-        """
+        return theme.spinbox_compact()
     
     def _on_preset_changed(self, index: int):
         """Load preset settings"""
@@ -593,24 +500,7 @@ class AdvancedSettingsDialog(QWidget):
         
         # Create tab widget for organized settings
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 2px solid #9b59b6;
-                border-radius: 5px;
-                background-color: #2c2c3e;
-            }
-            QTabBar::tab {
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-                padding: 8px 15px;
-                margin-right: 2px;
-                border-top-left-radius: 5px;
-                border-top-right-radius: 5px;
-            }
-            QTabBar::tab:selected {
-                background-color: #9b59b6;
-            }
-        """)
+        self.tabs.setStyleSheet(theme.tab_widget())
         
         # Quality tab
         quality_tab = QWidget()

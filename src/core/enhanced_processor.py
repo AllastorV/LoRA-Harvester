@@ -4,7 +4,6 @@ Includes: Quality Analysis, Scene Detection, Checkpoint/Resume, Async I/O
 """
 
 import cv2
-import os
 import json
 import numpy as np
 import torch
@@ -13,7 +12,6 @@ import threading
 from pathlib import Path
 from typing import Optional, Callable, Dict, List, Union
 from queue import Queue, Empty
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
@@ -345,10 +343,14 @@ class EnhancedVideoProcessor:
         )
         
         video_name = Path(video_path).stem
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_file = self.checkpoint_dir / f"{video_name}.checkpoint.json"
         
-        with open(checkpoint_file, 'w') as f:
-            json.dump(asdict(checkpoint), f, indent=2)
+        try:
+            with open(checkpoint_file, 'w') as f:
+                json.dump(asdict(checkpoint), f, indent=2)
+        except Exception as e:
+            print(f"⚠️ Checkpoint save error: {e}")
     
     def load_checkpoint(self, video_path: str) -> Optional[ProcessingCheckpoint]:
         """Load checkpoint if exists"""

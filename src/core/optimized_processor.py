@@ -8,9 +8,6 @@ import numpy as np
 import torch
 from pathlib import Path
 from typing import Optional, Callable, Dict, List
-from collections import deque
-from threading import Thread
-from queue import Queue
 import time
 
 

@@ -10,10 +10,11 @@ from PyQt5.QtWidgets import (
     QCheckBox, QSpinBox, QDoubleSpinBox, QLineEdit, QComboBox,
     QTextEdit, QPushButton, QProgressBar, QFileDialog, QFrame
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMimeData
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QDragEnterEvent, QDropEvent
-from typing import Dict, List, Optional
+from typing import Dict
 from src.ui.translations import get_text
+from src.ui import theme
 
 
 class CaptioningThread(QThread):
@@ -70,40 +71,33 @@ class StandaloneCaptioningPage(QWidget):
         layout.setSpacing(20)
         layout.setContentsMargins(30, 20, 30, 20)
         
-        # Set tooltip style for this widget
-        self.setStyleSheet("""
-            QToolTip {
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-                border: 1px solid #fd844a;
+        # Tooltip style handled by global theme
+        self.setStyleSheet(f"""
+            QToolTip {{
+                background-color: {theme.BG_DARK};
+                color: {theme.TEXT_PRIMARY};
+                border: 1px solid {theme.ORANGE};
                 padding: 8px;
                 border-radius: 4px;
                 font-size: 12px;
-            }
+            }}
         """)
         
         # ========== TITLE ==========
         self.main_title = QLabel(get_text('captioning_standalone_title', self.lang))
         self.main_title.setFont(QFont('Arial', 20, QFont.Bold))
-        self.main_title.setStyleSheet("color: #e67e22;")
+        self.main_title.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
         self.main_title.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.main_title)
         
         # ========== STEP 1: SELECT FOLDER ==========
         step1_frame = QFrame()
-        step1_frame.setStyleSheet("""
-            QFrame {
-                background-color: #2c2c3e;
-                border: 2px solid #3498db;
-                border-radius: 10px;
-                padding: 15px;
-            }
-        """)
+        step1_frame.setStyleSheet(theme.card_frame())
         step1_layout = QVBoxLayout(step1_frame)
         
         self.step1_title = QLabel(get_text('step1_select_folder', self.lang))
         self.step1_title.setFont(QFont('Arial', 14, QFont.Bold))
-        self.step1_title.setStyleSheet("color: #3498db; border: none;")
+        self.step1_title.setStyleSheet(theme.label_section())
         step1_layout.addWidget(self.step1_title)
         
         folder_row = QHBoxLayout()
@@ -111,35 +105,20 @@ class StandaloneCaptioningPage(QWidget):
         # Drop zone frame
         self.drop_zone = QFrame()
         self.drop_zone.setAcceptDrops(True)
-        self.drop_zone.setFixedHeight(55)
-        self.drop_zone.setStyleSheet("""
-            QFrame {
-                background: #1a1a2e;
-                border: 2px dashed #4a4a6a;
-                border-radius: 8px;
-            }
-            QFrame:hover {
-                border-color: #3498db;
-                background: #252540;
-            }
-        """)
+        self.drop_zone.setMinimumHeight(50)
+        self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
         
         drop_layout = QHBoxLayout(self.drop_zone)
         drop_layout.setContentsMargins(15, 5, 15, 5)
         drop_layout.setAlignment(Qt.AlignCenter)
         
         self.drop_icon = QLabel("📂")
-        self.drop_icon.setStyleSheet("font-size: 20px; border: none; background: transparent;")
+        self.drop_icon.setStyleSheet(theme.icon_transparent())
         self.drop_icon.setAlignment(Qt.AlignCenter)
         drop_layout.addWidget(self.drop_icon)
         
         self.folder_label = QLabel(get_text('drag_drop_folder', self.lang))
-        self.folder_label.setStyleSheet("""
-            color: #95a5a6; 
-            font-size: 12px;
-            border: none;
-            background: transparent;
-        """)
+        self.folder_label.setStyleSheet(theme.label_transparent())
         self.folder_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         drop_layout.addWidget(self.folder_label, stretch=1)
         
@@ -151,20 +130,7 @@ class StandaloneCaptioningPage(QWidget):
         folder_row.addWidget(self.drop_zone, stretch=1)
         
         self.browse_btn = QPushButton(get_text('select_input_folder', self.lang))
-        self.browse_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                padding: 12px 20px;
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
+        self.browse_btn.setStyleSheet(theme.btn_browse())
         self.browse_btn.clicked.connect(self.select_folder)
         folder_row.addWidget(self.browse_btn)
         step1_layout.addLayout(folder_row)
@@ -181,39 +147,32 @@ class StandaloneCaptioningPage(QWidget):
         step1_layout.addLayout(opts_row)
         
         self.image_count_label = QLabel("")
-        self.image_count_label.setStyleSheet("color: #27ae60; font-weight: bold; font-size: 13px; border: none;")
+        self.image_count_label.setStyleSheet(theme.label_success())
         step1_layout.addWidget(self.image_count_label)
         
         layout.addWidget(step1_frame)
         
         # ========== STEP 2: SETTINGS ==========
         step2_frame = QFrame()
-        step2_frame.setStyleSheet("""
-            QFrame {
-                background-color: #2c2c3e;
-                border: 2px solid #27ae60;
-                border-radius: 10px;
-                padding: 10px;
-            }
-        """)
+        step2_frame.setStyleSheet(theme.card_frame())
         step2_layout = QVBoxLayout(step2_frame)
         step2_layout.setSpacing(8)
         step2_layout.setContentsMargins(10, 8, 10, 8)
         
         self.step2_title = QLabel(get_text('step2_settings', self.lang))
         self.step2_title.setFont(QFont('Arial', 14, QFont.Bold))
-        self.step2_title.setStyleSheet("color: #27ae60; border: none;")
+        self.step2_title.setStyleSheet(theme.label_section())
         step2_layout.addWidget(self.step2_title)
         
         # Mode & Trigger in one row
         row1 = QHBoxLayout()
         
         self.mode_label = QLabel(get_text('caption_mode', self.lang))
-        self.mode_label.setStyleSheet("color: #ecf0f1; border: none;")
+        self.mode_label.setStyleSheet(theme.label_frame())
         
         self.mode_info = QLabel("ℹ️")
         self.mode_info.setToolTip(get_text('mode_tooltip', self.lang))
-        self.mode_info.setStyleSheet("color: #fd844a; font-size: 14px; border: none; margin-right: 5px;")
+        self.mode_info.setStyleSheet(theme.info_icon_frame())
         self.mode_info.setCursor(Qt.WhatsThisCursor)
         
         self.mode_combo = QComboBox()
@@ -222,11 +181,11 @@ class StandaloneCaptioningPage(QWidget):
         self.mode_combo.setMinimumWidth(120)
         
         self.trigger_label = QLabel(get_text('trigger_word', self.lang))
-        self.trigger_label.setStyleSheet("color: #ecf0f1; border: none;")
+        self.trigger_label.setStyleSheet(theme.label_frame())
         
         self.trigger_info = QLabel("ℹ️")
         self.trigger_info.setToolTip(get_text('trigger_tooltip', self.lang))
-        self.trigger_info.setStyleSheet("color: #fd844a; font-size: 14px; border: none; margin-right: 5px;")
+        self.trigger_info.setStyleSheet(theme.info_icon_frame())
         self.trigger_info.setCursor(Qt.WhatsThisCursor)
         
         self.trigger_edit = QLineEdit()
@@ -248,11 +207,11 @@ class StandaloneCaptioningPage(QWidget):
         row2 = QHBoxLayout()
         
         self.max_label = QLabel(get_text('max_tags', self.lang))
-        self.max_label.setStyleSheet("color: #ecf0f1; border: none;")
+        self.max_label.setStyleSheet(theme.label_frame())
         
         self.max_info = QLabel("ℹ️")
         self.max_info.setToolTip(get_text('max_tags_tooltip', self.lang))
-        self.max_info.setStyleSheet("color: #fd844a; font-size: 14px; border: none; margin-right: 5px;")
+        self.max_info.setStyleSheet(theme.info_icon_frame())
         self.max_info.setCursor(Qt.WhatsThisCursor)
         
         self.max_tags_spin = QSpinBox()
@@ -261,11 +220,11 @@ class StandaloneCaptioningPage(QWidget):
         self.max_tags_spin.setStyleSheet(self._spinbox_style())
         
         self.conf_label = QLabel(get_text('min_confidence', self.lang))
-        self.conf_label.setStyleSheet("color: #ecf0f1; border: none;")
+        self.conf_label.setStyleSheet(theme.label_frame())
         
         self.conf_info = QLabel("ℹ️")
         self.conf_info.setToolTip(get_text('confidence_tooltip', self.lang))
-        self.conf_info.setStyleSheet("color: #fd844a; font-size: 14px; border: none; margin-right: 5px;")
+        self.conf_info.setStyleSheet(theme.info_icon_frame())
         self.conf_info.setCursor(Qt.WhatsThisCursor)
         
         self.conf_spin = QDoubleSpinBox()
@@ -287,11 +246,11 @@ class StandaloneCaptioningPage(QWidget):
         # Negative tags row with info
         neg_row = QHBoxLayout()
         self.neg_label = QLabel(get_text('negative_tags', self.lang))
-        self.neg_label.setStyleSheet("color: #ecf0f1; border: none;")
+        self.neg_label.setStyleSheet(theme.label_frame())
         
         self.neg_info = QLabel("ℹ️")
         self.neg_info.setToolTip(get_text('negative_tooltip', self.lang))
-        self.neg_info.setStyleSheet("color: #fd844a; font-size: 14px; border: none;")
+        self.neg_info.setStyleSheet(theme.info_icon_frame_compact())
         self.neg_info.setCursor(Qt.WhatsThisCursor)
         
         neg_row.addWidget(self.neg_label)
@@ -310,11 +269,11 @@ class StandaloneCaptioningPage(QWidget):
         # BLIP Model Selection
         self.blip_cb = QCheckBox(get_text('use_blip', self.lang))
         self.blip_cb.setChecked(False)  # Default off
-        self.blip_cb.setStyleSheet("color: #ecf0f1; border: none;")
+        self.blip_cb.setStyleSheet(theme.checkbox_frame())
         
         self.blip_info = QLabel("ℹ️")
         self.blip_info.setToolTip(get_text('blip_tooltip', self.lang))
-        self.blip_info.setStyleSheet("color: #fd844a; font-size: 14px; border: none; margin-right: 5px;")
+        self.blip_info.setStyleSheet(theme.info_icon_frame())
         self.blip_info.setCursor(Qt.WhatsThisCursor)
         
         self.blip_combo = QComboBox()
@@ -337,11 +296,11 @@ class StandaloneCaptioningPage(QWidget):
         
         self.wd14_cb = QCheckBox(get_text('use_wd14', self.lang))
         self.wd14_cb.setChecked(True)
-        self.wd14_cb.setStyleSheet("color: #ecf0f1; border: none;")
+        self.wd14_cb.setStyleSheet(theme.checkbox_frame())
         
         self.wd14_info = QLabel("ℹ️")
         self.wd14_info.setToolTip(get_text('wd14_tooltip', self.lang))
-        self.wd14_info.setStyleSheet("color: #fd844a; font-size: 14px; border: none; margin-right: 5px;")
+        self.wd14_info.setStyleSheet(theme.info_icon_frame())
         self.wd14_info.setCursor(Qt.WhatsThisCursor)
         
         self.wd14_combo = QComboBox()
@@ -378,63 +337,24 @@ class StandaloneCaptioningPage(QWidget):
         
         # ========== STEP 3: START ==========
         step3_frame = QFrame()
-        step3_frame.setStyleSheet("""
-            QFrame {
-                background-color: #2c2c3e;
-                border: 2px solid #e67e22;
-                border-radius: 10px;
-                padding: 15px;
-            }
-        """)
+        step3_frame.setStyleSheet(theme.card_frame())
         step3_layout = QVBoxLayout(step3_frame)
         
         self.step3_title = QLabel(get_text('step3_start', self.lang))
         self.step3_title.setFont(QFont('Arial', 14, QFont.Bold))
-        self.step3_title.setStyleSheet("color: #e67e22; border: none;")
+        self.step3_title.setStyleSheet(theme.label_section())
         step3_layout.addWidget(self.step3_title)
         
         # Buttons
         btn_row = QHBoxLayout()
         self.start_btn = QPushButton(get_text('start_captioning', self.lang))
         self.start_btn.setEnabled(False)
-        self.start_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                border: none;
-                padding: 15px 30px;
-                font-size: 15px;
-                font-weight: bold;
-                border-radius: 8px;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-            }
-            QPushButton:disabled {
-                background-color: #7f8c8d;
-            }
-        """)
+        self.start_btn.setStyleSheet(theme.btn_primary())
         self.start_btn.clicked.connect(self.start_captioning)
         
         self.stop_btn = QPushButton(get_text('stop_btn', self.lang))
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                border: none;
-                padding: 15px 30px;
-                font-size: 15px;
-                font-weight: bold;
-                border-radius: 8px;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-            QPushButton:disabled {
-                background-color: #7f8c8d;
-            }
-        """)
+        self.stop_btn.setStyleSheet(theme.btn_danger())
         self.stop_btn.clicked.connect(self.stop_captioning)
         
         btn_row.addWidget(self.start_btn)
@@ -444,21 +364,7 @@ class StandaloneCaptioningPage(QWidget):
         
         # Progress
         self.progress_bar = QProgressBar()
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: none;
-                border-radius: 5px;
-                text-align: center;
-                height: 25px;
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-                font-weight: bold;
-            }
-            QProgressBar::chunk {
-                background-color: #e67e22;
-                border-radius: 5px;
-            }
-        """)
+        self.progress_bar.setStyleSheet(theme.progress_bar())
         step3_layout.addWidget(self.progress_bar)
         
         layout.addWidget(step3_frame)
@@ -466,63 +372,22 @@ class StandaloneCaptioningPage(QWidget):
         # ========== LOG ==========
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(120)
-        self.log_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #0d0d0d;
-                color: #27ae60;
-                border: 2px solid #2c2c3e;
-                border-radius: 8px;
-                padding: 10px;
-                font-family: 'Consolas', monospace;
-                font-size: 12px;
-            }
-        """)
+        self.log_text.setMinimumHeight(80)
+        self.log_text.setMaximumHeight(200)
+        self.log_text.setStyleSheet(theme.log_area())
         layout.addWidget(self.log_text)
         
         layout.addStretch()
         self.setLayout(layout)
     
     def _combo_style(self) -> str:
-        return """
-            QComboBox {
-                padding: 8px 12px;
-                border: 2px solid #27ae60;
-                border-radius: 5px;
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-                font-weight: bold;
-            }
-            QComboBox::drop-down { border: none; }
-            QComboBox QAbstractItemView {
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                selection-background-color: #27ae60;
-            }
-        """
+        return theme.combo()
     
     def _edit_style(self) -> str:
-        return """
-            QLineEdit {
-                padding: 8px 12px;
-                border: 2px solid #27ae60;
-                border-radius: 5px;
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-            }
-        """
+        return theme.line_edit()
     
     def _spinbox_style(self) -> str:
-        return """
-            QSpinBox, QDoubleSpinBox {
-                padding: 6px 10px;
-                border: 2px solid #27ae60;
-                border-radius: 5px;
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-                min-width: 70px;
-            }
-        """
+        return theme.spinbox()
     
     def log(self, message: str):
         """Add message to log"""
@@ -539,29 +404,13 @@ class StandaloneCaptioningPage(QWidget):
                 path = urls[0].toLocalFile()
                 if os.path.isdir(path):
                     event.acceptProposedAction()
-                    self.drop_zone.setStyleSheet("""
-                        QFrame {
-                            background: #1e3a1e;
-                            border: 2px dashed #27ae60;
-                            border-radius: 8px;
-                        }
-                    """)
+                    self.drop_zone.setStyleSheet(theme.drop_zone_frame_active())
                     return
         event.ignore()
     
     def dragLeaveEvent(self, event):
         """Handle drag leave event"""
-        self.drop_zone.setStyleSheet("""
-            QFrame {
-                background: #1a1a2e;
-                border: 2px dashed #4a4a6a;
-                border-radius: 8px;
-            }
-            QFrame:hover {
-                border-color: #3498db;
-                background: #252540;
-            }
-        """)
+        self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
     
     def dropEvent(self, event: QDropEvent):
         """Handle drop event"""
@@ -591,22 +440,10 @@ class StandaloneCaptioningPage(QWidget):
             display_path = "..." + folder[-47:]
         
         self.folder_label.setText(display_path)
-        self.folder_label.setStyleSheet("""
-            color: #27ae60; 
-            font-size: 13px;
-            font-weight: bold;
-            border: none;
-            background: transparent;
-        """)
+        self.folder_label.setStyleSheet(theme.label_success())
         
         self.drop_icon.setText("✅")
-        self.drop_zone.setStyleSheet("""
-            QFrame {
-                background: #1e3a1e;
-                border: 2px solid #27ae60;
-                border-radius: 8px;
-            }
-        """)
+        self.drop_zone.setStyleSheet(theme.drop_zone_frame_success())
         self.drop_zone.setToolTip(folder)
         
         # Count images

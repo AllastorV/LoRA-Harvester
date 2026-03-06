@@ -5,18 +5,20 @@ Handles intelligent cropping with subject centering, head space, and zoom adjust
 
 import cv2
 import numpy as np
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, List, Optional
 
 
 class SmartCropper:
     """Intelligent cropping with subject awareness"""
     
-    # Aspect ratios for vertical formats
+    # Aspect ratios for all supported formats
     ASPECT_RATIOS = {
         '9:16': 9/16,
         '3:4': 3/4,
         '1:1': 1.0,
-        '4:5': 4/5
+        '4:5': 4/5,
+        '16:9': 16/9,
+        '4:3': 4/3
     }
     
     def __init__(self, target_format: str = '9:16', min_padding: int = 500):

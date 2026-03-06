@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
-from collections import defaultdict
 import warnings
 warnings.filterwarnings('ignore')
 

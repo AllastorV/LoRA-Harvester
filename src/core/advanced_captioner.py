@@ -12,13 +12,11 @@ except ImportError:
     ONNX_AVAILABLE = False
     ort = None
 
-import os
-import re
 import json
 import torch
 import numpy as np
 from pathlib import Path
-from typing import Optional, List, Dict, Set, Tuple, Union
+from typing import Optional, List, Dict, Tuple, Union
 from dataclasses import dataclass, field, asdict
 from PIL import Image
 import cv2
@@ -354,7 +352,7 @@ class WD14Tagger:
                       images: List[Union[np.ndarray, Image.Image]],
                       threshold: float = 0.35) -> List[List[Tuple[str, float, int]]]:
         """
-        Predict tags for multiple images at once (batch processing for speed)
+        Predict tags for multiple images (processes one at a time for ONNX compatibility)
         
         Args:
             images: List of input images
@@ -369,18 +367,15 @@ class WD14Tagger:
         if not images:
             return []
         
-        # Preprocess all images
-        batch_input = np.concatenate([self._preprocess(img) for img in images], axis=0)
-        
-        # Run batch inference
         input_name = self.model.get_inputs()[0].name
         output_name = self.model.get_outputs()[0].name
         
-        batch_predictions = self.model.run([output_name], {input_name: batch_input})[0]
-        
-        # Process results for each image
+        # Process images one at a time (ONNX model expects batch_size=1)
         all_results = []
-        for predictions in batch_predictions:
+        for img in images:
+            preprocessed = self._preprocess(img)
+            predictions = self.model.run([output_name], {input_name: preprocessed})[0][0]
+            
             results = []
             for idx, conf in enumerate(predictions):
                 if conf >= threshold and idx < len(self.tags):
@@ -909,7 +904,9 @@ def create_captioner_from_preset(preset_name: str,
         available = ', '.join(CAPTIONER_PRESETS.keys())
         raise ValueError(f"Unknown preset: {preset_name}. Available: {available}")
     
-    settings = CAPTIONER_PRESETS[preset_name]
+    # Copy the preset to avoid mutating the shared original
+    import copy
+    settings = copy.deepcopy(CAPTIONER_PRESETS[preset_name])
     
     # Override with custom values
     if trigger_word:

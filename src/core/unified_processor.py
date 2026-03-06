@@ -5,15 +5,11 @@ Now with Quality Analysis and Auto Captioning support
 """
 
 import cv2
-import os
 import numpy as np
 import torch
 import time
 from pathlib import Path
 from typing import Optional, Callable, Dict, List, Union, Any
-from collections import deque
-from threading import Thread
-from queue import Queue
 
 
 class UnifiedVideoProcessor:
@@ -361,7 +357,13 @@ class UnifiedVideoProcessor:
         
         if skip_text and self.text_detector:
             for i, (frame, frame_num) in enumerate(zip(frames, frame_numbers)):
-                if use_quick_text and self.text_detector.quick_text_check(frame):
+                has_text = False
+                if use_quick_text:
+                    has_text = self.text_detector.quick_text_check(frame)
+                else:
+                    has_text, _ = self.text_detector.has_text(frame)
+                
+                if has_text:
                     self.stats['skipped_text'] += 1
                 else:
                     valid_frames.append(frame)
@@ -449,7 +451,13 @@ class UnifiedVideoProcessor:
         """Process a single frame with V2.0 quality and captioning support"""
         # Skip text if needed (for non-batch processing)
         if skip_text and self.text_detector:
-            if use_quick_text and self.text_detector.quick_text_check(frame):
+            has_text = False
+            if use_quick_text:
+                has_text = self.text_detector.quick_text_check(frame)
+            else:
+                has_text, _ = self.text_detector.has_text(frame)
+            
+            if has_text:
                 self.stats['skipped_text'] += 1
                 return
         

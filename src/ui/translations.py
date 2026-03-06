@@ -6,8 +6,8 @@ AI-Powered Dataset Collection Tool - Supports Turkish and English
 TRANSLATIONS = {
     'en': {
         # Main window
-        'app_title': '🌾 LoRA-Harvester - AI Powered Dataset Collection',
-        'title': '🌾 LoRA-Harvester',
+        'app_title': 'LoRA-Harvester',
+        'title': 'LoRA-Harvester',
         'subtitle': 'AI-Powered Dataset Collection for LoRA Training',
         
         # Drop zone
@@ -198,8 +198,8 @@ TRANSLATIONS = {
     
     'tr': {
         # Main window
-        'app_title': '🌾 LoRA-Harvester - Yapay Zeka Destekli Dataset Toplama',
-        'title': '🌾 LoRA-Harvester',
+        'app_title': 'LoRA-Harvester',
+        'title': 'LoRA-Harvester',
         'subtitle': 'LoRA Eğitimi için Yapay Zeka Destekli Dataset Toplama Aracı',
         
         # Drop zone

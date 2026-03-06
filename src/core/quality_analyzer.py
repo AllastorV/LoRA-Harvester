@@ -5,9 +5,8 @@ Analyzes frame quality: blur, lighting, duplicates, composition
 
 import cv2
 import numpy as np
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, Dict
 from collections import deque
-import hashlib
 
 
 class QualityAnalyzer:

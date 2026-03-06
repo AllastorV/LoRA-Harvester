@@ -13,11 +13,12 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QSlider, 
                              QComboBox, QCheckBox, QProgressBar, QFileDialog,
                              QTextEdit, QGroupBox, QSpinBox, QToolButton,
-                             QScrollArea, QStackedWidget, QFrame)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QUrl
-from PyQt5.QtGui import QFont, QPalette, QColor, QDragEnterEvent, QDropEvent, QIcon
+                             QScrollArea, QStackedWidget, QFrame, QDesktopWidget)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent, QFontMetrics, QPixmap
 from typing import Optional, List, Dict
 from src.ui.translations import get_text
+from src.ui import theme
 from src.ui.advanced_settings import (
     QualitySettingsPanel, 
     CaptioningSettingsPanel, 
@@ -77,38 +78,25 @@ class DropZone(QLabel):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumHeight(150)
-        self.setStyleSheet("""
-            QLabel {
-                border: 3px dashed #9b59b6;
-                border-radius: 10px;
-                background-color: #2c2c3e;
-                color: #c39bd3;
-                font-size: 14px;
-                padding: 20px;
-            }
-            QLabel:hover {
-                background-color: #3d3d5c;
-                border-color: #bb86fc;
-            }
-        """)
+        self.setMinimumHeight(120)
+        self.setStyleSheet(theme.drop_zone_default())
         self.setText("🎬 Drag & Drop Video File(s) Here\n(Supports multiple videos)\nor click 'Browse' button")
     
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter"""
         if event.mimeData().hasUrls():
             event.accept()
-            self.setStyleSheet(self.styleSheet().replace('#2c2c3e', '#1a1a2e'))
+            self.setStyleSheet(theme.drop_zone_active())
         else:
             event.ignore()
     
     def dragLeaveEvent(self, event):
         """Handle drag leave"""
-        self.setStyleSheet(self.styleSheet().replace('#1a1a2e', '#2c2c3e'))
+        self.setStyleSheet(theme.drop_zone_default())
     
     def dropEvent(self, event: QDropEvent):
         """Handle drop - supports multiple files"""
-        self.setStyleSheet(self.styleSheet().replace('#1a1a2e', '#2c2c3e'))
+        self.setStyleSheet(theme.drop_zone_default())
         
         files = [u.toLocalFile() for u in event.mimeData().urls()]
         valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v']
@@ -134,14 +122,43 @@ class VideoSmartCropperUI(QMainWindow):
         self.video_paths = []  # Changed to list for batch support
         self.processor = None
         self.processing_thread = None
-        self.current_lang = 'tr'  # Default to Turkish
+        self.current_lang = 'en'  # Default to English
         
         self.init_ui()
+    
+    @staticmethod
+    def _enable_dark_title_bar(hwnd):
+        """Enable Windows dark title bar via DWM API"""
+        try:
+            import ctypes
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20  # Windows 11 / 10 build 18985+
+            value = ctypes.c_int(1)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                ctypes.byref(value), ctypes.sizeof(value)
+            )
+        except Exception:
+            pass
     
     def init_ui(self):
         """Initialize UI components"""
         self.setWindowTitle(get_text('app_title', self.current_lang))
-        self.setGeometry(100, 100, 1000, 850)  # Slightly larger window
+        # Remove default icon from title bar (transparent 1x1 pixmap)
+        _px = QPixmap(1, 1)
+        _px.fill(Qt.transparent)
+        self.setWindowIcon(QIcon(_px))
+        # Dark title bar on Windows
+        if sys.platform == 'win32':
+            self._enable_dark_title_bar(int(self.winId()))
+        
+        # Screen-relative sizing
+        screen = QDesktopWidget().availableGeometry()
+        win_w = min(1000, int(screen.width() * 0.65))
+        win_h = min(850, int(screen.height() * 0.85))
+        self.resize(win_w, win_h)
+        # Centre on screen
+        self.move((screen.width() - win_w) // 2,
+                  (screen.height() - win_h) // 2)
         
         # Central widget
         central_widget = QWidget()
@@ -171,26 +188,9 @@ class VideoSmartCropperUI(QMainWindow):
         lang_label = QLabel("🌐")
         lang_label.setFont(QFont('Arial', 14))
         self.lang_combo = QComboBox()
-        self.lang_combo.addItems(['🇹🇷 Türkçe', '🇬🇧 English'])
-        self.lang_combo.setCurrentIndex(0)  # Turkish default
-        self.lang_combo.setStyleSheet("""
-            QComboBox {
-                padding: 5px 10px;
-                border: 2px solid #9b59b6;
-                border-radius: 5px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                font-weight: bold;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #3d3d5c;
-                color: #ecf0f1;
-                selection-background-color: #9b59b6;
-            }
-        """)
+        self.lang_combo.addItems(['�🇧 English', '🇹🇷 Türkçe'])
+        self.lang_combo.setCurrentIndex(0)  # English default
+        self.lang_combo.setStyleSheet(theme.combo())
         self.lang_combo.currentIndexChanged.connect(self.change_language)
         top_bar.addWidget(lang_label)
         top_bar.addWidget(self.lang_combo)
@@ -199,109 +199,39 @@ class VideoSmartCropperUI(QMainWindow):
         # ========== STACKED WIDGET FOR PAGES ==========
         self.page_stack = QStackedWidget()
         
-        # Page 1: Video Processing
+        # Page 1: Video Processing (wrapped in scroll area)
         self.video_page = QWidget()
         self.setup_video_page()
-        self.page_stack.addWidget(self.video_page)
         
-        # Page 2: Standalone Captioning  
+        video_scroll = QScrollArea()
+        video_scroll.setWidgetResizable(True)
+        video_scroll.setWidget(self.video_page)
+        video_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_stack.addWidget(video_scroll)
+        
+        # Page 2: Standalone Captioning (wrapped in scroll area)
         self.captioning_page = StandaloneCaptioningPage(self.current_lang)
-        self.page_stack.addWidget(self.captioning_page)
+        caption_scroll = QScrollArea()
+        caption_scroll.setWidgetResizable(True)
+        caption_scroll.setWidget(self.captioning_page)
+        caption_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_stack.addWidget(caption_scroll)
         
         main_layout.addWidget(self.page_stack)
         
-        # Apply dark theme styling with green checkboxes
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #1e1e1e;
-            }
-            QLabel {
-                color: #ecf0f1;
-            }
-            QToolTip {
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-                border: 1px solid #fd844a;
-                padding: 8px;
-                border-radius: 4px;
-                font-size: 12px;
-            }
-            QCheckBox {
-                color: #ecf0f1;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #7f8c8d;
-                border-radius: 4px;
-                background-color: #2c2c3e;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #27ae60;
-                border-color: #27ae60;
-                image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNCIgaGVpZ2h0PSIxNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMjAgNiA5IDE3IDQgMTIiPjwvcG9seWxpbmU+PC9zdmc+);
-            }
-            QCheckBox::indicator:hover {
-                border-color: #27ae60;
-            }
-        """)
+        # Apply unified dark theme (black/gray/orange)
+        self.setStyleSheet(theme.global_stylesheet())
     
     def _page_btn_style(self, active: bool) -> str:
         """Style for page navigation buttons"""
         if active:
-            return """
-                QPushButton {
-                    background-color: #9b59b6;
-                    color: white;
-                    border: none;
-                    padding: 12px 25px;
-                    font-size: 14px;
-                    font-weight: bold;
-                    border-radius: 5px;
-                    margin-right: 5px;
-                }
-            """
+            return theme.page_btn_active()
         else:
-            return """
-                QPushButton {
-                    background-color: #2c2c3e;
-                    color: #95a5a6;
-                    border: 2px solid #9b59b6;
-                    padding: 12px 25px;
-                    font-size: 14px;
-                    font-weight: bold;
-                    border-radius: 5px;
-                    margin-right: 5px;
-                }
-                QPushButton:hover {
-                    background-color: #3d3d5c;
-                    color: #ecf0f1;
-                }
-            """
+            return theme.page_btn_inactive()
     
-    def _collapsible_btn_style(self, color: str) -> str:
-        """Style for collapsible panel buttons"""
-        return f"""
-            QPushButton {{
-                background-color: #1a1a2e;
-                color: #ecf0f1;
-                border: 2px solid {color};
-                padding: 10px 15px;
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 5px;
-                text-align: left;
-            }}
-            QPushButton:hover {{
-                background-color: #2c2c3e;
-                border-color: {color};
-            }}
-            QPushButton:checked {{
-                background-color: {color};
-                color: white;
-            }}
-        """
+    def _collapsible_btn_style(self, color: str = None) -> str:
+        """Style for collapsible panel buttons (unified orange)"""
+        return theme.collapsible_btn()
     
     def _toggle_panel(self, panel_name: str):
         """Toggle visibility of collapsible panels"""
@@ -314,10 +244,6 @@ class VideoSmartCropperUI(QMainWindow):
         btn, panel = panels[panel_name]
         is_checked = btn.isChecked()
         panel.setVisible(is_checked)
-        
-        # Adjust window size
-        if is_checked:
-            self.adjustSize()
     
     def switch_page(self, index: int):
         """Switch between pages"""
@@ -334,14 +260,14 @@ class VideoSmartCropperUI(QMainWindow):
         self.title_label = QLabel(get_text('title', self.current_lang))
         self.title_label.setFont(QFont('Arial', 24, QFont.Bold))
         self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setStyleSheet("color: #ecf0f1; margin: 20px;")
+        self.title_label.setStyleSheet(theme.label_title())
         layout.addWidget(self.title_label)
         
         # Subtitle
         self.subtitle_label = QLabel(get_text('subtitle', self.current_lang))
         self.subtitle_label.setFont(QFont('Arial', 11))
         self.subtitle_label.setAlignment(Qt.AlignCenter)
-        self.subtitle_label.setStyleSheet("color: #95a5a6; margin-bottom: 20px;")
+        self.subtitle_label.setStyleSheet(theme.label_muted())
         layout.addWidget(self.subtitle_label)
         
         # Drop zone
@@ -352,51 +278,22 @@ class VideoSmartCropperUI(QMainWindow):
         
         # Browse button
         self.browse_btn = QPushButton(get_text('browse_btn', self.current_lang))
-        self.browse_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #8e44ad;
-                color: white;
-                border: none;
-                padding: 12px;
-                font-size: 14px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #9b59b6;
-            }
-        """)
+        self.browse_btn.setStyleSheet(theme.btn_browse())
         self.browse_btn.clicked.connect(self.browse_video)
         layout.addWidget(self.browse_btn)
         
         # Settings Group
         self.settings_group = QGroupBox(get_text('settings_title', self.current_lang))
-        self.settings_group.setStyleSheet("""
-            QGroupBox {
-                font-size: 14px;
-                font-weight: bold;
-                border: 2px solid #9b59b6;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 15px;
-                background-color: #2c2c3e;
-                color: #c39bd3;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
+        self.settings_group.setStyleSheet(theme.group_box())
         settings_layout = QVBoxLayout()
         self.settings_group.setLayout(settings_layout)
         
         # Frame interval slider
         interval_layout = QHBoxLayout()
         self.interval_label = QLabel(get_text('frame_interval', self.current_lang))
-        self.interval_label.setStyleSheet("color: #ecf0f1;")
+        self.interval_label.setStyleSheet(theme.label_default())
         self.interval_help = QLabel("ℹ️")
-        self.interval_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.interval_help.setStyleSheet(theme.info_icon())
         self.interval_help.setToolTip(get_text('frame_interval_tooltip', self.current_lang))
         self.interval_help.setCursor(Qt.WhatsThisCursor)
         self.interval_slider = QSlider(Qt.Horizontal)
@@ -405,21 +302,9 @@ class VideoSmartCropperUI(QMainWindow):
         self.interval_slider.setValue(30)
         self.interval_slider.setTickPosition(QSlider.TicksBelow)
         self.interval_slider.setTickInterval(10)
-        self.interval_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: #1a1a2e;
-                height: 8px;
-                border-radius: 4px;
-            }
-            QSlider::handle:horizontal {
-                background: #9b59b6;
-                width: 18px;
-                margin: -5px 0;
-                border-radius: 9px;
-            }
-        """)
+        self.interval_slider.setStyleSheet(theme.slider())
         self.interval_value_label = QLabel("30")
-        self.interval_value_label.setStyleSheet("font-weight: bold; color: #ecf0f1; min-width: 30px;")
+        self.interval_value_label.setStyleSheet(theme.label_value())
         self.interval_slider.valueChanged.connect(
             lambda v: self.interval_value_label.setText(str(v))
         )
@@ -432,32 +317,14 @@ class VideoSmartCropperUI(QMainWindow):
         # Aspect ratio selector
         ratio_layout = QHBoxLayout()
         self.ratio_label = QLabel(get_text('output_format', self.current_lang))
-        self.ratio_label.setStyleSheet("color: #ecf0f1;")
+        self.ratio_label.setStyleSheet(theme.label_default())
         self.ratio_help = QLabel("ℹ️")
-        self.ratio_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.ratio_help.setStyleSheet(theme.info_icon())
         self.ratio_help.setToolTip(get_text('output_format_tooltip', self.current_lang))
         self.ratio_help.setCursor(Qt.WhatsThisCursor)
         self.ratio_combo = QComboBox()
         self.ratio_combo.addItems(['9:16', '3:4', '1:1', '4:5', '16:9', '4:3'])
-        self.ratio_combo.setStyleSheet("""
-            QComboBox {
-                padding: 8px;
-                border: 2px solid #9b59b6;
-                border-radius: 3px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                font-weight: bold;
-                min-width: 100px;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #3d3d5c;
-                color: #ecf0f1;
-                selection-background-color: #9b59b6;
-            }
-        """)
+        self.ratio_combo.setStyleSheet(theme.combo())
         ratio_layout.addWidget(self.ratio_label)
         ratio_layout.addWidget(self.ratio_help)
         ratio_layout.addWidget(self.ratio_combo)
@@ -467,9 +334,9 @@ class VideoSmartCropperUI(QMainWindow):
         # Detection confidence
         conf_layout = QHBoxLayout()
         self.conf_label = QLabel(get_text('confidence', self.current_lang))
-        self.conf_label.setStyleSheet("color: #ecf0f1;")
+        self.conf_label.setStyleSheet(theme.label_default())
         self.conf_help = QLabel("ℹ️")
-        self.conf_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.conf_help.setStyleSheet(theme.info_icon())
         self.conf_help.setToolTip(get_text('confidence_tooltip', self.current_lang))
         self.conf_help.setCursor(Qt.WhatsThisCursor)
         self.conf_spinbox = QSpinBox()
@@ -477,16 +344,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.conf_spinbox.setMaximum(95)
         self.conf_spinbox.setValue(50)
         self.conf_spinbox.setSuffix("%")
-        self.conf_spinbox.setStyleSheet("""
-            QSpinBox {
-                padding: 5px;
-                border: 2px solid #9b59b6;
-                border-radius: 3px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                font-weight: bold;
-            }
-        """)
+        self.conf_spinbox.setStyleSheet(theme.spinbox())
         conf_layout.addWidget(self.conf_label)
         conf_layout.addWidget(self.conf_help)
         conf_layout.addWidget(self.conf_spinbox)
@@ -497,9 +355,9 @@ class VideoSmartCropperUI(QMainWindow):
         ensemble_layout_cb = QHBoxLayout()
         self.ensemble_cb = QCheckBox(get_text('ensemble_mode', self.current_lang))
         self.ensemble_cb.setChecked(False)
-        self.ensemble_cb.setStyleSheet("font-size: 12px; font-weight: bold; color: #e74c3c;")
+        self.ensemble_cb.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {theme.ORANGE_LIGHT};")
         self.ensemble_help = QLabel("ℹ️")
-        self.ensemble_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.ensemble_help.setStyleSheet(theme.info_icon())
         self.ensemble_help.setToolTip(get_text('ensemble_mode_tooltip', self.current_lang))
         self.ensemble_help.setCursor(Qt.WhatsThisCursor)
         ensemble_layout_cb.addWidget(self.ensemble_cb)
@@ -510,33 +368,22 @@ class VideoSmartCropperUI(QMainWindow):
         # Ensemble settings (initially hidden)
         self.ensemble_group = QGroupBox(get_text('ensemble_settings', self.current_lang))
         self.ensemble_group.setVisible(False)
-        self.ensemble_group.setStyleSheet("""
-            QGroupBox {
-                font-size: 12px;
-                font-weight: bold;
-                border: 2px solid #cf6679;
-                border-radius: 5px;
-                margin-top: 5px;
-                padding-top: 10px;
-                background-color: #2c2c3e;
-                color: #cf6679;
-            }
-        """)
+        self.ensemble_group.setStyleSheet(theme.panel_group())
         ensemble_layout = QVBoxLayout()
         
         # Model selection checkboxes
         models_layout = QHBoxLayout()
         self.models_label = QLabel(get_text('active_models', self.current_lang))
-        self.models_label.setStyleSheet("color: #ecf0f1;")
+        self.models_label.setStyleSheet(theme.label_default())
         self.yolo_cb = QCheckBox("YOLOv8")
         self.yolo_cb.setChecked(True)
-        self.yolo_cb.setStyleSheet("color: #ecf0f1;")
+        self.yolo_cb.setStyleSheet(theme.label_default())
         self.detr_cb = QCheckBox("DETR (Transformer)")
         self.detr_cb.setChecked(True)
-        self.detr_cb.setStyleSheet("color: #ecf0f1;")
+        self.detr_cb.setStyleSheet(theme.label_default())
         self.fasterrcnn_cb = QCheckBox("Faster R-CNN")
         self.fasterrcnn_cb.setChecked(True)
-        self.fasterrcnn_cb.setStyleSheet("color: #ecf0f1;")
+        self.fasterrcnn_cb.setStyleSheet(theme.label_default())
         models_layout.addWidget(self.models_label)
         models_layout.addWidget(self.yolo_cb)
         models_layout.addWidget(self.detr_cb)
@@ -547,25 +394,16 @@ class VideoSmartCropperUI(QMainWindow):
         # Voting threshold
         voting_layout = QHBoxLayout()
         self.voting_label = QLabel(get_text('voting_threshold', self.current_lang))
-        self.voting_label.setStyleSheet("color: #ecf0f1;")
+        self.voting_label.setStyleSheet(theme.label_default())
         self.voting_help = QLabel("ℹ️")
-        self.voting_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.voting_help.setStyleSheet(theme.info_icon())
         self.voting_help.setToolTip(get_text('voting_threshold_tooltip', self.current_lang))
         self.voting_help.setCursor(Qt.WhatsThisCursor)
         self.voting_spinbox = QSpinBox()
         self.voting_spinbox.setMinimum(1)
         self.voting_spinbox.setMaximum(3)
         self.voting_spinbox.setValue(2)
-        self.voting_spinbox.setStyleSheet("""
-            QSpinBox {
-                padding: 5px;
-                border: 2px solid #cf6679;
-                border-radius: 3px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                font-weight: bold;
-            }
-        """)
+        self.voting_spinbox.setStyleSheet(theme.spinbox())
         voting_layout.addWidget(self.voting_label)
         voting_layout.addWidget(self.voting_help)
         voting_layout.addWidget(self.voting_spinbox)
@@ -582,9 +420,9 @@ class VideoSmartCropperUI(QMainWindow):
         skip_layout_cb = QHBoxLayout()
         self.skip_subtitle_cb = QCheckBox(get_text('skip_subtitle', self.current_lang))
         self.skip_subtitle_cb.setChecked(True)
-        self.skip_subtitle_cb.setStyleSheet("font-size: 12px; color: #ecf0f1;")
+        self.skip_subtitle_cb.setStyleSheet(f"font-size: 12px; color: {theme.TEXT_PRIMARY};")
         self.skip_help = QLabel("ℹ️")
-        self.skip_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.skip_help.setStyleSheet(theme.info_icon())
         self.skip_help.setToolTip(get_text('skip_subtitle_tooltip', self.current_lang))
         self.skip_help.setCursor(Qt.WhatsThisCursor)
         skip_layout_cb.addWidget(self.skip_subtitle_cb)
@@ -596,9 +434,9 @@ class VideoSmartCropperUI(QMainWindow):
         turbo_layout_cb = QHBoxLayout()
         self.turbo_cb = QCheckBox(get_text('turbo_mode', self.current_lang))
         self.turbo_cb.setChecked(True)
-        self.turbo_cb.setStyleSheet("font-size: 12px; font-weight: bold; color: #f39c12;")
+        self.turbo_cb.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {theme.ORANGE_LIGHT};")
         self.turbo_help = QLabel("ℹ️")
-        self.turbo_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.turbo_help.setStyleSheet(theme.info_icon())
         self.turbo_help.setToolTip(get_text('turbo_mode_tooltip', self.current_lang))
         self.turbo_help.setCursor(Qt.WhatsThisCursor)
         turbo_layout_cb.addWidget(self.turbo_cb)
@@ -613,7 +451,7 @@ class VideoSmartCropperUI(QMainWindow):
         # --- Quality Analysis Button & Panel ---
         self.quality_btn = QPushButton(get_text('quality_title', self.current_lang))
         self.quality_btn.setCheckable(True)
-        self.quality_btn.setStyleSheet(self._collapsible_btn_style("#3498db"))
+        self.quality_btn.setStyleSheet(self._collapsible_btn_style())
         self.quality_btn.clicked.connect(lambda: self._toggle_panel('quality'))
         v2_container.addWidget(self.quality_btn)
         
@@ -624,7 +462,7 @@ class VideoSmartCropperUI(QMainWindow):
         # --- Auto Captioning Button & Panel ---
         self.caption_btn = QPushButton(get_text('caption_title', self.current_lang))
         self.caption_btn.setCheckable(True)
-        self.caption_btn.setStyleSheet(self._collapsible_btn_style("#27ae60"))
+        self.caption_btn.setStyleSheet(self._collapsible_btn_style())
         self.caption_btn.clicked.connect(lambda: self._toggle_panel('caption'))
         v2_container.addWidget(self.caption_btn)
         
@@ -635,7 +473,7 @@ class VideoSmartCropperUI(QMainWindow):
         # --- Tag Settings Button & Panel ---
         self.tags_btn = QPushButton(get_text('tag_settings_title', self.current_lang))
         self.tags_btn.setCheckable(True)
-        self.tags_btn.setStyleSheet(self._collapsible_btn_style("#e67e22"))
+        self.tags_btn.setStyleSheet(self._collapsible_btn_style())
         self.tags_btn.clicked.connect(lambda: self._toggle_panel('tags'))
         v2_container.addWidget(self.tags_btn)
         
@@ -649,9 +487,9 @@ class VideoSmartCropperUI(QMainWindow):
         # Minimum padding
         padding_layout = QHBoxLayout()
         self.padding_label = QLabel(get_text('min_padding', self.current_lang))
-        self.padding_label.setStyleSheet("color: #ecf0f1;")
+        self.padding_label.setStyleSheet(theme.label_default())
         self.padding_help = QLabel("ℹ️")
-        self.padding_help.setStyleSheet("color: #fd844a; font-size: 14px;")
+        self.padding_help.setStyleSheet(theme.info_icon())
         self.padding_help.setToolTip(get_text('min_padding_tooltip', self.current_lang))
         self.padding_help.setCursor(Qt.WhatsThisCursor)
         self.padding_spinbox = QSpinBox()
@@ -659,16 +497,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.padding_spinbox.setMaximum(1000)
         self.padding_spinbox.setValue(500)
         self.padding_spinbox.setSingleStep(50)
-        self.padding_spinbox.setStyleSheet("""
-            QSpinBox {
-                padding: 5px;
-                border: 2px solid #9b59b6;
-                border-radius: 3px;
-                background-color: #2c2c3e;
-                color: #ecf0f1;
-                font-weight: bold;
-            }
-        """)
+        self.padding_spinbox.setStyleSheet(theme.spinbox())
         padding_layout.addWidget(self.padding_label)
         padding_layout.addWidget(self.padding_help)
         padding_layout.addWidget(self.padding_spinbox)
@@ -682,62 +511,17 @@ class VideoSmartCropperUI(QMainWindow):
         
         self.process_btn = QPushButton(get_text('start_btn', self.current_lang))
         self.process_btn.setEnabled(False)
-        self.process_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                border: none;
-                padding: 15px;
-                font-size: 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-            }
-            QPushButton:disabled {
-                background-color: #7f8c8d;
-            }
-        """)
+        self.process_btn.setStyleSheet(theme.btn_primary())
         self.process_btn.clicked.connect(self.start_processing)
         
         self.stop_btn = QPushButton(get_text('stop_btn', self.current_lang))
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                border: none;
-                padding: 15px;
-                font-size: 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-            QPushButton:disabled {
-                background-color: #7f8c8d;
-            }
-        """)
+        self.stop_btn.setStyleSheet(theme.btn_danger())
         self.stop_btn.clicked.connect(self.stop_processing)
         
         # Open output folder button
         self.open_output_btn = QPushButton(get_text('open_output_btn', self.current_lang))
-        self.open_output_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f39c12;
-                color: white;
-                border: none;
-                padding: 15px;
-                font-size: 16px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #e67e22;
-            }
-        """)
+        self.open_output_btn.setStyleSheet(theme.btn_secondary())
         self.open_output_btn.clicked.connect(self.open_output_folder)
         
         buttons_layout.addWidget(self.process_btn)
@@ -747,41 +531,18 @@ class VideoSmartCropperUI(QMainWindow):
         
         # Progress bar
         self.progress_bar = QProgressBar()
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid #9b59b6;
-                border-radius: 5px;
-                text-align: center;
-                height: 25px;
-                background-color: #2c2c3e;
-                color: #c39bd3;
-                font-weight: bold;
-            }
-            QProgressBar::chunk {
-                background-color: #8e44ad;
-            }
-        """)
+        self.progress_bar.setStyleSheet(theme.progress_bar())
         layout.addWidget(self.progress_bar)
         
         # Status/Log area
         self.log_label = QLabel(get_text('log_title', self.current_lang))
-        self.log_label.setStyleSheet("font-weight: bold; margin-top: 10px; color: #ecf0f1;")
+        self.log_label.setStyleSheet(f"font-weight: bold; margin-top: 10px; color: {theme.TEXT_PRIMARY};")
         layout.addWidget(self.log_label)
         
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(150)
-        self.log_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #0d0d0d;
-                color: #bb86fc;
-                border: 2px solid #9b59b6;
-                border-radius: 5px;
-                padding: 10px;
-                font-family: 'Consolas', monospace;
-                font-size: 11px;
-            }
-        """)
+        self.log_text.setStyleSheet(theme.log_area())
         layout.addWidget(self.log_text)
         
         self.log(get_text('log_started', self.current_lang))
@@ -952,11 +713,14 @@ class VideoSmartCropperUI(QMainWindow):
             if quality_settings['enabled']:
                 try:
                     from src.core.quality_analyzer import QualityAnalyzer
-                    quality_analyzer = QualityAnalyzer(
-                        blur_threshold=quality_settings['blur_threshold'],
-                        brightness_range=(quality_settings['brightness_min'], quality_settings['brightness_max']),
-                        skip_duplicates=quality_settings['skip_duplicates']
-                    )
+                    qa_kwargs = {
+                        'blur_threshold': quality_settings['blur_threshold'],
+                        'brightness_range': (quality_settings['brightness_min'], quality_settings['brightness_max']),
+                    }
+                    # Map skip_duplicates to duplicate_threshold
+                    if quality_settings.get('skip_duplicates', False):
+                        qa_kwargs['duplicate_threshold'] = quality_settings.get('duplicate_threshold', 0.92)
+                    quality_analyzer = QualityAnalyzer(**qa_kwargs)
                     self.log(f"✅ {get_text('quality_title', self.current_lang)} initialized")
                 except ImportError as e:
                     self.log(f"⚠️ Quality analyzer not available: {e}")
@@ -969,7 +733,7 @@ class VideoSmartCropperUI(QMainWindow):
                     
                     # Build TagSettings from GUI
                     tag_cfg = TagSettings(
-                        trigger_word=tag_settings['trigger_word'] or None,
+                        trigger_word=tag_settings['trigger_word'] or "",
                         max_tags=tag_settings['max_tags'],
                         min_confidence=tag_settings['min_confidence'],
                         negative_tags=tag_settings['negative_tags'],
@@ -979,18 +743,16 @@ class VideoSmartCropperUI(QMainWindow):
                         include_quality_tags=tag_settings['include_quality_tags'],
                         include_rating_tags=tag_settings['include_rating_tags'],
                         use_underscores=tag_settings['use_underscores'],
-                        caption_prefix=tag_settings['caption_prefix'] or None,
-                        caption_suffix=tag_settings['caption_suffix'] or None,
-                        save_json=tag_settings['save_json']
+                        caption_prefix=tag_settings['caption_prefix'] or "",
+                        caption_suffix=tag_settings['caption_suffix'] or ""
                     )
                     
                     captioner = AdvancedCaptioner(
-                        use_blip=caption_settings['blip_enabled'],
-                        use_wd14=caption_settings['wd14_enabled'],
+                        enable_blip=caption_settings['blip_enabled'],
+                        enable_wd14=caption_settings['wd14_enabled'],
                         blip_model=caption_settings['blip_model'],
                         wd14_model=caption_settings['wd14_model'],
-                        tag_settings=tag_cfg,
-                        caption_mode=caption_settings['mode']
+                        tag_settings=tag_cfg
                     )
                     self.log(f"✅ {get_text('caption_title', self.current_lang)} initialized (BLIP={caption_settings['blip_enabled']}, WD14={caption_settings['wd14_enabled']})")
                 except ImportError as e:
@@ -1079,7 +841,7 @@ class VideoSmartCropperUI(QMainWindow):
     
     def change_language(self, index):
         """Change UI language"""
-        self.current_lang = 'tr' if index == 0 else 'en'
+        self.current_lang = 'en' if index == 0 else 'tr'
         self.update_ui_texts()
     
     def update_ui_texts(self):
@@ -1151,6 +913,10 @@ class VideoSmartCropperUI(QMainWindow):
 
 def create_app():
     """Create and return the application"""
+    # Enable HiDPI scaling BEFORE creating QApplication
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
     app = QApplication(sys.argv)
     
     # Set application style
