@@ -36,33 +36,43 @@ class QualitySettingsPanel(QGroupBox):
         enable_layout = QHBoxLayout()
         self.enable_cb = QCheckBox(get_text('quality_enabled', self.lang))
         self.enable_cb.setStyleSheet(theme.label_accent())
+        self.enable_cb.setToolTip(get_text('quality_enabled_tooltip', self.lang))
         self.enable_cb.toggled.connect(self._on_enable_toggled)
         enable_layout.addWidget(self.enable_cb)
         enable_layout.addStretch()
         layout.addLayout(enable_layout)
-        
+
         # Settings container
         self.settings_widget = QWidget()
         self.settings_widget.setVisible(False)
         settings_layout = QVBoxLayout(self.settings_widget)
-        
+
         # Blur threshold
         blur_layout = QHBoxLayout()
         self.blur_label = QLabel(get_text('blur_threshold', self.lang))
         self.blur_label.setStyleSheet(theme.label_default())
+        self.blur_info = QLabel("ℹ️")
+        self.blur_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.blur_info.setToolTip(get_text('blur_threshold_tooltip', self.lang))
+        self.blur_info.setCursor(Qt.WhatsThisCursor)
         self.blur_spinbox = QDoubleSpinBox()
         self.blur_spinbox.setRange(10, 500)
         self.blur_spinbox.setValue(80.0)
         self.blur_spinbox.setStyleSheet(self._spinbox_style())
         blur_layout.addWidget(self.blur_label)
+        blur_layout.addWidget(self.blur_info)
         blur_layout.addWidget(self.blur_spinbox)
         blur_layout.addStretch()
         settings_layout.addLayout(blur_layout)
-        
+
         # Brightness range
         bright_layout = QHBoxLayout()
         self.bright_label = QLabel(get_text('brightness_range', self.lang))
         self.bright_label.setStyleSheet(theme.label_default())
+        self.bright_info = QLabel("ℹ️")
+        self.bright_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.bright_info.setToolTip(get_text('brightness_tooltip', self.lang))
+        self.bright_info.setCursor(Qt.WhatsThisCursor)
         self.bright_min = QSpinBox()
         self.bright_min.setRange(0, 255)
         self.bright_min.setValue(35)
@@ -72,17 +82,19 @@ class QualitySettingsPanel(QGroupBox):
         self.bright_max.setValue(225)
         self.bright_max.setStyleSheet(self._spinbox_style())
         bright_layout.addWidget(self.bright_label)
+        bright_layout.addWidget(self.bright_info)
         bright_layout.addWidget(self.bright_min)
         bright_layout.addWidget(QLabel("-"))
         bright_layout.addWidget(self.bright_max)
         bright_layout.addStretch()
         settings_layout.addLayout(bright_layout)
-        
+
         # Skip duplicates
         dup_layout = QHBoxLayout()
         self.skip_dup_cb = QCheckBox(get_text('skip_duplicates', self.lang))
         self.skip_dup_cb.setChecked(True)
         self.skip_dup_cb.setStyleSheet(theme.label_default())
+        self.skip_dup_cb.setToolTip(get_text('skip_duplicates_tooltip', self.lang))
         dup_layout.addWidget(self.skip_dup_cb)
         dup_layout.addStretch()
         settings_layout.addLayout(dup_layout)
@@ -111,9 +123,13 @@ class QualitySettingsPanel(QGroupBox):
         self.lang = lang
         self.setTitle(get_text('quality_title', lang))
         self.enable_cb.setText(get_text('quality_enabled', lang))
+        self.enable_cb.setToolTip(get_text('quality_enabled_tooltip', lang))
         self.blur_label.setText(get_text('blur_threshold', lang))
+        self.blur_info.setToolTip(get_text('blur_threshold_tooltip', lang))
         self.bright_label.setText(get_text('brightness_range', lang))
+        self.bright_info.setToolTip(get_text('brightness_tooltip', lang))
         self.skip_dup_cb.setText(get_text('skip_duplicates', lang))
+        self.skip_dup_cb.setToolTip(get_text('skip_duplicates_tooltip', lang))
 
 
 class CaptioningSettingsPanel(QGroupBox):
@@ -136,55 +152,67 @@ class CaptioningSettingsPanel(QGroupBox):
         enable_layout = QHBoxLayout()
         self.enable_cb = QCheckBox(get_text('caption_enabled', self.lang))
         self.enable_cb.setStyleSheet(theme.label_accent())
+        self.enable_cb.setToolTip(get_text('caption_enabled_tooltip', self.lang))
         self.enable_cb.toggled.connect(self._on_enable_toggled)
         enable_layout.addWidget(self.enable_cb)
         enable_layout.addStretch()
         layout.addLayout(enable_layout)
-        
+
         # Settings container
         self.settings_widget = QWidget()
         self.settings_widget.setVisible(False)
         settings_layout = QVBoxLayout(self.settings_widget)
-        
+
         # Caption mode
         mode_layout = QHBoxLayout()
         self.mode_label = QLabel(get_text('caption_mode', self.lang))
         self.mode_label.setStyleSheet(theme.label_default())
+        self.mode_info = QLabel("ℹ️")
+        self.mode_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.mode_info.setToolTip(get_text('caption_mode_tooltip', self.lang))
+        self.mode_info.setCursor(Qt.WhatsThisCursor)
         self.mode_combo = QComboBox()
         self.mode_combo.addItems([
             'tags_only', 'blip_only', 'blip_first', 'tags_first', 'combined'
         ])
         self.mode_combo.setStyleSheet(self._combo_style())
         mode_layout.addWidget(self.mode_label)
+        mode_layout.addWidget(self.mode_info)
         mode_layout.addWidget(self.mode_combo)
         mode_layout.addStretch()
         settings_layout.addLayout(mode_layout)
-        
+
         # BLIP settings
         blip_layout = QHBoxLayout()
         self.blip_cb = QCheckBox(get_text('blip_enabled', self.lang))
         self.blip_cb.setChecked(True)
         self.blip_cb.setStyleSheet(theme.label_default())
+        self.blip_cb.setToolTip(get_text('blip_tooltip', self.lang))
         self.blip_combo = QComboBox()
         self.blip_combo.addItems(['blip-base', 'blip-large'])
         self.blip_combo.setStyleSheet(self._combo_style())
+        self.blip_combo.setToolTip(get_text('blip_model_tooltip', self.lang))
         blip_layout.addWidget(self.blip_cb)
         blip_layout.addWidget(self.blip_combo)
         blip_layout.addStretch()
         settings_layout.addLayout(blip_layout)
-        
+
         # WD14 settings
         wd14_layout = QHBoxLayout()
         self.wd14_cb = QCheckBox(get_text('wd14_enabled', self.lang))
         self.wd14_cb.setChecked(True)
         self.wd14_cb.setStyleSheet(theme.label_default())
+        self.wd14_cb.setToolTip(get_text('wd14_tooltip', self.lang))
         self.wd14_combo = QComboBox()
         self.wd14_combo.addItems([
-            'wd-v1-4-vit-tagger-v2',
-            'wd-v1-4-convnext-tagger-v2',
-            'wd-v1-4-swinv2-tagger-v2'
+            'SmilingWolf/wd-swinv2-tagger-v3',
+            'SmilingWolf/wd-convnext-tagger-v3',
+            'SmilingWolf/wd-vit-tagger-v3',
+            'SmilingWolf/wd-v1-4-moat-tagger-v2',
+            'SmilingWolf/wd-v1-4-swinv2-tagger-v2'
         ])
         self.wd14_combo.setStyleSheet(self._combo_style())
+        self.wd14_combo.setToolTip(get_text('wd14_model_tooltip', self.lang))
         wd14_layout.addWidget(self.wd14_cb)
         wd14_layout.addWidget(self.wd14_combo)
         wd14_layout.addStretch()
@@ -215,9 +243,15 @@ class CaptioningSettingsPanel(QGroupBox):
         self.lang = lang
         self.setTitle(get_text('caption_title', lang))
         self.enable_cb.setText(get_text('caption_enabled', lang))
+        self.enable_cb.setToolTip(get_text('caption_enabled_tooltip', lang))
         self.mode_label.setText(get_text('caption_mode', lang))
+        self.mode_info.setToolTip(get_text('caption_mode_tooltip', lang))
         self.blip_cb.setText(get_text('blip_enabled', lang))
+        self.blip_cb.setToolTip(get_text('blip_tooltip', lang))
+        self.blip_combo.setToolTip(get_text('blip_model_tooltip', lang))
         self.wd14_cb.setText(get_text('wd14_enabled', lang))
+        self.wd14_cb.setToolTip(get_text('wd14_tooltip', lang))
+        self.wd14_combo.setToolTip(get_text('wd14_model_tooltip', lang))
 
 
 class TagSettingsPanel(QGroupBox):
@@ -240,52 +274,73 @@ class TagSettingsPanel(QGroupBox):
         preset_layout = QHBoxLayout()
         self.preset_label = QLabel(get_text('tag_preset', self.lang))
         self.preset_label.setStyleSheet(theme.label_default())
+        self.preset_info = QLabel("ℹ️")
+        self.preset_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.preset_info.setToolTip(get_text('tag_preset_tooltip', self.lang))
+        self.preset_info.setCursor(Qt.WhatsThisCursor)
         self.preset_combo = QComboBox()
         self.preset_combo.addItems([
             '-- Select Preset --',
             'anime_character',
-            'style_lora', 
+            'style_lora',
             'realistic_photo',
             'concept_art'
         ])
         self.preset_combo.setStyleSheet(self._combo_style())
         self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
         preset_layout.addWidget(self.preset_label)
+        preset_layout.addWidget(self.preset_info)
         preset_layout.addWidget(self.preset_combo)
         preset_layout.addStretch()
         layout.addLayout(preset_layout)
-        
+
         # Trigger word
         trigger_layout = QHBoxLayout()
         self.trigger_label = QLabel(get_text('trigger_word', self.lang))
         self.trigger_label.setStyleSheet(theme.label_default())
+        self.trigger_info = QLabel("ℹ️")
+        self.trigger_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.trigger_info.setToolTip(get_text('trigger_word_tooltip', self.lang))
+        self.trigger_info.setCursor(Qt.WhatsThisCursor)
         self.trigger_edit = QLineEdit()
         self.trigger_edit.setPlaceholderText("e.g., sks person, my_character")
         self.trigger_edit.setStyleSheet(self._edit_style())
         trigger_layout.addWidget(self.trigger_label)
+        trigger_layout.addWidget(self.trigger_info)
         trigger_layout.addWidget(self.trigger_edit)
         layout.addLayout(trigger_layout)
-        
+
         # Max tags and confidence
         limits_layout = QHBoxLayout()
         self.max_tags_label = QLabel(get_text('max_tags', self.lang))
         self.max_tags_label.setStyleSheet(theme.label_default())
+        self.max_tags_info = QLabel("ℹ️")
+        self.max_tags_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.max_tags_info.setToolTip(get_text('max_tags_tooltip', self.lang))
+        self.max_tags_info.setCursor(Qt.WhatsThisCursor)
         self.max_tags_spin = QSpinBox()
         self.max_tags_spin.setRange(5, 100)
         self.max_tags_spin.setValue(30)
         self.max_tags_spin.setStyleSheet(self._spinbox_style())
-        
+
         self.conf_label = QLabel(get_text('min_confidence', self.lang))
         self.conf_label.setStyleSheet(theme.label_default())
+        self.conf_info = QLabel("ℹ️")
+        self.conf_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.conf_info.setToolTip(get_text('min_confidence_tooltip', self.lang))
+        self.conf_info.setCursor(Qt.WhatsThisCursor)
         self.conf_spin = QDoubleSpinBox()
         self.conf_spin.setRange(0.1, 0.9)
         self.conf_spin.setValue(0.35)
         self.conf_spin.setSingleStep(0.05)
         self.conf_spin.setStyleSheet(self._spinbox_style())
-        
+
         limits_layout.addWidget(self.max_tags_label)
+        limits_layout.addWidget(self.max_tags_info)
         limits_layout.addWidget(self.max_tags_spin)
+        limits_layout.addSpacing(10)
         limits_layout.addWidget(self.conf_label)
+        limits_layout.addWidget(self.conf_info)
         limits_layout.addWidget(self.conf_spin)
         limits_layout.addStretch()
         layout.addLayout(limits_layout)
@@ -319,28 +374,34 @@ class TagSettingsPanel(QGroupBox):
         priority_header = QHBoxLayout()
         self.priority_label = QLabel(get_text('priority_tags', self.lang))
         self.priority_label.setStyleSheet(theme.label_default())
+        self.priority_info = QLabel("ℹ️")
+        self.priority_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.priority_info.setToolTip(get_text('priority_tags_tooltip', self.lang))
+        self.priority_info.setCursor(Qt.WhatsThisCursor)
         priority_header.addWidget(self.priority_label)
+        priority_header.addWidget(self.priority_info)
         priority_header.addStretch()
         priority_layout.addLayout(priority_header)
-        
+
         self.priority_edit = QLineEdit()
         self.priority_edit.setPlaceholderText("Tags always included if detected...")
         self.priority_edit.setStyleSheet(self._edit_style())
         priority_layout.addWidget(self.priority_edit)
         layout.addLayout(priority_layout)
-        
+
         # Checkboxes row 1
         cb_layout1 = QHBoxLayout()
         self.keep_char_cb = QCheckBox(get_text('keep_character_tags', self.lang))
         self.keep_char_cb.setChecked(True)
         self.keep_char_cb.setStyleSheet(theme.label_default())
+        self.keep_char_cb.setToolTip(get_text('keep_char_tooltip', self.lang))
         self.keep_series_cb = QCheckBox(get_text('keep_series_tags', self.lang))
         self.keep_series_cb.setStyleSheet(theme.label_default())
         cb_layout1.addWidget(self.keep_char_cb)
         cb_layout1.addWidget(self.keep_series_cb)
         cb_layout1.addStretch()
         layout.addLayout(cb_layout1)
-        
+
         # Checkboxes row 2
         cb_layout2 = QHBoxLayout()
         self.quality_tags_cb = QCheckBox(get_text('include_quality_tags', self.lang))
@@ -351,7 +412,7 @@ class TagSettingsPanel(QGroupBox):
         cb_layout2.addWidget(self.rating_tags_cb)
         cb_layout2.addStretch()
         layout.addLayout(cb_layout2)
-        
+
         # Formatting options
         format_layout = QHBoxLayout()
         self.underscore_cb = QCheckBox(get_text('use_underscores', self.lang))
@@ -359,6 +420,7 @@ class TagSettingsPanel(QGroupBox):
         self.underscore_cb.setStyleSheet(theme.label_default())
         self.json_cb = QCheckBox(get_text('save_json', self.lang))
         self.json_cb.setStyleSheet(theme.label_default())
+        self.json_cb.setToolTip(get_text('json_tooltip', self.lang))
         format_layout.addWidget(self.underscore_cb)
         format_layout.addWidget(self.json_cb)
         format_layout.addStretch()
@@ -467,17 +529,25 @@ class TagSettingsPanel(QGroupBox):
         self.lang = lang
         self.setTitle(get_text('tag_settings_title', lang))
         self.preset_label.setText(get_text('tag_preset', lang))
+        self.preset_info.setToolTip(get_text('tag_preset_tooltip', lang))
         self.trigger_label.setText(get_text('trigger_word', lang))
+        self.trigger_info.setToolTip(get_text('trigger_word_tooltip', lang))
         self.max_tags_label.setText(get_text('max_tags', lang))
+        self.max_tags_info.setToolTip(get_text('max_tags_tooltip', lang))
         self.conf_label.setText(get_text('min_confidence', lang))
+        self.conf_info.setToolTip(get_text('min_confidence_tooltip', lang))
         self.neg_label.setText(get_text('negative_tags', lang))
+        self.neg_help.setToolTip(get_text('negative_tags_tooltip', lang))
         self.priority_label.setText(get_text('priority_tags', lang))
+        self.priority_info.setToolTip(get_text('priority_tags_tooltip', lang))
         self.keep_char_cb.setText(get_text('keep_character_tags', lang))
+        self.keep_char_cb.setToolTip(get_text('keep_char_tooltip', lang))
         self.keep_series_cb.setText(get_text('keep_series_tags', lang))
         self.quality_tags_cb.setText(get_text('include_quality_tags', lang))
         self.rating_tags_cb.setText(get_text('include_rating_tags', lang))
         self.underscore_cb.setText(get_text('use_underscores', lang))
         self.json_cb.setText(get_text('save_json', lang))
+        self.json_cb.setToolTip(get_text('json_tooltip', lang))
         self.prefix_label.setText(get_text('caption_prefix', lang))
         self.suffix_label.setText(get_text('caption_suffix', lang))
 

@@ -3,11 +3,18 @@ GPU-accelerated Object Detection Module using YOLOv8
 Detects humans, animals, and objects in video frames
 """
 
+import logging
 import torch
-from ultralytics import YOLO
 import cv2
 import numpy as np
 from typing import List, Dict, Tuple
+
+try:
+    from ultralytics import YOLO as _YOLO
+except ImportError:
+    _YOLO = None
+
+logger = logging.getLogger(__name__)
 
 
 class ObjectDetector:
@@ -27,19 +34,33 @@ class ObjectDetector:
         """
         self.confidence = confidence
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        
-        print(f"🚀 Initializing YOLOv8 on {self.device.upper()}")
-        
+
+        logger.info("Initializing YOLOv8 on %s", self.device.upper())
+
+        if _YOLO is None:
+            raise ImportError(
+                "ultralytics is not installed. Run: pip install ultralytics"
+            )
+
         # Load YOLO model
-        self.model = YOLO(model_size)
+        self.model = _YOLO(model_size)
         self.model.to(self.device)
-        
+
         # Warm up the model
         dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
         self.model(dummy_img, verbose=False)
-        
-        print(f"✅ Model loaded successfully on {self.device.upper()}")
+
+        logger.info("YOLOv8 model loaded successfully on %s", self.device.upper())
     
+    def cleanup(self):
+        """Release model from memory"""
+        if self.model is not None:
+            del self.model
+            self.model = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        logger.info("ObjectDetector cleaned up")
+
     def detect(self, frame: np.ndarray) -> Dict[str, List[Dict]]:
         """
         Detect objects in a frame

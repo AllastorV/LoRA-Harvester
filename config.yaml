@@ -176,6 +176,48 @@ captioning:
         - "illustration"
         - "drawing"
 
+    concept_art:
+      trigger_word: ""
+      max_tags: 30
+      min_confidence: 0.3
+      keep_character_tags: false
+      keep_series_tags: false
+      include_quality_tags: true
+      negative_tags:
+        - "watermark"
+        - "signature"
+        - "text"
+        - "username"
+
+# ============================================================
+# CHARACTER RECOGNITION SETTINGS (NEW v2.0)
+# Identifies and groups frames by character using InsightFace
+# ============================================================
+character_recognition:
+  enabled: false            # Enable during video processing (sorts persons/ automatically)
+
+  # Reference images directory
+  # Structure: references/<character_name>/*.jpg
+  reference_dir: "references"
+
+  # Similarity threshold (cosine distance, lower = stricter)
+  # Typical range: 0.3 (very strict) – 0.6 (lenient)
+  similarity_threshold: 0.45
+
+  # Auto-clustering settings (for unmatched faces)
+  cluster_eps: 0.6          # DBSCAN eps — lower = smaller/tighter groups
+  cluster_min_samples: 2    # Minimum images to form a cluster
+
+  # Model selection
+  # buffalo_l: highest accuracy (recommended)
+  # buffalo_m: balanced
+  # buffalo_s: fastest
+  # antelopev2: best for non-frontal / anime faces
+  model: "buffalo_l"
+
+  # File handling
+  copy_files: false         # Copy instead of move when sorting
+
 # Checkpoint/Resume Settings (NEW v2.0)
 checkpoint:
   enabled: true

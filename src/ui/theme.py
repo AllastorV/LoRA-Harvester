@@ -72,7 +72,7 @@ def global_stylesheet() -> str:
             border: 1px solid {ORANGE};
             padding: 8px;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 18px;
         }}
         QCheckBox {{
             color: {TEXT_PRIMARY};
@@ -478,7 +478,7 @@ def log_area() -> str:
             border-radius: 6px;
             padding: 10px;
             font-family: 'Consolas', 'Cascadia Code', monospace;
-            font-size: 11px;
+            font-size: 17px;
         }}
     """
 
@@ -612,7 +612,7 @@ def label_accent() -> str:
     return f"color: {ORANGE_LIGHT}; font-weight: bold;"
 
 def label_muted() -> str:
-    return f"color: {TEXT_SECONDARY}; margin-bottom: 20px;"
+    return f"color: {TEXT_SECONDARY}; font-size: 18px; margin-bottom: 20px;"
 
 def label_title() -> str:
     return f"color: {ORANGE_LIGHT}; margin: 20px;"

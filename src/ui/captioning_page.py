@@ -19,36 +19,85 @@ from src.ui import theme
 
 class CaptioningThread(QThread):
     """Background thread for captioning"""
-    
+
     progress = pyqtSignal(int, int, str)
+    log_message = pyqtSignal(str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
-    
+
     def __init__(self, captioner, image_folder: str, settings: Dict):
         super().__init__()
         self.captioner = captioner
         self.image_folder = image_folder
         self.settings = settings
         self._running = True
-    
+        self._last_progress_pct = -1  # Throttle progress updates
+
     def run(self):
         try:
+            # Pre-load WD14 model and report errors to UI
+            if self.captioner.wd14 and self.captioner.enable_wd14:
+                try:
+                    self.log_message.emit("Loading WD14 model...")
+                    self.captioner.wd14._load_model()
+                    n_tags = len(self.captioner.wd14.tags) if self.captioner.wd14.tags else 0
+                    self.log_message.emit(f"✅ WD14 model loaded ({n_tags} tags)")
+                    if n_tags == 0:
+                        self.log_message.emit("⚠️ WD14 tag list is empty — auto-tags will NOT be generated!")
+                except Exception as e:
+                    self.log_message.emit(f"❌ WD14 FAILED: {e}")
+                    self.log_message.emit("⚠️ Auto-tagging disabled — captions will only contain trigger word!")
+                    self.captioner.enable_wd14 = False
+            elif self.captioner.enable_wd14:
+                self.log_message.emit("⚠️ WD14 tagger not initialized — check model selection")
+
+            if not self._running:
+                return
+
+            # Pre-load BLIP model if needed
+            if self.captioner.blip and self.captioner.enable_blip:
+                try:
+                    self.log_message.emit("Loading BLIP model...")
+                    self.captioner.blip._load_model()
+                    self.log_message.emit("BLIP model loaded")
+                except Exception as e:
+                    self.log_message.emit(f"BLIP FAILED: {e} - captioning disabled")
+                    self.captioner.enable_blip = False
+
+            if not self._running:
+                return
+
             stats = self.captioner.caption_directory(
                 self.image_folder,
                 mode=self.settings.get('mode', 'tags_only'),
                 overwrite=self.settings.get('overwrite', False),
                 save_json=self.settings.get('save_json', False),
-                progress_callback=self._progress_callback
+                progress_callback=self._progress_callback,
+                recursive=self.settings.get('recursive', False)
             )
-            self.finished.emit(stats)
+            if self._running:
+                self.finished.emit(stats)
         except Exception as e:
-            self.error.emit(str(e))
-    
+            if self._running:
+                self.error.emit(str(e))
+        finally:
+            # Cleanup captioner models in the worker thread (safe)
+            try:
+                if self.captioner and hasattr(self.captioner, 'cleanup'):
+                    self.captioner.cleanup()
+            except Exception:
+                pass
+
     def _progress_callback(self, current: int, total: int, filename: str):
-        if self._running:
+        if not self._running:
+            return False
+        # Throttle: only emit when percentage changes (prevents UI flood)
+        pct = int((current / total) * 100) if total > 0 else 0
+        if pct != self._last_progress_pct:
+            self._last_progress_pct = pct
             self.progress.emit(current, total, filename)
-        return self._running  # Return False to stop captioning
-    
+        return True
+
     def stop(self):
         self._running = False
         self.requestInterruption()
@@ -67,6 +116,7 @@ class StandaloneCaptioningPage(QWidget):
     
     def init_ui(self):
         """Initialize simplified UI"""
+        self.setAcceptDrops(True)
         layout = QVBoxLayout()
         layout.setSpacing(20)
         layout.setContentsMargins(30, 20, 30, 20)
@@ -79,10 +129,10 @@ class StandaloneCaptioningPage(QWidget):
                 border: 1px solid {theme.ORANGE};
                 padding: 8px;
                 border-radius: 4px;
-                font-size: 12px;
+                font-size: 18px;
             }}
         """)
-        
+
         # ========== TITLE ==========
         self.main_title = QLabel(get_text('captioning_standalone_title', self.lang))
         self.main_title.setFont(QFont('Arial', 20, QFont.Bold))
@@ -104,8 +154,7 @@ class StandaloneCaptioningPage(QWidget):
         
         # Drop zone frame
         self.drop_zone = QFrame()
-        self.drop_zone.setAcceptDrops(True)
-        self.drop_zone.setMinimumHeight(50)
+        self.drop_zone.setMinimumHeight(65)
         self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
         
         drop_layout = QHBoxLayout(self.drop_zone)
@@ -121,11 +170,6 @@ class StandaloneCaptioningPage(QWidget):
         self.folder_label.setStyleSheet(theme.label_transparent())
         self.folder_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         drop_layout.addWidget(self.folder_label, stretch=1)
-        
-        # Install event filter for drag and drop
-        self.drop_zone.dragEnterEvent = self.dragEnterEvent
-        self.drop_zone.dragLeaveEvent = self.dragLeaveEvent
-        self.drop_zone.dropEvent = self.dropEvent
         
         folder_row.addWidget(self.drop_zone, stretch=1)
         
@@ -176,7 +220,7 @@ class StandaloneCaptioningPage(QWidget):
         self.mode_info.setCursor(Qt.WhatsThisCursor)
         
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(['tags_only', 'blip_first', 'tags_first', 'combined'])
+        self.mode_combo.addItems(['tags_only', 'blip_only', 'blip_first', 'tags_first', 'combined'])
         self.mode_combo.setStyleSheet(self._combo_style())
         self.mode_combo.setMinimumWidth(120)
         
@@ -259,7 +303,7 @@ class StandaloneCaptioningPage(QWidget):
         step2_layout.addLayout(neg_row)
         
         self.neg_edit = QLineEdit()
-        self.neg_edit.setText("watermark, signature, text, username, artist_name")
+        self.neg_edit.setText("watermark, signature, text, username, artist_name, twitter_username, patreon_username, dated")
         self.neg_edit.setStyleSheet(self._edit_style())
         step2_layout.addWidget(self.neg_edit)
         
@@ -278,8 +322,8 @@ class StandaloneCaptioningPage(QWidget):
         
         self.blip_combo = QComboBox()
         self.blip_combo.addItems([
-            'Salesforce/blip-image-captioning-base',
-            'Salesforce/blip-image-captioning-large'
+            'blip-base',
+            'blip-large'
         ])
         self.blip_combo.setStyleSheet(self._combo_style())
         self.blip_combo.setMinimumWidth(280)
@@ -372,8 +416,8 @@ class StandaloneCaptioningPage(QWidget):
         # ========== LOG ==========
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(80)
-        self.log_text.setMaximumHeight(200)
+        self.log_text.setMinimumHeight(105)
+        self.log_text.setMaximumHeight(225)
         self.log_text.setStyleSheet(theme.log_area())
         layout.addWidget(self.log_text)
         
@@ -537,18 +581,19 @@ class StandaloneCaptioningPage(QWidget):
             settings
         )
         self.captioning_thread.progress.connect(self._on_progress)
+        self.captioning_thread.log_message.connect(self.log)
         self.captioning_thread.finished.connect(self._on_finished)
         self.captioning_thread.error.connect(self._on_error)
+        self.captioning_thread.finished.connect(self._safe_delete_thread)
         self.captioning_thread.start()
     
     def stop_captioning(self):
         """Stop captioning"""
-        if self.captioning_thread:
+        if self.captioning_thread and self.captioning_thread.isRunning():
             self.captioning_thread.stop()
-            self.log("⏹️ Stopping...")
-            self.start_btn.setEnabled(True)
+            self.log("Stopping... (waiting for current batch to finish)")
             self.stop_btn.setEnabled(False)
-            self.browse_btn.setEnabled(True)
+            # Don't re-enable buttons here — _on_finished or _on_error will handle it
     
     def _on_progress(self, current: int, total: int, filename: str):
         """Progress update"""
@@ -563,16 +608,45 @@ class StandaloneCaptioningPage(QWidget):
         self.log(f"✅ Complete! Captioned: {stats.get('captioned', 0)} images")
         self.log(f"   Skipped: {stats.get('skipped', 0)}")
         self.log(f"   Errors: {stats.get('errors', 0)}")
-        
+        zero_tags = stats.get('zero_tags', 0)
+        if zero_tags > 0:
+            self.log(f"   ⚠️ Zero auto-tags: {zero_tags} images (only trigger word written)")
+            self.log(f"   → Check WD14 model loading and min_confidence setting")
+
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.browse_btn.setEnabled(True)
-    
+        self._cleanup_captioner()
+
     def _on_error(self, error: str):
         """Error occurred"""
         self.log(f"❌ Error: {error}")
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self._cleanup_captioner()
+
+    def _safe_delete_thread(self):
+        """Safely delete the captioning thread after it finishes"""
+        if self.captioning_thread:
+            self.captioning_thread.wait(3000)  # Wait up to 3s for thread to finish
+            self.captioning_thread.deleteLater()
+            self.captioning_thread = None
+        # Captioner cleanup is done in the thread's finally block
+        self.captioner = None
+
+    def _cleanup_captioner(self):
+        """Release captioner models from memory"""
+        # Stop thread first if still running
+        if self.captioning_thread and self.captioning_thread.isRunning():
+            self.captioning_thread.stop()
+            self.captioning_thread.wait(5000)
+        if hasattr(self, 'captioner') and self.captioner:
+            if hasattr(self.captioner, 'cleanup'):
+                try:
+                    self.captioner.cleanup()
+                except Exception:
+                    pass
+            self.captioner = None
         self.browse_btn.setEnabled(True)
     
     def update_language(self, lang: str):

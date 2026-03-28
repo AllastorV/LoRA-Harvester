@@ -14,8 +14,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QComboBox, QCheckBox, QProgressBar, QFileDialog,
                              QTextEdit, QGroupBox, QSpinBox, QToolButton,
                              QScrollArea, QStackedWidget, QFrame, QDesktopWidget)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent, QFontMetrics, QPixmap
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent, QFontMetrics
 from typing import Optional, List, Dict
 from src.ui.translations import get_text
 from src.ui import theme
@@ -25,48 +25,237 @@ from src.ui.advanced_settings import (
     TagSettingsPanel
 )
 from src.ui.captioning_page import StandaloneCaptioningPage
+from src.ui.character_sort_page import CharacterSortPage
 
 
 class ProcessingThread(QThread):
-    """Background thread for video processing"""
-    
+    """Background thread for video processing - all heavy work runs here"""
+
     progress_update = pyqtSignal(float, dict)
+    log_message = pyqtSignal(str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
-    
-    def __init__(self, processor, frame_interval, skip_text):
+
+    def __init__(self, config: dict):
         super().__init__()
-        self.processor = processor
-        self.frame_interval = frame_interval
-        self.skip_text = skip_text
+        self.config = config
         self._is_running = True
-    
+        self._finished_emitted = False
+        self.processor = None
+
     def run(self):
-        """Run video processing"""
+        """Initialize models and run video processing"""
         try:
-            # Use process_all_videos which handles both single and batch
-            stats = self.processor.process_all_videos(
-                frame_interval=self.frame_interval,
-                skip_text=self.skip_text,
-                progress_callback=self.progress_callback,
-                stop_callback=self.should_stop
+            cfg = self.config
+
+            # --- All model loading happens here (background thread) ---
+            from src.core.text_detector import SubtitleDetector
+            from src.core.cropper import SmartCropper
+            from src.core.unified_processor import UnifiedVideoProcessor
+
+            # Detector
+            if cfg['use_ensemble']:
+                from src.core.ensemble_detector import EnsembleDetector
+                self.log_message.emit("Loading ensemble models...")
+                detector = EnsembleDetector(
+                    models_to_use=cfg['models_to_use'],
+                    confidence_threshold=cfg['confidence'],
+                    voting_threshold=cfg['voting_threshold']
+                )
+                self.log_message.emit(f"Ensemble loaded: {', '.join(cfg['models_to_use'])}")
+            else:
+                from src.core.detector import ObjectDetector
+                self.log_message.emit("Loading YOLO model...")
+                detector = ObjectDetector(confidence=cfg['confidence'])
+                self.log_message.emit("YOLO model loaded")
+
+            if not self._is_running:
+                return
+
+            text_detector = SubtitleDetector() if cfg['skip_text'] else None
+            cropper = SmartCropper(
+                target_format=cfg['aspect_ratio'],
+                min_padding=cfg['min_padding']
             )
-            self.finished.emit(stats)
+
+            # Quality analyzer
+            quality_analyzer = None
+            if cfg['quality_settings']['enabled']:
+                try:
+                    from src.core.quality_analyzer import QualityAnalyzer
+                    qs = cfg['quality_settings']
+                    quality_analyzer = QualityAnalyzer(
+                        blur_threshold=qs['blur_threshold'],
+                        brightness_range=(qs['brightness_min'], qs['brightness_max']),
+                        check_duplicates=qs.get('skip_duplicates', True),
+                    )
+                    self.log_message.emit("Quality analyzer initialized")
+                except ImportError as e:
+                    self.log_message.emit(f"Quality analyzer not available: {e}")
+
+            if not self._is_running:
+                return
+
+            # Captioner
+            captioner = None
+            caption_mode = cfg['caption_settings'].get('mode', 'tags_only')
+            if cfg['caption_settings']['enabled']:
+                try:
+                    from src.core.advanced_captioner import AdvancedCaptioner, TagSettings
+                    ts = cfg['tag_settings']
+                    tag_cfg = TagSettings(
+                        trigger_word=ts['trigger_word'] or "",
+                        max_tags=ts['max_tags'],
+                        min_confidence=ts['min_confidence'],
+                        negative_tags=ts['negative_tags'],
+                        priority_tags=ts['priority_tags'],
+                        keep_character_tags=ts['keep_character_tags'],
+                        keep_series_tags=ts['keep_series_tags'],
+                        include_quality_tags=ts['include_quality_tags'],
+                        include_rating_tags=ts['include_rating_tags'],
+                        use_underscores=ts['use_underscores'],
+                        caption_prefix=ts['caption_prefix'] or "",
+                        caption_suffix=ts['caption_suffix'] or "",
+                    )
+                    cs = cfg['caption_settings']
+                    captioner = AdvancedCaptioner(
+                        enable_blip=cs['blip_enabled'],
+                        enable_wd14=cs['wd14_enabled'],
+                        blip_model=cs['blip_model'],
+                        wd14_model=cs['wd14_model'],
+                        tag_settings=tag_cfg,
+                    )
+                except Exception as e:
+                    self.log_message.emit(f"Captioner init error: {e}")
+                    captioner = None
+
+                # Pre-load models (errors disable the failed model)
+                if captioner:
+                    if captioner.wd14 and captioner.enable_wd14:
+                        try:
+                            self.log_message.emit("Loading WD14 model...")
+                            captioner.wd14._load_model()
+                            n_tags = len(captioner.wd14.tags) if captioner.wd14.tags else 0
+                            self.log_message.emit(f"✅ WD14 model loaded ({n_tags} tags)")
+                            if n_tags == 0:
+                                self.log_message.emit("⚠️ WD14 tag list is empty — auto-tags will NOT be generated!")
+                            # Quick validation: check that model output matches tag count
+                            n_outputs = captioner.wd14.model.get_outputs()[0].shape
+                            self.log_message.emit(f"WD14 model output shape: {n_outputs}")
+                        except Exception as e:
+                            self.log_message.emit(f"❌ WD14 FAILED: {e}")
+                            self.log_message.emit("⚠️ Auto-tagging disabled — captions will only contain trigger word!")
+                            captioner.enable_wd14 = False
+
+                    if not self._is_running:
+                        return
+
+                    if captioner.blip and captioner.enable_blip:
+                        try:
+                            self.log_message.emit("Loading BLIP model...")
+                            captioner.blip._load_model()
+                            self.log_message.emit("BLIP model loaded")
+                        except Exception as e:
+                            self.log_message.emit(f"BLIP FAILED: {e} - captioning disabled")
+                            captioner.enable_blip = False
+
+                    # Log final captioning status
+                    wd14_ok = captioner.wd14 and captioner.enable_wd14
+                    blip_ok = captioner.blip and captioner.enable_blip
+                    self.log_message.emit(
+                        f"📝 Captioning: mode={caption_mode} WD14={'ON' if wd14_ok else 'OFF'} BLIP={'ON' if blip_ok else 'OFF'}"
+                    )
+                    # If no model is active, warn user
+                    if not wd14_ok and not blip_ok:
+                        self.log_message.emit("⚠️ Both captioning models disabled - no tags will be generated!")
+                        captioner = None
+            else:
+                self.log_message.emit("📝 Auto-captioning: disabled (enable in Captioning settings)")
+
+            if not self._is_running:
+                return
+
+            # Create processor
+            self.processor = UnifiedVideoProcessor(
+                video_paths=cfg['video_paths'],
+                output_dir="output",
+                detector=detector,
+                text_detector=text_detector,
+                cropper=cropper,
+                use_turbo=cfg['use_turbo'],
+                batch_size=4,
+                quality_analyzer=quality_analyzer,
+                captioner=captioner,
+                caption_mode=caption_mode,
+                log_callback=lambda msg: self.log_message.emit(msg),
+            )
+
+            self.log_message.emit("All models loaded, processing started...")
+
+            # Process
+            stats = self.processor.process_all_videos(
+                frame_interval=cfg['frame_interval'],
+                skip_text=cfg['skip_text'],
+                progress_callback=self.progress_callback,
+                stop_callback=self.should_stop,
+            )
+
+            if not self._is_running:
+                # Stopped by user - emit stopped signal (only once)
+                if not self._finished_emitted:
+                    self._finished_emitted = True
+                    self.finished.emit({'stopped': True, 'total_frames_saved': 0})
+            else:
+                # Normal completion
+                if not self._finished_emitted:
+                    self._finished_emitted = True
+                    self.finished.emit(stats)
+
         except Exception as e:
-            if "stopped" not in str(e).lower():
+            if not self._finished_emitted:
+                self._finished_emitted = True
                 self.error.emit(str(e))
-    
+        finally:
+            self._cleanup()
+            # Safety net: if stopped during model loading (early return), emit finished
+            if not self._is_running and not self._finished_emitted:
+                self._finished_emitted = True
+                self.finished.emit({'stopped': True, 'total_frames_saved': 0})
+
+    def _cleanup(self):
+        """Release models and free GPU memory"""
+        try:
+            if self.processor:
+                if hasattr(self.processor, 'detector') and self.processor.detector:
+                    if hasattr(self.processor.detector, 'cleanup'):
+                        self.processor.detector.cleanup()
+                if hasattr(self.processor, 'captioner') and self.processor.captioner:
+                    if hasattr(self.processor.captioner, 'cleanup'):
+                        self.processor.captioner.cleanup()
+                self.processor = None
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
     def progress_callback(self, progress, stats):
         """Callback for progress updates"""
         self.progress_update.emit(progress, stats)
-    
+
     def should_stop(self):
         """Check if processing should stop"""
         return not self._is_running
-    
+
     def stop(self):
         """Stop processing gracefully"""
         self._is_running = False
+
+    def safe_wait(self, timeout_ms=5000):
+        """Wait for thread to finish with timeout, return True if finished"""
+        if self.isRunning():
+            return self.wait(timeout_ms)
+        return True
 
 
 class DropZone(QLabel):
@@ -127,6 +316,57 @@ class VideoSmartCropperUI(QMainWindow):
         self.init_ui()
     
     @staticmethod
+    def _set_taskbar_icon(hwnd):
+        """Set taskbar and title bar icons via WM_SETICON."""
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            icon_path = os.path.normpath(os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), '..', '..', 'assets', 'icon.ico'
+            ))
+            if not os.path.exists(icon_path):
+                return
+
+            WM_SETICON = 0x0080
+            ICON_BIG = 1
+            ICON_SMALL = 0
+            LR_LOADFROMFILE = 0x0010
+            IMAGE_ICON = 1
+
+            user32 = ctypes.windll.user32
+            user32.LoadImageW.restype = wintypes.HANDLE
+            user32.SendMessageW.restype = wintypes.LPARAM
+
+            # Big icon (taskbar, alt-tab) — 256x256 or system default
+            sm_cxicon = user32.GetSystemMetrics(11)   # SM_CXICON (usually 32)
+            sm_cyicon = user32.GetSystemMetrics(12)   # SM_CYICON
+            hicon_big = user32.LoadImageW(
+                None, icon_path, IMAGE_ICON, sm_cxicon, sm_cyicon, LR_LOADFROMFILE
+            )
+            # Small icon (title bar) — 16x16
+            sm_cxsmicon = user32.GetSystemMetrics(49)  # SM_CXSMICON
+            sm_cysmicon = user32.GetSystemMetrics(50)  # SM_CYSMICON
+            hicon_small = user32.LoadImageW(
+                None, icon_path, IMAGE_ICON, sm_cxsmicon, sm_cysmicon, LR_LOADFROMFILE
+            )
+
+            if hicon_big:
+                user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big)
+            if hicon_small:
+                user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small)
+        except Exception:
+            pass
+
+    def showEvent(self, event):
+        """Override showEvent to set native icon after window is fully realized."""
+        super().showEvent(event)
+        if sys.platform == 'win32' and not getattr(self, '_icon_set', False):
+            self._icon_set = True
+            # Must defer slightly — HWND may not be fully ready on first showEvent
+            QTimer.singleShot(50, lambda: self._set_taskbar_icon(int(self.winId())))
+
+    @staticmethod
     def _enable_dark_title_bar(hwnd):
         """Enable Windows dark title bar via DWM API"""
         try:
@@ -143,10 +383,13 @@ class VideoSmartCropperUI(QMainWindow):
     def init_ui(self):
         """Initialize UI components"""
         self.setWindowTitle(get_text('app_title', self.current_lang))
-        # Remove default icon from title bar (transparent 1x1 pixmap)
-        _px = QPixmap(1, 1)
-        _px.fill(Qt.transparent)
-        self.setWindowIcon(QIcon(_px))
+        # Set window icon from assets (taskbar + title bar)
+        _icon_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', 'assets'))
+        for _icon_name in ('icon.ico', 'icon.png'):
+            _icon_path = os.path.join(_icon_dir, _icon_name)
+            if os.path.exists(_icon_path):
+                self.setWindowIcon(QIcon(_icon_path))
+                break
         # Dark title bar on Windows
         if sys.platform == 'win32':
             self._enable_dark_title_bar(int(self.winId()))
@@ -175,20 +418,25 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_video_btn = QPushButton(get_text('page_video_processing', self.current_lang))
         self.page_video_btn.setStyleSheet(self._page_btn_style(True))
         self.page_video_btn.clicked.connect(lambda: self.switch_page(0))
-        
+
         self.page_caption_btn = QPushButton(get_text('page_captioning', self.current_lang))
         self.page_caption_btn.setStyleSheet(self._page_btn_style(False))
         self.page_caption_btn.clicked.connect(lambda: self.switch_page(1))
-        
+
+        self.page_char_sort_btn = QPushButton(get_text('page_character_sort', self.current_lang))
+        self.page_char_sort_btn.setStyleSheet(self._page_btn_style(False))
+        self.page_char_sort_btn.clicked.connect(lambda: self.switch_page(2))
+
         top_bar.addWidget(self.page_video_btn)
         top_bar.addWidget(self.page_caption_btn)
+        top_bar.addWidget(self.page_char_sort_btn)
         top_bar.addStretch()
         
         # Language selector
         lang_label = QLabel("🌐")
         lang_label.setFont(QFont('Arial', 14))
         self.lang_combo = QComboBox()
-        self.lang_combo.addItems(['�🇧 English', '🇹🇷 Türkçe'])
+        self.lang_combo.addItems(['🇬🇧 English', '🇹🇷 Türkçe'])
         self.lang_combo.setCurrentIndex(0)  # English default
         self.lang_combo.setStyleSheet(theme.combo())
         self.lang_combo.currentIndexChanged.connect(self.change_language)
@@ -216,7 +464,15 @@ class VideoSmartCropperUI(QMainWindow):
         caption_scroll.setWidget(self.captioning_page)
         caption_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(caption_scroll)
-        
+
+        # Page 3: Character Sort
+        self.char_sort_page = CharacterSortPage(self.current_lang)
+        char_scroll = QScrollArea()
+        char_scroll.setWidgetResizable(True)
+        char_scroll.setWidget(self.char_sort_page)
+        char_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_stack.addWidget(char_scroll)
+
         main_layout.addWidget(self.page_stack)
         
         # Apply unified dark theme (black/gray/orange)
@@ -250,6 +506,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_stack.setCurrentIndex(index)
         self.page_video_btn.setStyleSheet(self._page_btn_style(index == 0))
         self.page_caption_btn.setStyleSheet(self._page_btn_style(index == 1))
+        self.page_char_sort_btn.setStyleSheet(self._page_btn_style(index == 2))
     
     def setup_video_page(self):
         """Setup video processing page"""
@@ -602,196 +859,114 @@ class VideoSmartCropperUI(QMainWindow):
             self.log(get_text('log_batch_mode', self.current_lang).format(len(file_paths)))
             self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(len(file_paths)))
     
+    def _cleanup_processing_thread(self):
+        """Disconnect signals and schedule deletion of the current processing thread"""
+        if self.processing_thread is not None:
+            try:
+                self.processing_thread.progress_update.disconnect(self.on_progress)
+                self.processing_thread.log_message.disconnect(self.log)
+                self.processing_thread.finished.disconnect(self.on_finished)
+                self.processing_thread.error.disconnect(self.on_error)
+            except (TypeError, RuntimeError):
+                pass  # Already disconnected
+            # Only deleteLater if thread is not running to avoid crash
+            if not self.processing_thread.isRunning():
+                self.processing_thread.deleteLater()
+            else:
+                # Thread still alive - connect finished to deleteLater so it cleans up when done
+                try:
+                    self.processing_thread.finished.connect(
+                        self.processing_thread.deleteLater)
+                except (TypeError, RuntimeError):
+                    pass
+            self.processing_thread = None
+
     def stop_processing(self):
         """Stop video processing"""
         if self.processing_thread and self.processing_thread.isRunning():
             self.log(get_text('log_stopping', self.current_lang))
             self.processing_thread.stop()
             self.stop_btn.setEnabled(False)
+            # Don't block UI — the thread's finished signal will trigger cleanup
     
     def start_processing(self):
         """Start video processing with v2.0 features"""
         if not self.video_paths:
             self.log(get_text('log_no_file', self.current_lang))
             return
-        
+
         # Disable UI during processing
         self.process_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.drop_zone.setEnabled(False)
-        
+
         # Get settings
         frame_interval = self.interval_slider.value()
         skip_text = self.skip_subtitle_cb.isChecked()
         confidence = self.conf_spinbox.value() / 100.0
         min_padding = self.padding_spinbox.value()
-        
-        # Get aspect ratio - directly from combo text
         aspect_ratio = self.ratio_combo.currentText()
-        
-        # Get ensemble settings
         use_ensemble = self.ensemble_cb.isChecked()
-        
-        # Get turbo mode
         use_turbo = self.turbo_cb.isChecked()
-        
-        # ===== V2.0 Settings =====
+
+        # V2.0 Settings
         quality_settings = self.quality_panel.get_settings()
         caption_settings = self.caption_panel.get_settings()
         tag_settings = self.tags_panel.get_settings()
-        
-        # Log v2.0 features if enabled
-        if quality_settings['enabled']:
-            self.log(f"🔍 {get_text('quality_enabled', self.current_lang)}: Blur={quality_settings['blur_threshold']}")
-        
-        if caption_settings['enabled']:
-            self.log(f"📝 {get_text('caption_enabled', self.current_lang)}: Mode={caption_settings['mode']}")
-            if tag_settings['trigger_word']:
-                self.log(f"🏷️ Trigger: {tag_settings['trigger_word']}")
-        # ===== End V2.0 Settings =====
-        
+
+        # Ensemble model selection
+        models_to_use = []
+        voting_threshold = 2
+        if use_ensemble:
+            if self.yolo_cb.isChecked():
+                models_to_use.append('yolo')
+            if self.detr_cb.isChecked():
+                models_to_use.append('detr')
+            if self.fasterrcnn_cb.isChecked():
+                models_to_use.append('fasterrcnn')
+
+            if not models_to_use:
+                self.log(get_text('log_error_model', self.current_lang))
+                self.process_btn.setEnabled(True)
+                self.drop_zone.setEnabled(True)
+                return
+            voting_threshold = self.voting_spinbox.value()
+
+        # Log settings
         self.log(get_text('log_settings', self.current_lang).format(frame_interval, aspect_ratio, confidence))
-        
-        if len(self.video_paths) > 1:
-            self.log(get_text('log_batch_mode', self.current_lang).format(len(self.video_paths)))
-        
         if use_ensemble:
             self.log(get_text('log_ensemble_on', self.current_lang))
-            self.log(get_text('log_ensemble_info', self.current_lang))
-        else:
-            self.log(get_text('log_single_mode', self.current_lang))
-        
         if use_turbo:
             self.log(get_text('log_turbo', self.current_lang))
-        
         self.log(get_text('log_init', self.current_lang))
-        
-        # Import and initialize processors
-        try:
-            from src.core.text_detector import SubtitleDetector
-            from src.core.cropper import SmartCropper
-            from src.core.unified_processor import UnifiedVideoProcessor
-            
-            # Initialize detector (ensemble or single)
-            if use_ensemble:
-                from src.core.ensemble_detector import EnsembleDetector
-                
-                # Get selected models
-                models_to_use = []
-                if self.yolo_cb.isChecked():
-                    models_to_use.append('yolo')
-                if self.detr_cb.isChecked():
-                    models_to_use.append('detr')
-                if self.fasterrcnn_cb.isChecked():
-                    models_to_use.append('fasterrcnn')
-                
-                if not models_to_use:
-                    self.log(get_text('log_error_model', self.current_lang))
-                    self.process_btn.setEnabled(True)
-                    self.drop_zone.setEnabled(True)
-                    return
-                
-                voting_threshold = self.voting_spinbox.value()
-                
-                detector = EnsembleDetector(
-                    models_to_use=models_to_use,
-                    confidence_threshold=confidence,
-                    voting_threshold=voting_threshold
-                )
-                
-                self.log(get_text('log_models_loaded', self.current_lang).format(', '.join(models_to_use)))
-                self.log(get_text('log_voting', self.current_lang).format(voting_threshold, len(models_to_use)))
-            else:
-                from src.core.detector import ObjectDetector
-                detector = ObjectDetector(confidence=confidence)
-            
-            text_detector = SubtitleDetector() if skip_text else None
-            cropper = SmartCropper(target_format=aspect_ratio, min_padding=min_padding)
-            
-            # ===== V2.0: Initialize Quality Analyzer =====
-            quality_analyzer = None
-            if quality_settings['enabled']:
-                try:
-                    from src.core.quality_analyzer import QualityAnalyzer
-                    qa_kwargs = {
-                        'blur_threshold': quality_settings['blur_threshold'],
-                        'brightness_range': (quality_settings['brightness_min'], quality_settings['brightness_max']),
-                    }
-                    # Map skip_duplicates to duplicate_threshold
-                    if quality_settings.get('skip_duplicates', False):
-                        qa_kwargs['duplicate_threshold'] = quality_settings.get('duplicate_threshold', 0.92)
-                    quality_analyzer = QualityAnalyzer(**qa_kwargs)
-                    self.log(f"✅ {get_text('quality_title', self.current_lang)} initialized")
-                except ImportError as e:
-                    self.log(f"⚠️ Quality analyzer not available: {e}")
-            
-            # ===== V2.0: Initialize Captioner =====
-            captioner = None
-            if caption_settings['enabled']:
-                try:
-                    from src.core.advanced_captioner import AdvancedCaptioner, TagSettings
-                    
-                    # Build TagSettings from GUI
-                    tag_cfg = TagSettings(
-                        trigger_word=tag_settings['trigger_word'] or "",
-                        max_tags=tag_settings['max_tags'],
-                        min_confidence=tag_settings['min_confidence'],
-                        negative_tags=tag_settings['negative_tags'],
-                        priority_tags=tag_settings['priority_tags'],
-                        keep_character_tags=tag_settings['keep_character_tags'],
-                        keep_series_tags=tag_settings['keep_series_tags'],
-                        include_quality_tags=tag_settings['include_quality_tags'],
-                        include_rating_tags=tag_settings['include_rating_tags'],
-                        use_underscores=tag_settings['use_underscores'],
-                        caption_prefix=tag_settings['caption_prefix'] or "",
-                        caption_suffix=tag_settings['caption_suffix'] or ""
-                    )
-                    
-                    captioner = AdvancedCaptioner(
-                        enable_blip=caption_settings['blip_enabled'],
-                        enable_wd14=caption_settings['wd14_enabled'],
-                        blip_model=caption_settings['blip_model'],
-                        wd14_model=caption_settings['wd14_model'],
-                        tag_settings=tag_cfg
-                    )
-                    self.log(f"✅ {get_text('caption_title', self.current_lang)} initialized (BLIP={caption_settings['blip_enabled']}, WD14={caption_settings['wd14_enabled']})")
-                except ImportError as e:
-                    self.log(f"⚠️ Captioner not available: {e}")
-            # ===== End V2.0 Initialization =====
-            
-            # Create unified processor (handles both single and batch, standard and turbo)
-            self.processor = UnifiedVideoProcessor(
-                video_paths=self.video_paths,  # Can be single or multiple videos
-                output_dir="output",
-                detector=detector,
-                text_detector=text_detector,
-                cropper=cropper,
-                use_turbo=use_turbo,
-                batch_size=4,
-                quality_analyzer=quality_analyzer,  # V2.0
-                captioner=captioner  # V2.0
-            )
-            
-            self.log(get_text('log_success', self.current_lang))
-            self.log(get_text('log_processing', self.current_lang))
-            
-            # Start processing thread
-            self.processing_thread = ProcessingThread(
-                self.processor,
-                frame_interval,
-                skip_text
-            )
-            self.processing_thread.progress_update.connect(self.on_progress)
-            self.processing_thread.finished.connect(self.on_finished)
-            self.processing_thread.error.connect(self.on_error)
-            self.processing_thread.start()
-            
-        except Exception as e:
-            self.log(f"❌ Error: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            self.process_btn.setEnabled(True)
-            self.drop_zone.setEnabled(True)
+
+        # Build config dict - all heavy model loading happens in the thread
+        config = {
+            'video_paths': self.video_paths,
+            'frame_interval': frame_interval,
+            'skip_text': skip_text,
+            'confidence': confidence,
+            'min_padding': min_padding,
+            'aspect_ratio': aspect_ratio,
+            'use_ensemble': use_ensemble,
+            'models_to_use': models_to_use,
+            'voting_threshold': voting_threshold,
+            'use_turbo': use_turbo,
+            'quality_settings': quality_settings,
+            'caption_settings': caption_settings,
+            'tag_settings': tag_settings,
+        }
+
+        # Clean up any leftover thread before starting a new one
+        self._cleanup_processing_thread()
+
+        # Start processing thread (models load in background)
+        self.processing_thread = ProcessingThread(config)
+        self.processing_thread.progress_update.connect(self.on_progress)
+        self.processing_thread.log_message.connect(self.log)
+        self.processing_thread.finished.connect(self.on_finished)
+        self.processing_thread.error.connect(self.on_error)
+        self.processing_thread.start()
     
     def on_progress(self, progress: float, stats: dict):
         """Update progress"""
@@ -806,16 +981,39 @@ class VideoSmartCropperUI(QMainWindow):
     
     def on_finished(self, stats: dict):
         """Processing finished"""
+        # If stopped by user, thread was already cleaned up in stop_processing
+        if stats.get('stopped'):
+            return
+        # Guard against stale signal from an old thread
+        if self.processing_thread is None:
+            return
+
         self.progress_bar.setValue(100)
         self.log("\n" + "="*50)
         self.log(get_text('log_complete', self.current_lang))
-        
+
         # Check if this is batch processing (overall_stats) or single video
         if 'total_videos' in stats:
             # Batch processing - show overall summary
             self.log(f"📹 Processed videos: {stats['processed_videos']}/{stats['total_videos']}")
             self.log(get_text('log_total', self.current_lang).format(stats['total_frames_saved']))
             self.log(f"⏱️  Total time: {stats.get('total_time', 0):.1f}s")
+            # V2.0: Show per-video quality/captioning stats
+            for vs in stats.get('videos_stats', []):
+                vname = vs.get('video_name', '?')
+                vst = vs.get('stats', {})
+                skipped_q = vst.get('skipped_quality', 0)
+                captioned = vst.get('captioned_frames', 0)
+                overlay = vst.get('overlay_crops', 0)
+                extra = []
+                if skipped_q > 0:
+                    extra.append(f"quality_skip={skipped_q}")
+                if captioned > 0:
+                    extra.append(f"captioned={captioned}")
+                if overlay > 0:
+                    extra.append(f"overlay_crops={overlay}")
+                if extra:
+                    self.log(f"   {vname}: {', '.join(extra)}")
         else:
             # Single video - show detailed stats
             self.log(get_text('log_total', self.current_lang).format(stats['saved_frames']))
@@ -824,6 +1022,14 @@ class VideoSmartCropperUI(QMainWindow):
             self.log(get_text('log_objects', self.current_lang).format(stats['object_frames']))
             self.log(get_text('log_skipped_text', self.current_lang).format(stats['skipped_text']))
             self.log(get_text('log_skipped_none', self.current_lang).format(stats['skipped_no_detection']))
+            # V2.0 stats
+            if stats.get('skipped_quality', 0) > 0:
+                self.log(f"🔍 Skipped (quality): {stats['skipped_quality']}")
+            captioned = stats.get('captioned_frames', 0)
+            saved = stats.get('saved_frames', 0)
+            self.log(f"📝 Captioned: {captioned}/{saved} frames")
+            if stats.get('overlay_crops', 0) > 0:
+                self.log(f"🛡️ Overlay-aware crops: {stats['overlay_crops']}")
         
         self.log("="*50)
         
@@ -831,13 +1037,38 @@ class VideoSmartCropperUI(QMainWindow):
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.drop_zone.setEnabled(True)
-    
+        self._cleanup_processing_thread()
+
     def on_error(self, error_msg: str):
         """Handle error"""
         self.log(get_text('log_error', self.current_lang).format(error_msg))
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.drop_zone.setEnabled(True)
+        self._cleanup_processing_thread()
+
+    def closeEvent(self, event):
+        """Ensure all threads stop when window is closed"""
+        # Stop processing thread
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.processing_thread.stop()
+            self.processing_thread.safe_wait(5000)
+
+        # Stop captioning thread (from captioning page)
+        if hasattr(self, 'captioning_page'):
+            cp = self.captioning_page
+            if hasattr(cp, 'captioning_thread') and cp.captioning_thread:
+                if cp.captioning_thread.isRunning():
+                    cp.captioning_thread.stop()
+                    cp.captioning_thread.wait(5000)
+            # Cleanup captioner models
+            if hasattr(cp, '_cleanup_captioner'):
+                cp._cleanup_captioner()
+
+        event.accept()
+        # Force process exit so no threads linger
+        import os
+        os._exit(0)
     
     def change_language(self, index):
         """Change UI language"""
@@ -851,10 +1082,15 @@ class VideoSmartCropperUI(QMainWindow):
         # Page navigation buttons
         self.page_video_btn.setText(get_text('page_video_processing', self.current_lang))
         self.page_caption_btn.setText(get_text('page_captioning', self.current_lang))
-        
+        self.page_char_sort_btn.setText(get_text('page_character_sort', self.current_lang))
+
         # Update captioning page language
         if hasattr(self, 'captioning_page'):
             self.captioning_page.update_language(self.current_lang)
+
+        # Update character sort page language
+        if hasattr(self, 'char_sort_page'):
+            self.char_sort_page.update_language(self.current_lang)
         
         # Video page elements
         self.title_label.setText(get_text('title', self.current_lang))
@@ -918,12 +1154,22 @@ def create_app():
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     
     app = QApplication(sys.argv)
-    
+
+    # Set taskbar icon at QApplication level (before window creation)
+    _assets = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', 'assets'))
+    for _name in ('icon.png', 'icon.ico'):
+        _p = os.path.join(_assets, _name)
+        if os.path.exists(_p):
+            app.setWindowIcon(QIcon(_p))
+            break
+
     # Set application style
     app.setStyle('Fusion')
-    
+
     # Create main window
     window = VideoSmartCropperUI()
     window.show()
-    
+
+    # WM_SETICON is now handled in showEvent() for reliability
+
     return app, window

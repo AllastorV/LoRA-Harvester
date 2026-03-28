@@ -5,11 +5,14 @@ Now with Quality Analysis and Auto Captioning support
 """
 
 import cv2
+import logging
 import numpy as np
 import torch
 import time
 from pathlib import Path
 from typing import Optional, Callable, Dict, List, Union, Any
+
+logger = logging.getLogger(__name__)
 
 
 class UnifiedVideoProcessor:
@@ -24,7 +27,7 @@ class UnifiedVideoProcessor:
     - V2.0: Auto captioning (BLIP + WD14)
     """
     
-    def __init__(self, 
+    def __init__(self,
                  video_paths: Union[str, List[str]],
                  output_dir: str,
                  detector,
@@ -33,10 +36,12 @@ class UnifiedVideoProcessor:
                  use_turbo: bool = True,
                  batch_size: int = 8,
                  quality_analyzer: Any = None,
-                 captioner: Any = None):
+                 captioner: Any = None,
+                 caption_mode: str = "tags_only",
+                 log_callback: Optional[Callable] = None):
         """
         Initialize unified processor
-        
+
         Args:
             video_paths: Single video path or list of video paths
             output_dir: Base output directory
@@ -47,6 +52,7 @@ class UnifiedVideoProcessor:
             batch_size: Number of frames to process in parallel (default 8 for modern GPUs)
             quality_analyzer: V2.0 QualityAnalyzer instance (optional)
             captioner: V2.0 AdvancedCaptioner instance (optional)
+            caption_mode: Caption mode to use (tags_only, blip_only, blip_first, tags_first, combined)
         """
         # Handle single video or multiple videos
         if isinstance(video_paths, str):
@@ -64,6 +70,8 @@ class UnifiedVideoProcessor:
         # V2.0 components
         self.quality_analyzer = quality_analyzer
         self.captioner = captioner
+        self.caption_mode = caption_mode
+        self.log_callback = log_callback
         
         # Check if using ensemble mode
         self.is_ensemble = hasattr(detector, 'models_to_use')
@@ -112,6 +120,15 @@ class UnifiedVideoProcessor:
             print(f"📝 Auto Captioning: Enabled")
         print("="*60)
     
+    def _log(self, msg: str):
+        """Log message to callback (GUI) and logger"""
+        if self.log_callback:
+            try:
+                self.log_callback(msg)
+            except Exception:
+                pass
+        logger.info(msg)
+
     def _create_empty_stats(self) -> Dict:
         """Create empty stats dictionary"""
         return {
@@ -119,12 +136,13 @@ class UnifiedVideoProcessor:
             'saved_frames': 0,
             'skipped_text': 0,
             'skipped_no_detection': 0,
-            'skipped_quality': 0,  # V2.0
-            'captioned_frames': 0,  # V2.0
+            'skipped_quality': 0,      # V2.0
+            'captioned_frames': 0,     # V2.0
+            'overlay_crops': 0,        # frames where overlay exclusion was applied
             'person_frames': 0,
             'animal_frames': 0,
             'object_frames': 0,
-            'processing_time': 0
+            'processing_time': 0,
         }
     
     def create_output_structure(self, video_name: str) -> Path:
@@ -246,6 +264,10 @@ class UnifiedVideoProcessor:
         # Reset stats for this video
         self.stats = self._create_empty_stats()
         self.start_time = time.time()
+
+        # Reset duplicate detection history for each video
+        if self.quality_analyzer and hasattr(self.quality_analyzer, 'clear_history'):
+            self.quality_analyzer.clear_history()
         
         try:
             if self.use_turbo:
@@ -296,12 +318,12 @@ class UnifiedVideoProcessor:
                 continue
             
             self.stats['processed_frames'] += 1
-            
-            # Progress callback
-            if progress_callback and frame_count % 30 == 0:
-                progress = (frame_count / self.total_frames) * 100
+
+            # Progress callback — fire every 10 processed frames (independent of frame_interval)
+            if progress_callback and self.stats['processed_frames'] % 10 == 0:
+                progress = (frame_count / self.total_frames) * 100 if self.total_frames > 0 else 0
                 progress_callback(progress, self.stats)
-            
+
             # Process frame
             self._process_single_frame(frame, frame_count, skip_text, use_quick_text)
     
@@ -342,28 +364,36 @@ class UnifiedVideoProcessor:
                 frame_batch = []
                 frame_numbers = []
             
-            if progress_callback and frame_count % 30 == 0:
-                progress = (frame_count / self.total_frames) * 100
+            if progress_callback and frame_count % (frame_interval * 10) == 0:
+                progress = (frame_count / self.total_frames) * 100 if self.total_frames > 0 else 0
                 progress_callback(progress, self.stats)
     
     def _process_batch(self, frames: List[np.ndarray], frame_numbers: List[int],
                       skip_text: bool, use_quick_text: bool):
         """Process a batch of frames with GPU batch detection"""
         batch_size = len(frames)
-        
-        # Quick text check - filter first
+
+        # Quick text check - filter first (with overlay-aware logic)
         valid_frames = []
         valid_frame_nums = []
-        
+
         if skip_text and self.text_detector:
             for i, (frame, frame_num) in enumerate(zip(frames, frame_numbers)):
-                has_text = False
                 if use_quick_text:
                     has_text = self.text_detector.quick_text_check(frame)
                 else:
                     has_text, _ = self.text_detector.has_text(frame)
-                
+
                 if has_text:
+                    # Check if we can crop around overlays instead of skipping
+                    if hasattr(self.text_detector, 'detect_overlay_regions'):
+                        overlay_regions = self.text_detector.detect_overlay_regions(frame)
+                        if overlay_regions:
+                            # Has overlay regions → keep frame, crop around them
+                            valid_frames.append(frame)
+                            valid_frame_nums.append(frame_num)
+                            continue
+                    # No overlay regions or no detection method → skip
                     self.stats['skipped_text'] += 1
                 else:
                     valid_frames.append(frame)
@@ -420,12 +450,18 @@ class UnifiedVideoProcessor:
                 self.frame_height
             )
         
+        # Detect overlay regions for batch frame (for exclusion-aware crop)
+        excluded_zones = None
+        if self.text_detector and hasattr(self.text_detector, 'detect_overlay_regions'):
+            excluded_zones = self.text_detector.detect_overlay_regions(frame) or None
+
         # Calculate crop
         crop_box = self.cropper.calculate_crop_box(
             (self.frame_height, self.frame_width),
             subject['bbox'],
             category,
-            head_space
+            head_space,
+            excluded_zones=excluded_zones,
         )
         
         if crop_box is None:
@@ -442,24 +478,46 @@ class UnifiedVideoProcessor:
         )
         
         if quality > 0.3:
-            self.save_cropped_frame(cropped, category, frame_number, quality)
+            saved_path = self.save_cropped_frame(cropped, category, frame_number, quality)
             self.stats['saved_frames'] += 1
             self.stats[f'{category}_frames'] += 1
-    
+            if excluded_zones:
+                self.stats['overlay_crops'] += 1
+
+            # V2.0: Auto captioning
+            self._caption_frame(cropped, saved_path, frame_number)
+
     def _process_single_frame(self, frame: np.ndarray, frame_number: int,
                              skip_text: bool, use_quick_text: bool):
         """Process a single frame with V2.0 quality and captioning support"""
-        # Skip text if needed (for non-batch processing)
+        # Text / overlay detection
+        excluded_zones = None
         if skip_text and self.text_detector:
-            has_text = False
+            # Step 1: Check for subtitle text
             if use_quick_text:
-                has_text = self.text_detector.quick_text_check(frame)
+                has_subtitle = self.text_detector.quick_text_check(frame)
             else:
-                has_text, _ = self.text_detector.has_text(frame)
-            
-            if has_text:
-                self.stats['skipped_text'] += 1
-                return
+                has_subtitle, _ = self.text_detector.has_text(frame)
+
+            if has_subtitle:
+                # Step 2: Subtitle detected — check if we can crop around overlays instead of skipping
+                if hasattr(self.text_detector, 'detect_overlay_regions'):
+                    excluded_zones = self.text_detector.detect_overlay_regions(frame)
+                    if excluded_zones:
+                        # Overlay regions found → crop around them instead of skipping
+                        pass
+                    else:
+                        # No specific overlay regions to crop around → skip frame
+                        self.stats['skipped_text'] += 1
+                        return
+                else:
+                    # No overlay detection available → skip frame
+                    self.stats['skipped_text'] += 1
+                    return
+            else:
+                # No subtitle — still collect overlay regions for exclusion-aware cropping
+                if hasattr(self.text_detector, 'detect_overlay_regions'):
+                    excluded_zones = self.text_detector.detect_overlay_regions(frame) or None
         
         # V2.0: Quality check before processing
         if self.quality_analyzer:
@@ -486,45 +544,67 @@ class UnifiedVideoProcessor:
                 self.frame_height
             )
         
-        # Calculate crop box
+        # Calculate crop box — pass overlay regions so they're avoided
         crop_box = self.cropper.calculate_crop_box(
             (self.frame_height, self.frame_width),
             subject['bbox'],
             category,
-            head_space
+            head_space,
+            excluded_zones=excluded_zones,
         )
-        
+
         if crop_box is None:
             return
-        
+
         # Apply crop
         cropped = self.cropper.apply_crop(frame, crop_box)
-        
+
         # Quality check
         quality = self.cropper.calculate_quality_score(
             (self.frame_height, self.frame_width),
             crop_box,
             subject['bbox']
         )
-        
+
         if quality > 0.3:
             saved_path = self.save_cropped_frame(cropped, category, frame_number, quality)
             self.stats['saved_frames'] += 1
             self.stats[f'{category}_frames'] += 1
-            
+            if excluded_zones:
+                self.stats['overlay_crops'] += 1
+
             # V2.0: Auto captioning
-            if self.captioner and saved_path:
-                try:
-                    # AdvancedCaptioner uses caption_image() method
-                    result = self.captioner.caption_image(cropped)
-                    caption = result.final_caption if hasattr(result, 'final_caption') else str(result)
-                    caption_path = saved_path.with_suffix('.txt')
-                    with open(caption_path, 'w', encoding='utf-8') as f:
-                        f.write(caption)
-                    self.stats['captioned_frames'] += 1
-                except Exception as e:
-                    print(f"⚠️ Caption error for frame {frame_number}: {e}")
+            self._caption_frame(cropped, saved_path, frame_number)
     
+    def _caption_frame(self, cropped: np.ndarray, saved_path: Path, frame_number: int):
+        """
+        Run auto-captioning on a saved frame and write the .txt file.
+
+        Args:
+            cropped:      The cropped frame image (BGR ndarray).
+            saved_path:   Path where the frame JPEG was saved.
+            frame_number: Original frame index (for logging).
+        """
+        if not self.captioner or not saved_path:
+            return
+        try:
+            result = self.captioner.caption_image(cropped, mode=self.caption_mode)
+            caption = result.final_caption if hasattr(result, 'final_caption') else str(result)
+            caption_path = saved_path.with_suffix('.txt')
+            with open(caption_path, 'w', encoding='utf-8') as f:
+                f.write(caption)
+            self.stats['captioned_frames'] += 1
+            if self.stats['captioned_frames'] == 1:
+                preview = (caption[:60] + "...") if len(caption) > 60 else caption
+                self._log(f"📝 First caption: {preview}")
+            # Warn if caption has no auto-tags (only trigger word)
+            if hasattr(result, 'tag_count') and result.tag_count == 0 and self.caption_mode != "blip_only":
+                if self.stats.get('_zero_tag_warned', 0) == 0:
+                    self._log("⚠️ WD14 produced 0 tags — captions will only contain trigger word")
+                    self.stats['_zero_tag_warned'] = 1
+        except Exception as e:
+            self._log(f"⚠️ Caption error frame {frame_number}: {e}")
+
     def save_cropped_frame(self, frame: np.ndarray, category: str,
                           frame_number: int, quality: float) -> Optional[Path]:
         """Save cropped frame to appropriate directory and return path"""
@@ -553,7 +633,8 @@ class UnifiedVideoProcessor:
         print(f"  └─ Objects:        {self.stats['object_frames']}")
         print(f"Skipped (text):      {self.stats['skipped_text']}")
         print(f"Skipped (no detect): {self.stats['skipped_no_detection']}")
-        print(f"Skipped (quality):   {self.stats['skipped_quality']}")  # V2.0
+        print(f"Skipped (quality):   {self.stats['skipped_quality']}")   # V2.0
+        print(f"Overlay crops:       {self.stats['overlay_crops']}")     # logo/watermark aware
         print(f"Captioned frames:    {self.stats['captioned_frames']}")  # V2.0
         print("="*50)
     
@@ -585,17 +666,23 @@ class UnifiedVideoProcessor:
     def get_video_info(self, video_path: str) -> Dict:
         """Get video information without opening for processing"""
         cap = cv2.VideoCapture(video_path)
-        
-        info = {
-            'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-            'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-            'fps': cap.get(cv2.CAP_PROP_FPS),
-            'total_frames': int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
-            'duration': 0
-        }
-        
-        if info['fps'] > 0:
-            info['duration'] = info['total_frames'] / info['fps']
-        
-        cap.release()
+
+        if not cap.isOpened():
+            logger.warning("Could not open video for info: %s", video_path)
+            return {}
+
+        try:
+            info = {
+                'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                'fps': cap.get(cv2.CAP_PROP_FPS),
+                'total_frames': int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+                'duration': 0
+            }
+
+            if info['fps'] > 0:
+                info['duration'] = info['total_frames'] / info['fps']
+        finally:
+            cap.release()
+
         return info

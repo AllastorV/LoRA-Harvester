@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0.."
 chcp 65001 >nul 2>&1
 echo ============================================================
 echo [*] LoRA-Harvester GPU Setup Script
@@ -24,7 +25,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 echo.
 echo [*] Testing GPU installation...
-python check_gpu.py
+python scripts\check_gpu.py
 
 echo.
 echo ============================================================

@@ -6,6 +6,35 @@ AI-Powered Dataset Collection Tool for LoRA Training
 import sys
 import os
 
+# Windows: set unique App ID so taskbar shows our icon instead of Python's
+if sys.platform == 'win32':
+    try:
+        import ctypes
+        from ctypes import wintypes
+        _SetAppID = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
+        _SetAppID.argtypes = [ctypes.c_wchar_p]
+        _SetAppID.restype = ctypes.HRESULT
+        _SetAppID("LoRA-Harvester.App.2.0")
+    except Exception:
+        pass
+
+# Windows: ensure CUDA 12 DLLs are discoverable for onnxruntime-gpu
+if sys.platform == 'win32':
+    _cuda_bin_dirs = []
+    _cuda_env = os.environ.get('CUDA_PATH', '')
+    if _cuda_env:
+        _cuda_bin_dirs.append(os.path.join(_cuda_env, 'bin'))
+    for _v in ('v12.1', 'v12.2', 'v12.3', 'v12.4', 'v12.5', 'v12.6'):
+        _cuda_bin_dirs.append(rf'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\{_v}\bin')
+    for _d in _cuda_bin_dirs:
+        if os.path.isdir(_d):
+            try:
+                os.add_dll_directory(_d)
+            except (OSError, AttributeError):
+                pass
+            if _d not in os.environ.get('PATH', ''):
+                os.environ['PATH'] = _d + os.pathsep + os.environ.get('PATH', '')
+
 # Pre-import onnxruntime before PyTorch to avoid DLL conflicts
 try:
     import onnxruntime

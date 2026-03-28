@@ -7,9 +7,13 @@ Useful for training with captions (SD-scripts, kohya-ss, etc.)
 import torch
 from pathlib import Path
 from typing import Optional, List, Dict
-from PIL import Image
 import cv2
 import numpy as np
+
+try:
+    from PIL import Image as _PIL_Image
+except ImportError:
+    _PIL_Image = None
 
 
 class AutoCaptioner:
@@ -100,7 +104,7 @@ class AutoCaptioner:
         
         # Convert BGR to RGB
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(rgb_image)
+        pil_image = _PIL_Image.fromarray(rgb_image)
         
         # Process image
         inputs = self.processor(pil_image, return_tensors="pt").to(self.device)
@@ -142,7 +146,7 @@ class AutoCaptioner:
         pil_images = []
         for img in images:
             rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            pil_images.append(Image.fromarray(rgb))
+            pil_images.append(_PIL_Image.fromarray(rgb))
         
         # Process batch
         inputs = self.processor(pil_images, return_tensors="pt", padding=True)
@@ -245,92 +249,73 @@ class AutoCaptioner:
 
 class TagGenerator:
     """
-    Generate tags/keywords for images using CLIP or WD14 tagger
-    Complements captions with structured tags
+    Generate structured tags from YOLO/ensemble detection results.
+    Used as a lightweight complement to WD14 tags — produces category
+    and count tags (solo, 1person, class names) from detection boxes.
     """
-    
-    # Common LoRA training tags
-    TRIGGER_TEMPLATES = {
-        'person': ['1girl', '1boy', '1person', 'solo'],
-        'character': ['{name}', 'character_{name}'],
-        'style': ['{style}_style', 'in_the_style_of_{style}'],
-        'concept': ['{concept}', 'concept_{concept}']
-    }
-    
-    def __init__(self, trigger_word: str = ""):
-        """
-        Args:
-            trigger_word: Custom trigger word to include
-        """
+
+    def __init__(self, trigger_word: str = "", separator: str = ", "):
         self.trigger_word = trigger_word
-    
-    def generate_tags_from_detections(self, 
+        self.separator = separator
+
+    def generate_tags_from_detections(self,
                                       detections: Dict,
                                       category: str) -> List[str]:
         """
-        Generate tags based on object detections
-        
+        Build a tag list from detector output.
+
         Args:
-            detections: Detection results from detector
-            category: Primary category (person/animal/object)
-            
+            detections: Dict with keys 'person', 'animal', 'object' → lists of dicts.
+            category:   Primary subject category (informational, not used to filter).
+
         Returns:
-            List of tags
+            Deduplicated, ordered list of tags.
         """
-        tags = []
-        
-        # Add trigger word first
+        tags: List[str] = []
+        seen: set = set()
+
+        def _add(tag: str):
+            t = tag.lower().strip().replace(' ', '_')
+            if t and t not in seen:
+                tags.append(t)
+                seen.add(t)
+
+        # Trigger word always first
         if self.trigger_word:
-            tags.append(self.trigger_word)
-        
-        # Count detections
-        person_count = len(detections.get('person', []))
-        animal_count = len(detections.get('animal', []))
-        
-        # Person tags
-        if person_count == 1:
-            tags.append('solo')
-            tags.append('1person')
-        elif person_count > 1:
-            tags.append(f'{person_count}people')
-            tags.append('multiple_people')
-        
-        # Animal tags
+            _add(self.trigger_word)
+
+        # Person count tags
+        persons = detections.get('person', [])
+        if len(persons) == 1:
+            _add('solo')
+            _add('1person')
+        elif len(persons) > 1:
+            _add(f'{len(persons)}people')
+            _add('multiple_people')
+
+        # Animal class names
         for animal in detections.get('animal', []):
-            class_name = animal.get('class_name', 'animal')
-            tags.append(class_name)
-        
-        # Object tags (top 3 most confident)
+            _add(animal.get('class_name', 'animal'))
+
+        # Top-3 most confident object class names
         objects = sorted(
             detections.get('object', []),
-            key=lambda x: x['confidence'],
-            reverse=True
+            key=lambda x: x.get('confidence', 0),
+            reverse=True,
         )[:3]
-        
         for obj in objects:
-            tags.append(obj.get('class_name', 'object'))
-        
+            _add(obj.get('class_name', 'object'))
+
         return tags
-    
-    def format_tags(self, tags: List[str], separator: str = ", ") -> str:
-        """
-        Format tags for caption file
-        
-        Args:
-            tags: List of tags
-            separator: Tag separator
-            
-        Returns:
-            Formatted tag string
-        """
-        # Clean and deduplicate
-        cleaned = []
-        seen = set()
-        
+
+    def format_tags(self, tags: List[str], separator: str = None) -> str:
+        """Deduplicate and join tags into a single string."""
+        sep = separator or self.separator
+        cleaned: List[str] = []
+        seen: set = set()
         for tag in tags:
-            tag = tag.lower().strip().replace(' ', '_')
-            if tag and tag not in seen:
-                cleaned.append(tag)
-                seen.add(tag)
-        
-        return separator.join(cleaned)
+            t = tag.lower().strip().replace(' ', '_')
+            if t and t not in seen:
+                cleaned.append(t)
+                seen.add(t)
+        return sep.join(cleaned)

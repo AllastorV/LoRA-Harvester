@@ -30,10 +30,12 @@ if errorlevel 1 (
 
 echo [*] Starting application...
 echo.
-%PYTHON_CMD% main.py
 
-if errorlevel 1 (
-    echo.
-    echo [ERROR] Application crashed. Check the error above.
+REM Use pythonw if available (truly windowless), otherwise minimize window
+where pythonw >nul 2>&1
+if not errorlevel 1 (
+    start "" pythonw main.py
+) else (
+    start "" /MIN %PYTHON_CMD% main.py
 )
-pause
+exit

@@ -1,44 +1,20 @@
 <a id="top"></a>
 
-# 🌾 LoRA-Harvester v2.0
-
 <div align="center">
 
+<img src="assets/icon.png" alt="LoRA-Harvester" width="120" />
 
-### 🎯 AI-Powered Video Processing Tool for LoRA Training Dataset Creation
- 🎯 LoRA Eğitim Dataseti Oluşturma için Yapay Zeka Destekli Video İşleme Aracı
+# LoRA-Harvester v2.1
+
+### AI-Powered Video → LoRA Training Dataset Creator
+### Yapay Zeka Destekli Video → LoRA Eğitim Dataseti Oluşturucu
 
 [![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![License](https://img.shields.io/badge/License-GPL%20v3-blue?style=flat-square&logo=gnu&logoColor=white)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL%20v3-blue?style=flat-square&logo=gnu&logoColor=white)](LICENSE.txt)
 [![GitHub](https://img.shields.io/badge/GitHub-AllastorV-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/AllastorV)
 
-<img src="https://img.shields.io/badge/AI-Powered-blueviolet?style=for-the-badge&logo=opencv&logoColor=white" alt="AI Powered">
-<img src="https://img.shields.io/badge/LoRA-Training-ff69b4?style=for-the-badge&logo=pytorch&logoColor=white" alt="LoRA Training">
-<img src="https://img.shields.io/badge/Batch-Processing-success?style=for-the-badge&logo=files&logoColor=white" alt="Batch Processing">
-
-### 🆕 v2.0 New Features | Yeni Özellikler
-
-| Feature | Description | Status |
-|---------|-------------|--------|
-| 📝 **BLIP + WD14 Captioning** | Auto-caption with natural language & Danbooru tags | ✅ Full |
-| 🏷️ **Advanced Tag Settings** | Trigger words, negative tags, presets, max limits | ✅ Full |
-| 🔍 **Quality Analysis** | Blur detection, brightness filter, duplicate skip | ✅ Full |
-| ⚡ **Async I/O** | Background frame saving for faster processing | ✅ Full |
-| 💾 **Checkpoint/Resume** | Resume interrupted processing | ✅ Full |
-| 🎨 **Caption Presets** | anime_character, realistic_person, object, style | ✅ Full |
-| 🚫 **Negative Tags** | Exclude unwanted tags with wildcard support | ✅ Full |
-
-
-**⚡ Accelerate LoRA training dataset collection with AI-powered smart cropping**
-
-⚡ LoRA eğitim dataseti toplama işlemini yapay zeka destekli akıllı kırpma ile hızlandırın**
-
----
-
-
-
-**[📖 Documentation](#english) | [📖 Dokümantasyon](#turkce)**
+**[English](#english) | [Türkçe](#turkce)**
 
 </div>
 
@@ -46,2282 +22,449 @@
 
 <a name="english"></a>
 
-<div align="center">
+## ENGLISH
 
-## 🇬🇧 ENGLISH DOCUMENTATION
+### What Is It?
 
-<img src="https://img.shields.io/badge/Language-English-blue?style=for-the-badge" alt="English">
+LoRA-Harvester extracts high-quality frames from videos, sorts them by character using face recognition, and optionally generates captions — producing a clean, ready-to-train LoRA dataset in minutes instead of hours.
 
-</div>
-
----
-
-## 🎯 Purpose & Vision
-
-<table>
-<tr>
-<td width="50%">
-
-### 🎨 **What is LoRA-Harvester?**
-
-A powerful AI-driven tool designed to **revolutionize dataset creation** for LoRA/Dreambooth training. Transform hours of manual work into minutes of automated processing.
-
-</td>
-<td width="50%">
-
-### 🚀 **Why Use It?**
-
-Instead of manually extracting hundreds of frames, let AI do the heavy lifting:
-- ✅ **10x faster** than manual extraction
-- ✅ **Higher quality** with smart detection
-- ✅ **Organized output** ready for training
-
-</td>
-</tr>
-</table>
-
-### 🎬 Perfect For:
+**Main workflow:**
 ```
-┌─────────────────────┬──────────────────────┬─────────────────────┐
-│  👤 Character LoRA  │  🐾 Animal/Pet LoRA  │  🎨 Style Transfer │
-│  Face training      │  Pet recognition     │  Artistic styles    │
-│  Portrait datasets  │  Wildlife datasets   │  Object datasets    │
-└─────────────────────┴──────────────────────┴─────────────────────┘
+Video(s) → Extract frames → AI detects person → Smart crop → Quality filter → Caption → Dataset
+```
+
+**Character Sorter workflow:**
+```
+Image folder → Face detection → Match / cluster by identity → Sort into named folders
 ```
 
 ---
 
-## ✨ Key Features
+### Features
 
-<div align="center">
-
-### 🤖 **AI-Powered Detection**
-
-</div>
-
-<table>
-<tr>
-<td width="33%" align="center">
-
-#### 🎯 YOLOv8
-**Fast & Accurate**
-- State-of-the-art detection
-- Real-time processing
-- GPU accelerated
-
-</td>
-<td width="33%" align="center">
-
-#### 🧠 Ensemble Mode
-**3 AI Models**
-- YOLO + DETR + Faster R-CNN
-- Voting mechanism
-- 95%+ accuracy
-
-</td>
-<td width="33%" align="center">
-
-#### ⚡ Turbo Mode
-**2-3x Faster**
-- Batch processing
-- FP16 inference
-- Optimized memory
-
-</td>
-</tr>
-</table>
-
-<div align="center">
-
-### 🎨 **Smart Processing**
-
-</div>
-
-| Feature | Description | Benefit |
-|---------|-------------|---------|
-| **📐 Multiple Formats** | 9:16, 3:4, 1:1, 4:5, 16:9, 4:3 | Perfect crop for any use case |
-| **🎯 Smart Cropping** | Head space awareness + centering | Professional-quality framing |
-| **📝 Text Detection** | Auto-skip subtitles | Clean, text-free images |
-| **💎 Quality Scoring** | Automatic quality assessment | Only save the best frames |
-| **🗂️ Auto-Organization** | Categorized by persons/animals/objects | Training-ready structure |
-
-<div align="center">
-
-### 🚀 **NEW: Batch Processing**
-
-</div>
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  📹 Video 1  →  ✅ Processed  →  💾 150 frames sav         │
-│  📹 Video 2  →  ✅ Processed  →  💾 200 frames saved       │
-│  📹 Video 3  →  ✅ Processed  →  💾 180 frames saved       │
-│                                                              │
-│  ✅ TOTAL: 3 videos, 530 frames in 5 minutes!               │
-└──────────────────────────────────────────────────────────────┘
-```
-
-**🎉 Process unlimited videos in one command!**
+| Feature | Details |
+|---------|---------|
+| AI Detection | YOLOv8 + optional 3-model ensemble (DETR, Faster R-CNN) |
+| Smart Crop | Aspect-ratio aware crop with configurable padding |
+| Overlay Awareness | Detects logos/watermarks and crops around them |
+| Quality Filter | Blur, noise, brightness, and duplicate detection |
+| Character Sorter | Face recognition to sort images by character identity |
+| Max Characters | Limit output to 1–6 character folders; extras go to `other/` |
+| Auto-Caption | BLIP (natural language) + WD14 (Danbooru tags) |
+| Turbo Mode | Batch frame processing for maximum throughput |
+| Checkpoint | Resume interrupted processing from where it stopped |
+| Bilingual UI | English / Turkish interface |
 
 ---
 
-## 🚀 Quick Start
-
-<details open>
-<summary><b>📦 Option 1: Automatic Installation (Windows - Recommended)</b></summary>
+### Installation
 
 ```bash
-# Just double-click these files:
-install.bat          # Install everything automatically
-run.bat             # Launch GUI mode
-run_batch.bat       # Launch batch processing wizard
-```
+# 1. Clone the repository
+git clone https://github.com/AllastorV/LoRA-Harvester.git
+cd LoRA-Harvester
 
-</details>
-
-<details>
-<summary><b>🔧 Option 2: Manual Installation</b></summary>
-
-```bash
-# 1. Create virtual environment
+# 2. Create a virtual environment
 python -m venv venv
-
-# 2. Activate environment
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
+source venv/bin/activate        # Linux / Mac
+venv\Scripts\activate           # Windows
 
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Run!
+# 4. Launch
 python main.py
 ```
 
-</details>
+> **GPU support:** Install PyTorch with CUDA before installing other requirements.
+> See https://pytorch.org/get-started/locally/
 
-<details>
-<summary><b>🐍 Option 3: Direct Python</b></summary>
+---
+
+### Launching
+
+| Method | Description |
+|--------|-------------|
+| `python main.py` | Standard launch with console output |
+| `run.bat` | Windows launcher — closes the CMD window after startup |
+| `run_silent.vbs` | Fully silent launch — no window at all (double-click) |
+
+---
+
+### Usage
+
+#### GUI Mode
 
 ```bash
-pip install -r requirements.txt
 python main.py
 ```
 
-</details>
+1. **Step 1** — Drop video file(s) or select a folder
+2. **Step 2** — Configure settings (format, interval, model, quality, captions)
+3. **Step 3** — Click **Start** and monitor the log
 
----
-
-## 💡 Usage Examples
-
-### 🖥️ **GUI Mode** (Beginner-Friendly)
-
-<table>
-<tr>
-<td width="50%">
-
-#### Single Video
-1. Launch: `python main.py`
-2. Drag & drop video
-3. Adjust settings
-4. Click **Start Processing**
-
-</td>
-<td width="50%">
-
-#### Batch Processing (NEW!)
-1. Launch: `python main.py`
-2. Drag & drop **multiple videos**
-3. Or use Browse (Ctrl+Click)
-4. Click **Start Processing**
-
-</td>
-</tr>
-</table>
-
-### ⌨️ **CLI Mode** (Advanced Users)
-
-<details open>
-<summary><b>🎯 Single Video Processing</b></summary>
+#### CLI Mode
 
 ```bash
-# Basic usage
-python cli.py video.mp4
+# Basic
+python scripts/cli.py video.mp4
 
-# Custom settings
-python cli.py video.mp4 -f 1:1 -i 30 -c 0.6
+# Common options
+python scripts/cli.py video.mp4 -f 1:1 -i 15 -c 0.7 --quality --ensemble --turbo
 
-# High quality mode
-python cli.py video.mp4 -f 1:1 -i 15 -c 0.7 --ensemble --turbo
-```
+# With captions
+python scripts/cli.py video.mp4 --caption --caption-mode combined --trigger "mychar"
 
-</details>
-
-<details open>
-<summary><b>📹 Batch Processing (NEW!)</b></summary>
-
-```bash
-# Method 1: List videos
-python cli.py video1.mp4 video2.mp4 video3.mp4
-
-# Method 2: Use wildcards
-python cli.py *.mp4
-python cli.py videos/*.mp4
-
-# Method 3: Batch wizard
-run_batch.bat
-
-# Method 4: High quality batch
-python cli.py videos/*.mp4 -f 1:1 -i 20 --ensemble --turbo
-```
-
-</details>
-
-<details>
-<summary><b>🎨 Real-World Examples</b></summary>
-
-#### Example 1: Character LoRA Training Dataset
-```bash
-python cli.py character_video.mp4 -f 1:1 -i 15 -c 0.7 --ensemble --turbo
-```
-**Result**: 200-500 high-quality face crops
-
-#### Example 2: Pet/Animal LoRA Dataset
-```bash
-python cli.py pet_videos/*.mp4 -f 1:1 -i 20 -c 0.6 --ensemble
-```
-**Result**: Consistent animal photos from multiple angles
-
-#### Example 3: Vertical Content (TikTok/Reels)
-```bash
-python cli.py content.mp4 -f 9:16 -i 30 --turbo
-```
-**Result**: Vertical format crops ready for social media
-
-#### Example 4: Maximum Quality (Strict Mode)
-```bash
-python cli.py video.mp4 -f 1:1 -i 10 -c 0.8 --ensemble --voting-threshold 3
-```
-**Result**: Only frames where all 3 AI models agree
-
-#### Example 5: Fast Preview
-```bash
-python cli.py test.mp4 -f 1:1 -i 90
-```
-**Result**: Quick test in 30 seconds
-
-#### Example 6: Auto-Captioning with Tags (NEW v2.0)
-```bash
-python cli.py video.mp4 -f 1:1 -i 30 --caption --trigger "sks person"
-```
-**Result**: Frames with WD14 Danbooru tags + trigger word
-
-#### Example 7: Full v2.0 Features
-```bash
-python cli.py videos/*.mp4 -f 1:1 -i 20 --quality --no-blur --no-duplicates \
-    --caption --trigger "my_character" --max-tags 25 \
-    --negative-tags "watermark,signature,text" --ensemble --turbo
-```
-**Result**: High-quality filtered frames with custom captions
-
-#### Example 8: Using Caption Presets
-```bash
-# Anime character preset
-python cli.py anime.mp4 --caption --preset anime_character
-
-# Realistic person preset
-python cli.py portrait.mp4 --caption --preset realistic_person
-```
-**Result**: Pre-configured caption settings for specific use cases
-
-</details>
-
----
-
-## 🎛️ Parameters & Settings
-
-<div align="center">
-
-### 📋 **Complete Parameter Reference**
-
-</div>
-
-| Parameter | Short | Options | Default | Description |
-|-----------|-------|---------|---------|-------------|
-| `videos` | - | file paths | *required* | 🎬 Single or multiple video files |
-| `--output` | `-o` | path | `output` | 📁 Output directory |
-| `--format` | `-f` | 9:16, 3:4, 1:1, 4:5, 16:9, 4:3 | `9:16` | 📐 Aspect ratio |
-| `--interval` | `-i` | 1-200 | `30` | ⏱️ Process every N frames |
-| `--confidence` | `-c` | 0.1-0.95 | `0.5` | 🎯 Detection threshold |
-| `--padding` | `-p` | 100-1000 | `500` | 📏 Min padding (pixels) |
-| `--model` | `-m` | n/s/m/l | `yolov8n.pt` | 🤖 YOLO model size |
-| `--ensemble` | - | flag | OFF | 🧠 Enable 3-model ensemble |
-| `--ensemble-models` | - | yolo, detr, fasterrcnn | all 3 | 🎯 Models for ensemble |
-| `--voting-threshold` | - | 1-3 | `2` | 🗳️ Min model agreements |
-| `--turbo` | - | flag | **ON** | ⚡ Batch frame processing |
-| `--no-turbo` | - | flag | OFF | 🐌 Disable turbo mode |
-| `--batch-size` | - | 1-16 | `4` | 📦 Frames per batch |
-| `--no-skip-text` | - | flag | OFF | 📝 Process text frames |
-| `--quality` | - | flag | OFF | 💎 Enable quality analysis |
-| `--no-blur` | - | flag | OFF | 🔍 Skip blurry frames |
-| `--no-duplicates` | - | flag | OFF | 🎯 Skip duplicate frames |
-| `--caption` | - | flag | OFF | 📝 Enable auto-captioning |
-| `--caption-mode` | - | tags_only, blip_only, combined | `tags_only` | 🏷️ Caption mode |
-| `--trigger` | - | text | `""` | 🎯 Trigger word for captions |
-| `--max-tags` | - | 1-50 | `30` | 📊 Max tags per caption |
-| `--preset` | - | anime_character, realistic_person, etc. | - | 🎨 Use caption preset |
-| `--negative-tags` | - | comma-separated | - | 🚫 Tags to exclude |
-
-<div align="center">
-
-### 🎨 **Recommended Presets**
-
-</div>
-
-<table>
-<tr>
-<th>Use Case</th>
-<th>Command</th>
-<th>Speed</th>
-<th>Quality</th>
-</tr>
-<tr>
-<td>🏆 <b>LoRA Training (Best)</b></td>
-<td><code>-f 1:1 -i 15 -c 0.7 --ensemble --turbo</code></td>
-<td>⚡⚡</td>
-<td>⭐⭐⭐⭐⭐</td>
-</tr>
-<tr>
-<td>⚡ <b>Fast Collection</b></td>
-<td><code>-f 1:1 -i 50 --turbo</code></td>
-<td>⚡⚡⚡⚡</td>
-<td>⭐⭐⭐</td>
-</tr>
-<tr>
-<td>📱 <b>Vertical Content</b></td>
-<td><code>-f 9:16 -i 30 --turbo</code></td>
-<td>⚡⚡⚡</td>
-<td>⭐⭐⭐⭐</td>
-</tr>
-<tr>
-<td>💎 <b>Maximum Quality</b></td>
-<td><code>-f 1:1 -i 10 --ensemble --voting-threshold 3</code></td>
-<td>⚡</td>
-<td>⭐⭐⭐⭐⭐</td>
-</tr>
-<tr>
-<td>🧪 <b>Quick Test</b></td>
-<td><code>-f 1:1 -i 90</code></td>
-<td>⚡⚡⚡⚡⚡</td>
-<td>⭐⭐</td>
-</tr>
-</table>
-
----
-
-## 🏗️ Project Architecture
-
-<div align="center">
-
-### 📁 **File Structure**
-
-</div>
-
-```
-🌾 LoRA-Harvester/
-│
-├── 🚀 Entry Points
-│   ├── main.py                      # GUI launcher
-│   ├── cli.py                       # CLI interface (batch support)
-│   ├── run.bat                      # Quick start script
-│   └── run_batch.bat                # Batch processing wizard
-│
-├── 🧠 Core Engine (src/core/)
-│   ├── unified_processor.py         # ⭐ All-in-one processor
-│   ├── enhanced_processor.py        # ⭐ Enhanced processor with v2.0 features
-│   ├── detector.py                  # YOLOv8 detection
-│   ├── ensemble_detector.py         # Multi-model ensemble
-│   ├── text_detector.py             # Subtitle detection
-│   ├── cropper.py                   # Smart cropping
-│   ├── advanced_captioner.py        # 📝 BLIP + WD14 captioning
-│   ├── quality_analyzer.py          # 💎 Quality analysis & filtering
-│   ├── video_processor.py           # 🎬 Video processing engine
-│   └── optimized_processor.py       # ⚡ Optimized batch processing
-│
-├── 🎨 User Interface (src/ui/)
-│   ├── main_window.py               # PyQt5 GUI (batch support)
-│   └── translations.py              # TR/EN translations
-│
-├── 📚 Documentation
-│   ├── README.md                    # This file
-│   ├── CHANGELOG.md                 # What's new
-│   ├── QUICKSTART_NEW.md           # Quick reference
-│   ├── ENSEMBLE.md                  # Ensemble guide
-│   └── OPTIMIZATION.md              # Performance tips
-│
-└── ⚙️ Configuration
-    ├── config.yaml                  # Settings
-    ├── requirements.txt             # Dependencies
-    └── yolov8n.pt                  # AI model
-```
-
-<div align="center">
-
-### 🔄 **Processing Pipeline**
-
-</div>
-
-```
-┌─────────────┐
-│ 📹 Video(s) │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────┐
-│ 🤖 AI Detection     │──┐
-│ • YOLOv8            │  │ Ensemble Mode
-│ • DETR (optional)   │◄─┤ (3 models vote)
-│ • Faster R-CNN      │  │
-└──────┬──────────────┘──┘
-       │
-       ▼
-┌─────────────────────┐
-│ 📝 Text Detection   │
-│ Skip subtitles?     │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ ✂️ Smart Cropping   │
-│ • Head space calc   │
-│ • Subject centering │
-│ • Format adjustment │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ 💎 Quality Check    │
-│ Score: 0.0 - 1.0    │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ 💾 Save & Organize  │
-│ • persons/          │
-│ • animals/          │
-│ • objects/          │
-└─────────────────────┘
+# Character sort
+python scripts/character_sort.py /images/input --references /refs --max-characters 2
 ```
 
 ---
 
-## ⚙️ Configuration
+### Settings Reference
 
-<details>
-<summary><b>📝 config.yaml Settings</b></summary>
+#### Video Extractor
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--format -f` | `9:16` | Crop aspect ratio. `1:1` is best for LoRA; `9:16` for vertical content |
+| `--interval -i` | `30` | Process every N frames. Lower = more frames, slower |
+| `--confidence -c` | `0.5` | Detection threshold (0.1–0.95). Higher = fewer but cleaner detections |
+| `--padding -p` | `500` | Min pixels of context around the detected subject |
+| `--model -m` | `yolov8n` | YOLO size: `n`=fast, `s`=balanced, `m/l`=accurate |
+| `--turbo` | ON | Batch frame processing. Keep ON unless VRAM is very low |
+| `--batch-size` | `4` | Frames per batch in turbo mode (1–16) |
+| `--ensemble` | OFF | Use 3 AI models and vote for agreement. Slower but more accurate |
+| `--voting-threshold` | `2` | How many models must agree (1–3). `3` = strictest |
+| `--quality` | OFF | Enable blur + noise + brightness + duplicate filtering |
+| `--caption` | OFF | Generate a `.txt` caption file per saved image |
+| `--caption-mode` | `tags_only` | `tags_only` / `blip_only` / `combined` |
+| `--trigger` | *(empty)* | Word prepended to every caption (your LoRA keyword) |
+| `--max-tags` | `30` | Maximum Danbooru tags per caption |
+| `--negative-tags` | *(none)* | Comma-separated tags to always exclude |
+| `--preset` | *(none)* | Caption preset: `anime_character`, `realistic_person`, `object`, `style` |
+
+#### config.yaml — Advanced
 
 ```yaml
-# Detection Settings
-detection:
-  model_size: "yolov8n.pt"        # n=fast, s=balanced, m/l=accurate
-  confidence: 0.5                  # 0.1-0.95
-  
-# Cropping Settings
-cropping:
-  default_format: "1:1"            # Best for LoRA training
-  min_padding: 500                 # Pixels around subject
-  
-# Text Detection
-text_detection:
-  enabled: true                    # Skip subtitle frames
-  languages: ["en", "tr"]          # Supported languages
-  
-# Ensemble Mode
-ensemble:
-  enabled: false                   # Enable in CLI with --ensemble
-  voting_threshold: 2              # Min agreements (1-3)
-  models: ["yolo", "detr", "fasterrcnn"]
-  
-# Performance
-performance:
-  turbo_mode: true                 # Batch processing
-  batch_size: 4                    # Frames per batch
-  use_fp16: true                   # Half precision (if supported)
-
-# Quality Analysis (NEW v2.0)
 quality:
-  enabled: true                    # Enable quality filtering
-  blur_threshold: 80.0             # Min sharpness (Laplacian variance)
-  brightness_min: 35               # Min brightness (0-255)
-  brightness_max: 225              # Max brightness (0-255)
-  duplicate_threshold: 0.90        # Similarity threshold for duplicates
-  min_contrast: 20                 # Minimum contrast level
+  blur_threshold: 100.0       # Min sharpness score. Higher = stricter
+  noise_threshold: 12.0       # Max grain level. Lower = stricter
+  brightness_min: 40          # Darkest allowed frame (0–255)
+  brightness_max: 220         # Brightest allowed frame (0–255)
+  duplicate_threshold: 0.92   # Similarity cutoff (0–1). Higher = keep more
 
-# Captioning (NEW v2.0)
+overlay:
+  sensitivity: "normal"       # "low" / "normal" / "high"
+  margin_px: 15               # Clearance pixels around detected overlay
+
 captioning:
-  enabled: false                   # Enable auto-captioning
-  mode: "tags_only"                # tags_only, blip_only, combined
-  
-  # BLIP Settings (Natural Language)
   blip:
-    enabled: true
-    model: "blip-base"             # blip-base, blip-large
+    model: "blip-base"        # "blip-base" (fast) or "blip-large" (accurate)
     max_length: 75
-  
-  # WD14 Tagger (Danbooru Tags)
   wd14:
-    enabled: true
-    model: "wd-v1-4-vit-tagger-v2"
-  
-  # Tag Settings
-  tags:
-    trigger_word: ""               # Added to every caption
-    max_tags: 30                   # Max tags per image
-    min_confidence: 0.35           # Min confidence (0.0-1.0)
-    negative_tags: []              # Tags to exclude
+    min_confidence: 0.35      # Min tag confidence (0–1)
 ```
 
-</details>
+#### Character Sorter
 
----
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--model` | `buffalo_l` | InsightFace model. `buffalo_l`=accurate, `buffalo_s`=fast |
+| `--threshold` | `0.45` | Face similarity cutoff (0–1). Lower = stricter matching |
+| `--max-characters` | `1` | Limit output to 1–6 character folders. Extras go to `other/` |
+| `--cluster-eps` | `0.6` | DBSCAN epsilon for auto-clustering unknown faces |
+| `--cluster-min` | `2` | Minimum images to form a cluster. Below this goes to `unknown/` |
+| `--no-cluster` | OFF | Disable auto-clustering; unmatched faces go to `unknown/` |
+| `--copy` | OFF | Copy files instead of moving them |
+| `--recursive` | OFF | Also scan sub-directories |
 
-## � Auto-Captioning Guide (NEW v2.0)
-
-<div align="center">
-
-### 🎨 **BLIP + WD14 Dual Captioning System**
-
-</div>
-
-The v2.0 release includes powerful auto-captioning using two AI models:
-- **BLIP**: Natural language descriptions (English)
-- **WD14 Tagger**: Danbooru-style tags (anime/booru format)
-
-<details open>
-<summary><b>🎯 Caption Modes</b></summary>
-
-| Mode | Description | Output Example |
-|------|-------------|----------------|
-| `tags_only` | WD14 tags only | `sks person, 1girl, solo, long hair, blue eyes, smile` |
-| `blip_only` | BLIP description only | `A young woman with long hair smiling at camera` |
-| `blip_first` | BLIP + tags | `A young woman with long hair smiling at camera, 1girl, solo, smile` |
-| `tags_first` | Tags + BLIP | `sks person, 1girl, solo, smile, A young woman with long hair` |
-| `combined` | Both in separate lines | Line 1: BLIP, Line 2: Tags |
-
-</details>
-
-<details>
-<summary><b>🏷️ Tag Settings</b></summary>
-
-```bash
-# Basic captioning
-python cli.py video.mp4 --caption
-
-# With trigger word
-python cli.py video.mp4 --caption --trigger "sks person"
-
-# Limit tags
-python cli.py video.mp4 --caption --max-tags 20
-
-# Exclude unwanted tags
-python cli.py video.mp4 --caption --negative-tags "watermark,signature,text"
-
-# Wildcard exclusions
-python cli.py video.mp4 --caption --negative-tags "watermark*,*signature*"
+**Output structure:**
 ```
-
-</details>
-
-<details>
-<summary><b>🎨 Caption Presets</b></summary>
-
-Use pre-configured settings for common scenarios:
-
-```bash
-# Anime character training
-python cli.py video.mp4 --caption --preset anime_character
-
-# Realistic person/portrait
-python cli.py video.mp4 --caption --preset realistic_person
-
-# Object/product dataset
-python cli.py video.mp4 --caption --preset object
-
-# Style transfer
-python cli.py video.mp4 --caption --preset style
-```
-
-**Available Presets:**
-- `anime_character`: WD14 tags, max 30 tags, anime-focused
-- `realistic_person`: BLIP + tags combined, portrait-focused
-- `object`: Descriptive BLIP captions
-- `style`: Style-focused tags and descriptions
-- `general`: Balanced BLIP + WD14 tags
-
-</details>
-
-<details>
-<summary><b>💡 Advanced Examples</b></summary>
-
-#### Full LoRA Training Pipeline
-```bash
-# Character LoRA with captions
-python cli.py character_videos/*.mp4 \
-    -f 1:1 -i 20 --quality --no-blur --no-duplicates \
-    --caption --trigger "sks person" --max-tags 25 \
-    --negative-tags "watermark,text,signature,logo" \
-    --ensemble --turbo
-```
-
-#### Anime Dataset
-```bash
-python cli.py anime_scenes/*.mp4 \
-    --caption --preset anime_character \
-    --trigger "charactername" \
-    --negative-tags "censored,mosaic*,watermark*"
-```
-
-#### Product/Object Dataset
-```bash
-python cli.py product_video.mp4 \
-    --caption --preset object \
-    --caption-mode blip_only \
-    -f 1:1
-```
-
-</details>
-
-<div align="center">
-
-### 📄 **Output Format**
-
-</div>
-
-For each saved frame `output/frame_001.jpg`, a caption file is created:
-
-**frame_001.txt:**
-```
-sks person, 1girl, solo, long hair, blue eyes, smile, looking at viewer
-```
-
-Or with BLIP:
-```
-A beautiful young woman with long hair and blue eyes smiling at the camera
+_sorted/
+├── character_name/   ← matched to reference images
+├── character_01/     ← auto-clustered unknown group
+├── other/            ← overflow when max_characters limit reached
+├── unknown/          ← could not form a cluster
+├── no_face/          ← no face detected
+└── multi_face/       ← multiple faces, no clear match
 ```
 
 ---
 
-## �🔧 System Requirements
+### Quick Presets
 
-<div align="center">
-
-### 💻 **Hardware Requirements**
-
-</div>
-
-<table>
-<tr>
-<th></th>
-<th>Minimum</th>
-<th>Recommended</th>
-</tr>
-<tr>
-<td><b>CPU</b></td>
-<td>Intel i5 / AMD Ryzen 5</td>
-<td>Intel i7 / AMD Ryzen 7</td>
-</tr>
-<tr>
-<td><b>RAM</b></td>
-<td>8 GB</td>
-<td>16 GB</td>
-</tr>
-<tr>
-<td><b>GPU</b></td>
-<td>Optional (CPU mode)</td>
-<td>NVIDIA GTX 1060 6GB</td>
-</tr>
-<tr>
-<td><b>Storage</b></td>
-<td>10 GB free</td>
-<td>20 GB free</td>
-</tr>
-</table>
-
-<div align="center">
-
-### 📦 **Software Requirements**
-
-</div>
-
-| Software | Version | Required | Notes |
-|----------|---------|----------|-------|
-| **Python** | 3.8 - 3.11 | ✅ Yes | Python 3.12 not yet supported |
-| **CUDA Toolkit** | 11.8+ | ⚠️ GPU only | For NVIDIA GPU acceleration |
-| **Tesseract OCR** | Latest | ⚠️ Optional | For advanced text detection |
-| **Windows** | 10/11 | ✅ Recommended | Linux/Mac also supported |
+| Goal | Command |
+|------|---------|
+| Best LoRA dataset | `python scripts/cli.py video.mp4 -f 1:1 -i 15 -c 0.7 --ensemble --turbo --quality` |
+| Fast collection | `python scripts/cli.py video.mp4 -f 1:1 -i 50 --turbo` |
+| Maximum quality | `python scripts/cli.py video.mp4 -f 1:1 -i 10 --ensemble --voting-threshold 3 --quality` |
+| Vertical content | `python scripts/cli.py video.mp4 -f 9:16 -i 30 --turbo` |
+| With captions | `python scripts/cli.py video.mp4 -f 1:1 --caption --preset anime_character --trigger "mychar"` |
 
 ---
 
-## 🚀 Performance Guide
+### Troubleshooting
 
-<div align="center">
-
-### ⚡ **Speed Comparison**
-
-</div>
-
-| Mode | GPU | CPU | 10min Video |
-|------|-----|-----|-------------|
-| **Standard (YOLO)** | ~30 FPS | ~5 FPS | 20-30 sec |
-| **Turbo (YOLO)** | ~60 FPS | ~10 FPS | 10-15 sec |
-| **Ensemble (3 models)** | ~10 FPS | ~2 FPS | 60-90 sec |
-| **Ensemble + Turbo** | ~20 FPS | ~4 FPS | 30-45 sec |
-
-<div align="center">
-
-### 💡 **Optimization Tips**
-
-</div>
-
-<table>
-<tr>
-<td width="33%">
-
-#### 🐌 Too Slow?
-- ✅ Enable turbo mode
-- ✅ Increase frame interval
-- ✅ Use smaller YOLO model
-- ✅ Disable ensemble mode
-
-</td>
-<td width="33%">
-
-#### 💾 Out of Memory?
-- ✅ Reduce batch size
-- ✅ Increase frame interval
-- ✅ Use CPU mode
-- ✅ Close other programs
-
-</td>
-<td width="33%">
-
-#### 📉 Poor Quality?
-- ✅ Enable ensemble mode
-- ✅ Decrease frame interval
-- ✅ Increase confidence
-- ✅ Use larger YOLO model
-
-</td>
-</tr>
-</table>
+| Problem | Solution |
+|---------|---------|
+| CUDA out of memory | Lower `--batch-size` or use `--no-turbo` |
+| Too few frames extracted | Lower `--interval` or `--confidence` |
+| Too many false detections | Raise `--confidence`, use `--ensemble` |
+| Captions not generating | Run `pip install onnxruntime` |
+| Watermarks in output | Enable quality filter; set `overlay.sensitivity: "high"` in config.yaml |
+| Grainy or dark frames | Enable `--quality`; lower `noise_threshold` in config.yaml |
+| InsightFace missing | Run `pip install insightface scikit-learn onnxruntime` |
 
 ---
 
-## 🎬 Use Cases & Applications
-
-<div align="center">
-
-### 🎯 **Real-World Applications**
-
-</div>
-
-<table>
-<tr>
-<td align="center" width="25%">
-
-### 👤 Character LoRA
-**Stable Diffusion**
-
-Train custom character models
-
-✅ Face consistency  
-✅ Multiple angles  
-✅ Various expressions  
-
-</td>
-<td align="center" width="25%">
-
-### 🐾 Animal/Pet LoRA
-**Pet Recognition**
-
-Create pet-specific models
-
-✅ Pet portraits  
-✅ Breed training  
-✅ Wildlife datasets  
-
-</td>
-<td align="center" width="25%">
-
-### 🎨 Style Transfer
-**Artistic AI**
-
-Train style models
-
-✅ Art styles  
-✅ Object consistency  
-✅ Scene datasets  
-
-
-
-</td>
-</tr>
-</table>
-
----
-
-## 🐛 Troubleshooting
-
-<details>
-<summary><b>❌ CUDA Not Available</b></summary>
-
-**Problem**: Running on CPU, slow performance
-
-**Solution**:
-```bash
-# Install CUDA-enabled PyTorch
-pip uninstall torch torchvision
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-
-# Verify GPU
-python -c "import torch; print(torch.cuda.is_available())"
-```
-
-</details>
-
-<details>
-<summary><b>💾 Out of Memory Error</b></summary>
-
-**Problem**: GPU/RAM out of memory
-
-**Solutions**:
-```bash
-# Option 1: Reduce batch size
-python cli.py video.mp4 --batch-size 2
-
-# Option 2: Increase frame interval
-python cli.py video.mp4 -i 60
-
-# Option 3: Use smaller model
-python cli.py video.mp4 -m yolov8n.pt
-
-# Option 4: Disable ensemble
-python cli.py video.mp4  # No --ensemble flag
-```
-
-</details>
-
-<details>
-<summary><b>📉 No Frames Saved / Too Few Frames</b></summary>
-
-**Problem**: Output folder empty or very few frames
-
-**Solutions**:
-```bash
-# Option 1: Lower confidence threshold
-python cli.py video.mp4 -c 0.3
-
-# Option 2: Process more frames
-python cli.py video.mp4 -i 15
-
-# Option 3: Include text frames
-python cli.py video.mp4 --no-skip-text
-
-# Option 4: Check video quality
-# Make sure video is clear and well-lit
-```
-
-</details>
-
-<details>
-<summary><b>🤖 Ensemble Mode Too Slow</b></summary>
-
-**Problem**: Ensemble takes too long
-
-**Solutions**:
-```bash
-# Option 1: Use only 2 models
-python cli.py video.mp4 --ensemble --ensemble-models yolo detr
-
-# Option 2: Increase frame interval
-python cli.py video.mp4 --ensemble -i 60
-
-# Option 3: Enable turbo (if not already)
-python cli.py video.mp4 --ensemble --turbo
-
-# Option 4: Use GPU
-# Ensemble mode really needs GPU
-```
-
-</details>
-
-<details>
-<summary><b>📝 Too Many False Positives</b></summary>
-
-**Problem**: Saving bad/incorrect detections
-
-**Solutions**:
-```bash
-# Option 1: Use ensemble with strict voting
-python cli.py video.mp4 --ensemble --voting-threshold 3
-
-# Option 2: Increase confidence
-python cli.py video.mp4 -c 0.7
-
-# Option 3: Combine both
-python cli.py video.mp4 --ensemble --voting-threshold 3 -c 0.7
-```
-
-</details>
-
-<details>
-<summary><b>📝 Captioning Not Working (NEW v2.0)</b></summary>
-
-**Problem**: No caption files generated or errors
-
-**Solutions**:
-```bash
-# Option 1: Check if captioning is enabled
-python cli.py video.mp4 --caption
-
-# Option 2: Install ONNX runtime for WD14
-pip install onnxruntime
-
-# Option 3: Try BLIP-only mode
-python cli.py video.mp4 --caption --caption-mode blip_only
-
-# Option 4: Check model download
-# Models download automatically on first run
-# Check internet connection if stuck
-```
-
-</details>
-
----
-
-## 📚 Additional Resources
-
-<div align="center">
-
-### 📖 **Documentation**
-
-</div>
-
-| Document | Description | Link |
-|----------|-------------|------|
-| 🚀 **QUICKSTART_NEW.md** | Quick reference & examples | [View](QUICKSTART_NEW.md) |
-| 📝 **CHANGELOG.md** | What's new in latest version | [View](CHANGELOG.md) |
-| 🤖 **ENSEMBLE.md** | Ensemble mode detailed guide | [View](ENSEMBLE.md) |
-| ⚡ **OPTIMIZATION.md** | Performance optimization tips | [View](OPTIMIZATION.md) |
-
-<div align="center">
-
-### 🔗 **External Links**
-
-</div>
-
-- 🐙 **GitHub Repository**: [AllastorV/LoRA-Harvester](https://github.com/AllastorV/LoRA-Harvester)
-- 📧 **Issues & Support**: [GitHub Issues](https://github.com/AllastorV/LoRA-Harvester/issues)
-- 🌟 **Star on GitHub**: [Give us a ⭐](https://github.com/AllastorV/LoRA-Harvester)
-
----
-
-## 📝 License & Credits
-
-<div align="center">
-
-### 📜 **License**
-
-**GNU General Public License v3.0**
-
-Free for personal and commercial use with copyleft requirements
-
-</div>
+### Project Structure
 
 ```
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-any later version.
+LoRA-Harvester/
+├── main.py                       # GUI entry point
+├── run.bat                       # Windows launcher (CMD closes after start)
+├── run_silent.vbs                # Silent launcher (no window)
+├── config.yaml                   # Advanced configuration
+├── requirements.txt
+├── assets/
+│   └── icon.png                  # Application icon
+├── src/
+│   ├── core/
+│   │   ├── unified_processor.py  # Main video processing engine
+│   │   ├── character_recognizer.py
+│   │   └── advanced_captioner.py
+│   └── ui/
+│       ├── main_window.py
+│       ├── captioning_page.py
+│       ├── character_sort_page.py
+│       ├── translations.py
+│       └── theme.py
+├── scripts/
+│   ├── cli.py                    # Command-line interface
+│   ├── character_sort.py         # Character sorter CLI
+│   ├── check_gpu.py              # GPU diagnostics
+│   ├── install.bat
+│   ├── install_gpu.bat
+│   └── run_batch.bat
+└── docs/
+    ├── CHANGELOG.md
+    ├── QUICKSTART.md
+    ├── OPTIMIZATION.md
+    ├── ENSEMBLE.md
+    └── SECURITY.md
 ```
-
-<div align="center">
-
-### 🙏 **Acknowledgments**
-
-</div>
-
-<table>
-<tr>
-<td align="center">
-<b>🤖 YOLOv8</b><br>
-by Ultralytics<br>
-Object Detection
-</td>
-<td align="center">
-<b>🧠 DETR</b><br>
-by Facebook/Meta<br>
-Transformer Detection
-</td>
-<td align="center">
-<b>🔍 Faster R-CNN</b><br>
-by Torchvision<br>
-Region-based Detection
-</td>
-<td align="center">
-<b>📝 EasyOCR</b><br>
-by JaidedAI<br>
-Text Detection
-</td>
-</tr>
-<tr>
-<td align="center">
-<b>🔥 PyTorch</b><br>
-Deep Learning<br>
-Framework
-</td>
-<td align="center">
-<b>🎨 OpenCV</b><br>
-Video Processing<br>
-Library
-</td>
-<td align="center">
-<b>🖼️ PyQt5</b><br>
-GUI Framework<br>
-Interface
-</td>
-<td align="center">
-<b>💜 Community</b><br>
-Contributors<br>
-& Users
-</td>
-</tr>
-</table>
-
----
-
-## 🤝 Contributing
-
-<div align="center">
-
-**🎉 Contributions are welcome!**
-
-</div>
-
-1. 🍴 Fork the repository
-2. 🌿 Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. 💾 Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. 📤 Push to the branch (`git push origin feature/AmazingFeature`)
-5. 🎁 Open a Pull Request
-
----
-
-## 📧 Support
-
-<div align="center">
-
-### 💬 **Need Help?**
-
-</div>
-
-<table>
-<tr>
-<td align="center" width="33%">
-
-### 📖 Documentation
-Check our guides first
-
-[Read Docs](#documentation)
-
-</td>
-<td align="center" width="33%">
-
-### 🐛 Bug Report
-Found an issue?
-
-[Report on GitHub](https://github.com/AllastorV/LoRA-Harvester/issues)
-
-</td>
-<td align="center" width="33%">
-
-### 💡 Feature Request
-Have an idea?
-
-[Suggest on GitHub](https://github.com/AllastorV/LoRA-Harvester/issues)
-
-</td>
-</tr>
-</table>
-
-
----
-
-<div align="center">
-
-**[GitHub @AllastorV](https://github.com/AllastorV)**
-
-* Star ⭐ if you find it useful!*
-
-</div>
-
----
 
 ---
 
 <a name="turkce"></a>
 
-<div align="center">
+## TURKCE
 
-## 🇹🇷 TÜRKÇE DOKÜMANTASYON
+### Ne Ise Yarar?
 
-<img src="https://img.shields.io/badge/Dil-Türkçe-red?style=for-the-badge" alt="Türkçe">
+LoRA-Harvester, videolardan yuksek kaliteli kareler cikarir, yuz tanima ile bunlari karaktere gore siralar ve istege bagli olarak caption uretir. Saatlerce suren manuel islemi dakikalar icinde tamamlayarak egitime hazir bir LoRA dataseti olusturur.
 
-</div>
-
----
-
-## 🎯 Amaç & Vizyon
-
-<table>
-<tr>
-<td width="50%">
-
-### 🎨 **LoRA-Harvester Nedir?**
-
-LoRA/Dreambooth eğitimi için **dataset oluşturmayı devrimleştiren** güçlü bir yapay zeka aracı. Saatlerce süren manuel işi dakikalara indirin.
-
-</td>
-<td width="50%">
-
-### 🚀 **Neden Kullanmalı?**
-
-Yüzlerce kareyi elle çıkarmak yerine, yapay zekanın işi yapmasına izin verin:
-- ✅ Manuel çıkarmadan **10x daha hızlı**
-- ✅ Akıllı tespit ile **daha yüksek kalite**
-- ✅ Eğitime hazır **organize çıktı**
-
-</td>
-</tr>
-</table>
-
-### 🎬 Mükemmel Kullanım Alanları:
+**Ana akis:**
 ```
-┌─────────────────────┬──────────────────────┬─────────────────────┐
-│  👤 Karakter LoRA   │  🐾 Hayvan/Pet LoRA  │  🎨 Stil Transferi │
-│  Yüz eğitimi        │  Evcil hayvan tanıma │  Sanatsal stiller   │
-│  Portre datasetleri │  Yaban hayatı       │  Nesne datasetleri   │
-└─────────────────────┴──────────────────────┴─────────────────────┘
+Video(lar) → Kare cikar → AI kisi tespiti → Akilli kirp → Kalite filtresi → Caption → Dataset
+```
+
+**Karakter Siralayici akisi:**
+```
+Gorsel klasoru → Yuz tespiti → Kimlige gore eslestir/kumele → Isimli klasorlere sirala
 ```
 
 ---
 
-## ✨ Temel Özellikler
+### Ozellikler
 
-<div align="center">
-
-### 🤖 **Yapay Zeka Destekli Tespit**
-
-</div>
-
-<table>
-<tr>
-<td width="33%" align="center">
-
-#### 🎯 YOLOv8
-**Hızlı & Doğru**
-- En son teknoloji tespit
-- Gerçek zamanlı işleme
-- GPU hızlandırmalı
-
-</td>
-<td width="33%" align="center">
-
-#### 🧠 Ensemble Modu
-**3 Yapay Zeka Modeli**
-- YOLO + DETR + Faster R-CNN
-- Oylama mekanizması
-- %95+ doğruluk
-
-</td>
-<td width="33%" align="center">
-
-#### ⚡ Turbo Modu
-**2-3x Daha Hızlı**
-- Toplu işleme
-- FP16 çıkarım
-- Optimize bellek
-
-</td>
-</tr>
-</table>
-
-<div align="center">
-
-### 🎨 **Akıllı İşleme**
-
-</div>
-
-| Özellik | Açıklama | Fayda |
-|---------|----------|-------|
-| **📐 Çoklu Formatlar** | 9:16, 3:4, 1:1, 4:5, 16:9, 4:3 | Her kullanım için mükemmel kırpma |
-| **🎯 Akıllı Kırpma** | Baş boşluğu farkındalığı + merkezleme | Profesyonel kalite çerçeveleme |
-| **📝 Metin Tespiti** | Otomatik altyazı atlama | Temiz, metinsiz görüntüler |
-| **💎 Kalite Puanlama** | Otomatik kalite değerlendirme | Sadece en iyi kareleri kaydet |
-| **🗂️ Oto-Organizasyon** | Kişi/hayvan/nesne kategorileri | Eğitime hazır yapı |
-
-<div align="center">
-
-### 🚀 **YENİ: Toplu İşleme**
-
-</div>
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  📹 Video 1  →  ✅ İşlendi  →  💾 150 kare kaydedildi       │
-│  📹 Video 2  →  ✅ İşlendi  →  💾 200 kare kaydedildi       │
-│  📹 Video 3  →  ✅ İşlendi  →  💾 180 kare kaydedildi       │
-│                                                              │
-│  ✅ TOPLAM: 3 video, 530 kare 5 dakikada!                   │
-└──────────────────────────────────────────────────────────────┘
-```
-
-**🎉 Sınırsız videoyu tek komutta işleyin!**
+| Ozellik | Detay |
+|---------|-------|
+| AI Tespiti | YOLOv8 + istege bagli 3 model ensemble (DETR, Faster R-CNN) |
+| Akilli Kirpma | En-boy orani korumali kirpma, ayarlanabilir padding |
+| Overlay Farkindалigi | Logo/filigran tespit eder, etrafından kirpar |
+| Kalite Filtresi | Bulaniklik, gurultu, parlaklik, tekrar tespiti |
+| Karakter Siralayici | Yuz tanima ile gorselleri karaktere gore klasorler |
+| Maks Karakter | Ciktiyi 1-6 karakter klasoruyle sinirla; fazlasi `other/`'a gider |
+| Otomatik Caption | BLIP (dogal dil) + WD14 (Danbooru etiketleri) |
+| Turbo Mod | Toplu kare isleme ile maksimum hiz |
+| Checkpoint | Yariда kesilen islemi devam ettir |
+| Iki Dilli Arayuz | Turkce / Ingilizce |
 
 ---
 
-## 🚀 Hızlı Başlangıç
-
-<details open>
-<summary><b>📦 Seçenek 1: Otomatik Kurulum (Windows - Önerilen)</b></summary>
+### Kurulum
 
 ```bash
-# Bu dosyalara çift tıklayın:
-install.bat          # Her şeyi otomatik kur
-run.bat             # GUI modunu başlat
-run_batch.bat       # Toplu işlem sihirbazını başlat
-```
+# 1. Klonla
+git clone https://github.com/AllastorV/LoRA-Harvester.git
+cd LoRA-Harvester
 
-</details>
-
-<details>
-<summary><b>🔧 Seçenek 2: Manuel Kurulum</b></summary>
-
-```bash
-# 1. Sanal ortam oluştur
+# 2. Sanal ortam olustur
 python -m venv venv
+source venv/bin/activate        # Linux / Mac
+venv\Scripts\activate           # Windows
 
-# 2. Ortamı aktif et
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-# 3. Bağımlılıkları yükle
+# 3. Bagımliliklari kur
 pip install -r requirements.txt
 
-# 4. Çalıştır!
+# 4. Basla
 python main.py
 ```
 
-</details>
+> **GPU destegi:** Diger gereksinimleri kurmadan once PyTorch'u CUDA ile kur.
+> Bkz. https://pytorch.org/get-started/locally/
 
-<details>
-<summary><b>🐍 Seçenek 3: Direkt Python</b></summary>
+---
+
+### Baslатma Yontemleri
+
+| Yontem | Aciklama |
+|--------|----------|
+| `python main.py` | Konsol ciktisi ile standart baslатма |
+| `run.bat` | Windows baslayicisi — uygulama actiktan sonra CMD penceresi kapanir |
+| `run_silent.vbs` | Tamamen sessiz baslатма — hic pencere acinmaz (cift tiklа) |
+
+---
+
+### Kullanim
+
+#### Arayuz (GUI) Modu
 
 ```bash
-pip install -r requirements.txt
 python main.py
 ```
 
-</details>
+1. **Adim 1** — Video dosya(lari) sürükle-birak ya da klasor sec
+2. **Adim 2** — Ayarlari yapilandir (format, aralik, model, kalite, caption)
+3. **Adim 3** — **Baslat**'a tikla, logu izle
 
----
-
-## 💡 Kullanım Örnekleri
-
-### 🖥️ **GUI Modu** (Başlangıç Seviyesi)
-
-<table>
-<tr>
-<td width="50%">
-
-#### Tek Video
-1. Başlat: `python main.py`
-2. Videoyu sürükle-bırak
-3. Ayarları düzenle
-4. **İşlemi Başlat**'a tıkla
-
-</td>
-<td width="50%">
-
-#### Toplu İşleme (YENİ!)
-1. Başlat: `python main.py`
-2. **Birden fazla video** sürükle-bırak
-3. Veya Gözat'ı kullan (Ctrl+Tıkla)
-4. **İşlemi Başlat**'a tıkla
-
-</td>
-</tr>
-</table>
-
-### ⌨️ **CLI Modu** (İleri Seviye)
-
-<details open>
-<summary><b>🎯 Tek Video İşleme</b></summary>
+#### Komut Satiri (CLI) Modu
 
 ```bash
-# Basit kullanım
-python cli.py video.mp4
+# Temel kullanim
+python scripts/cli.py video.mp4
 
-# Özel ayarlar
-python cli.py video.mp4 -f 1:1 -i 30 -c 0.6
+# Yaygin secenekler
+python scripts/cli.py video.mp4 -f 1:1 -i 15 -c 0.7 --quality --ensemble --turbo
 
-# Yüksek kalite modu
-python cli.py video.mp4 -f 1:1 -i 15 -c 0.7 --ensemble --turbo
-```
+# Caption ile
+python scripts/cli.py video.mp4 --caption --caption-mode combined --trigger "karakterim"
 
-</details>
-
-<details open>
-<summary><b>📹 Toplu İşleme (YENİ!)</b></summary>
-
-```bash
-# Yöntem 1: Videoları listele
-python cli.py video1.mp4 video2.mp4 video3.mp4
-
-# Yöntem 2: Wildcard kullan
-python cli.py *.mp4
-python cli.py videolar/*.mp4
-
-# Yöntem 3: Toplu işlem sihirbazı
-run_batch.bat
-
-# Yöntem 4: Yüksek kalite toplu işlem
-python cli.py videolar/*.mp4 -f 1:1 -i 20 --ensemble --turbo
-```
-
-</details>
-
-<details>
-<summary><b>🎨 Gerçek Dünya Örnekleri</b></summary>
-
-#### Örnek 1: Karakter LoRA Eğitim Dataseti
-```bash
-python cli.py karakter_video.mp4 -f 1:1 -i 15 -c 0.7 --ensemble --turbo
-```
-**Sonuç**: 200-500 yüksek kaliteli yüz kırpımı
-
-#### Örnek 2: Evcil Hayvan/Hayvan LoRA Dataseti
-```bash
-python cli.py evcil_hayvan_videolari/*.mp4 -f 1:1 -i 20 -c 0.6 --ensemble
-```
-**Sonuç**: Çeşitli açılardan tutarlı hayvan fotoğrafları
-
-#### Örnek 3: Dikey İçerik (TikTok/Reels)
-```bash
-python cli.py icerik.mp4 -f 9:16 -i 30 --turbo
-```
-**Sonuç**: Sosyal medya için hazır dikey format kırpımları
-
-#### Örnek 4: Maksimum Kalite (Katı Mod)
-```bash
-python cli.py video.mp4 -f 1:1 -i 10 -c 0.8 --ensemble --voting-threshold 3
-```
-**Sonuç**: Sadece 3 yapay zeka modelinin de hemfikir olduğu kareler
-
-#### Örnek 5: Hızlı Önizleme
-```bash
-python cli.py test.mp4 -f 1:1 -i 90
-```
-**Sonuç**: 30 saniyede hızlı test
-
-#### Örnek 6: Otomatik Etiketleme ile (YENİ v2.0)
-```bash
-python cli.py video.mp4 -f 1:1 -i 30 --caption --trigger "sks person"
-```
-**Sonuç**: WD14 Danbooru etiketleri + tetikleyici kelime ile kareler
-
-#### Örnek 7: Tam v2.0 Özellikleri
-```bash
-python cli.py videolar/*.mp4 -f 1:1 -i 20 --quality --no-blur --no-duplicates \
-    --caption --trigger "benim_karakterim" --max-tags 25 \
-    --negative-tags "filigran,imza,metin" --ensemble --turbo
-```
-**Sonuç**: Özel açıklamalı yüksek kalite filtrelenmiş kareler
-
-#### Örnek 8: Açıklama Ön Ayarları Kullanma
-```bash
-# Anime karakter ön ayarı
-python cli.py anime.mp4 --caption --preset anime_character
-
-# Gerçekçi portre ön ayarı
-python cli.py portre.mp4 --caption --preset realistic_person
-```
-**Sonuç**: Belirli kullanım durumları için önceden yapılandırılmış açıklama ayarları
-
-</details>
-
----
-
-## 🎛️ Parametreler & Ayarlar
-
-<div align="center">
-
-### 📋 **Komple Parametre Referansı**
-
-</div>
-
-| Parametre | Kısa | Seçenekler | Varsayılan | Açıklama |
-|-----------|------|------------|------------|----------|
-| `videos` | - | dosya yolları | *zorunlu* | 🎬 Tek veya çoklu video dosyaları |
-| `--output` | `-o` | yol | `output` | 📁 Çıktı dizini |
-| `--format` | `-f` | 9:16, 3:4, 1:1, 4:5, 16:9, 4:3 | `9:16` | 📐 En-boy oranı |
-| `--interval` | `-i` | 1-200 | `30` | ⏱️ Her N karede bir işle |
-| `--confidence` | `-c` | 0.1-0.95 | `0.5` | 🎯 Tespit eşiği |
-| `--padding` | `-p` | 100-1000 | `500` | 📏 Min dolgu (piksel) |
-| `--model` | `-m` | n/s/m/l | `yolov8n.pt` | 🤖 YOLO model boyutu |
-| `--ensemble` | - | bayrak | KAPALI | 🧠 3-model ensemble aktif et |
-| `--ensemble-models` | - | yolo, detr, fasterrcnn | 3'ü de | 🎯 Ensemble için modeller |
-| `--voting-threshold` | - | 1-3 | `2` | 🗳️ Min model anlaşması |
-| `--turbo` | - | bayrak | **AÇIK** | ⚡ Toplu kare işleme |
-| `--no-turbo` | - | bayrak | KAPALI | 🐌 Turbo modunu kapat |
-| `--batch-size` | - | 1-16 | `4` | 📦 Toplu başına kare |
-| `--no-skip-text` | - | bayrak | KAPALI | 📝 Metin karelerini işle |
-| `--quality` | - | bayrak | KAPALI | 💎 Kalite analizini aktif et |
-| `--no-blur` | - | bayrak | KAPALI | 🔍 Bulanık kareleri atla |
-| `--no-duplicates` | - | bayrak | KAPALI | 🎯 Kopya kareleri atla |
-| `--caption` | - | bayrak | KAPALI | 📝 Otomatik açıklamayı aktif et |
-| `--caption-mode` | - | tags_only, blip_only, combined | `tags_only` | 🏷️ Açıklama modu |
-| `--trigger` | - | metin | `""` | 🎯 Açıklamalar için tetikleyici kelime |
-| `--max-tags` | - | 1-50 | `30` | 📊 Açıklama başına max etiket |
-| `--preset` | - | anime_character, realistic_person, vb. | - | 🎨 Açıklama ön ayarı kullan |
-| `--negative-tags` | - | virgülle ayrılmış | - | 🚫 Hariç tutulacak etiketler |
-
-<div align="center">
-
-### 🎨 **Önerilen Ön Ayarlar**
-
-</div>
-
-<table>
-<tr>
-<th>Kullanım Durumu</th>
-<th>Komut</th>
-<th>Hız</th>
-<th>Kalite</th>
-</tr>
-<tr>
-<td>🏆 <b>LoRA Eğitimi (En İyi)</b></td>
-<td><code>-f 1:1 -i 15 -c 0.7 --ensemble --turbo</code></td>
-<td>⚡⚡</td>
-<td>⭐⭐⭐⭐⭐</td>
-</tr>
-<tr>
-<td>⚡ <b>Hızlı Toplama</b></td>
-<td><code>-f 1:1 -i 50 --turbo</code></td>
-<td>⚡⚡⚡⚡</td>
-<td>⭐⭐⭐</td>
-</tr>
-<tr>
-<td>📱 <b>Dikey İçerik</b></td>
-<td><code>-f 9:16 -i 30 --turbo</code></td>
-<td>⚡⚡⚡</td>
-<td>⭐⭐⭐⭐</td>
-</tr>
-<tr>
-<td>💎 <b>Maksimum Kalite</b></td>
-<td><code>-f 1:1 -i 10 --ensemble --voting-threshold 3</code></td>
-<td>⚡</td>
-<td>⭐⭐⭐⭐⭐</td>
-</tr>
-<tr>
-<td>🧪 <b>Hızlı Test</b></td>
-<td><code>-f 1:1 -i 90</code></td>
-<td>⚡⚡⚡⚡⚡</td>
-<td>⭐⭐</td>
-</tr>
-</table>
-
----
-
-## 🏗️ Proje Mimarisi
-
-<div align="center">
-
-### 📁 **Dosya Yapısı**
-
-</div>
-
-```
-🌾 LoRA-Harvester/
-│
-├── 🚀 Giriş Noktaları
-│   ├── main.py                      # GUI başlatıcı
-│   ├── cli.py                       # CLI arayüzü (toplu destek)
-│   ├── run.bat                      # Hızlı başlatma scripti
-│   └── run_batch.bat                # Toplu işlem sihirbazı
-│
-├── 🧠 Çekirdek Motor (src/core/)
-│   ├── unified_processor.py         # ⭐ Hepsi bir arada işlemci
-│   ├── enhanced_processor.py        # ⭐ v2.0 özellikleriyle gelişmiş işlemci
-│   ├── detector.py                  # YOLOv8 tespiti
-│   ├── ensemble_detector.py         # Çoklu-model ensemble
-│   ├── text_detector.py             # Altyazı tespiti
-│   ├── cropper.py                   # Akıllı kırpma
-│   ├── advanced_captioner.py        # 📝 BLIP + WD14 açıklama
-│   ├── quality_analyzer.py          # 💎 Kalite analizi & filtreleme
-│   ├── video_processor.py           # 🎬 Video işleme motoru
-│   └── optimized_processor.py       # ⚡ Optimize toplu işleme
-│
-├── 🎨 Kullanıcı Arayüzü (src/ui/)
-│   ├── main_window.py               # PyQt5 GUI (toplu destek)
-│   └── translations.py              # TR/EN çeviriler
-│
-├── 📚 Dokümantasyon
-│   ├── README.md                    # Bu dosya
-│   ├── CHANGELOG.md                 # Yenilikler
-│   ├── QUICKSTART_NEW.md           # Hızlı referans
-│   ├── ENSEMBLE.md                  # Ensemble kılavuzu
-│   └── OPTIMIZATION.md              # Performans ipuçları
-│
-└── ⚙️ Yapılandırma
-    ├── config.yaml                  # Ayarlar
-    ├── requirements.txt             # Bağımlılıklar
-    └── yolov8n.pt                  # Yapay zeka modeli
-```
-
-<div align="center">
-
-### 🔄 **İşleme Hattı**
-
-</div>
-
-```
-┌─────────────┐
-│ 📹 Video(lar│
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────┐
-│ 🤖 Yapay Zeka Tespiti│──┐
-│ • YOLOv8            │  │ Ensemble Modu
-│ • DETR (opsiyonel)  │◄─┤ (3 model oylar)
-│ • Faster R-CNN      │  │
-└──────┬──────────────┘──┘
-       │
-       ▼
-┌─────────────────────┐
-│ 📝 Metin Tespiti    │
-│ Altyazıları atla?   │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ ✂️ Akıllı Kırpma    │
-│ • Baş boşluğu hesap │
-│ • Özne merkezleme   │
-│ • Format ayarlama   │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ 💎 Kalite Kontrolü  │
-│ Puan: 0.0 - 1.0     │
-└──────┬──────────────┘
-       │
-       ▼
-┌─────────────────────┐
-│ 💾 Kaydet & Organize │
-│ • persons/          │
-│ • animals/          │
-│ • objects/          │
-└─────────────────────┘
+# Karakter siralayici
+python scripts/character_sort.py /gorseller/giris --references /referanslar --max-characters 2
 ```
 
 ---
 
-## ⚙️ Yapılandırma
+### Ayar Referansi
 
-<details>
-<summary><b>📝 config.yaml Ayarları</b></summary>
+#### Video Cikarici
 
-```yaml
-# Tespit Ayarları
-detection:
-  model_size: "yolov8n.pt"        # n=hızlı, s=dengeli, m/l=doğru
-  confidence: 0.5                  # 0.1-0.95
-  
-# Kırpma Ayarları
-cropping:
-  default_format: "1:1"            # LoRA eğitimi için en iyi
-  min_padding: 500                 # Özne etrafında piksel
-  
-# Metin Tespiti
-text_detection:
-  enabled: true                    # Altyazı karelerini atla
-  languages: ["en", "tr"]          # Desteklenen diller
-  
-# Ensemble Modu
-ensemble:
-  enabled: false                   # CLI'da --ensemble ile aktif et
-  voting_threshold: 2              # Min anlaşma (1-3)
-  models: ["yolo", "detr", "fasterrcnn"]
-  
-# Performans
-performance:
-  turbo_mode: true                 # Toplu işleme
-  batch_size: 4                    # Toplu başına kare
-  use_fp16: true                   # Yarı hassasiyet (destekleniyorsa)
+| Parametre | Varsayilan | Etkisi |
+|-----------|-----------|--------|
+| `--format -f` | `9:16` | Kirpma en-boy orani. `1:1` LoRA icin ideal; `9:16` dikey icerik |
+| `--interval -i` | `30` | Her N karede bir isle. Dusuk = daha fazla kare, yavas |
+| `--confidence -c` | `0.5` | Tespit esigi (0.1-0.95). Yuksek = az ama temiz tespit |
+| `--padding -p` | `500` | Nesne etrafindaki min piksel bosluk |
+| `--model -m` | `yolov8n` | YOLO boyutu: `n`=hizli, `s`=dengeli, `m/l`=dogru |
+| `--turbo` | ACIK | Toplu kare isleme. VRAM cok dusuk degilse acik birak |
+| `--batch-size` | `4` | Turbo modunda grup basina kare sayisi (1-16) |
+| `--ensemble` | KAPALI | 3 AI modeli kullan ve oylama yap. Yavas ama cok dogru |
+| `--voting-threshold` | `2` | Kac model anlasмali (1-3). `3` = en kati |
+| `--quality` | KAPALI | Bulaniklik + gurultu + parlaklik + tekrar filtrelemeyi ac |
+| `--caption` | KAPALI | Her gorsel icin `.txt` caption dosyasi olustur |
+| `--caption-mode` | `tags_only` | `tags_only` / `blip_only` / `combined` |
+| `--trigger` | *(bos)* | Her caption'in basina eklenen kelime (LoRA anahtar kelimen) |
+| `--max-tags` | `30` | Caption basina maksimum Danbooru etiketi |
+| `--negative-tags` | *(yok)* | Her zaman haric tutulacak etiketler (virgülle ayrilmis) |
+| `--preset` | *(yok)* | Caption onayari: `anime_character`, `realistic_person`, `object`, `style` |
 
-# Kalite Analizi (YENİ v2.0)
-quality:
-  enabled: true                    # Kalite filtrelemeyi etkinleştir
-  blur_threshold: 80.0             # Min keskinlik (Laplacian varyans)
-  brightness_min: 35               # Min parlaklık (0-255)
-  brightness_max: 225              # Max parlaklık (0-255)
-  duplicate_threshold: 0.90        # Kopya tespiti için benzerlik eşiği
-  min_contrast: 20                 # Minimum kontrast seviyesi
+#### Karakter Siralayici
 
-# Açıklama/Captioning (YENİ v2.0)
-captioning:
-  enabled: false                   # Otomatik açıklama etkinleştir
-  mode: "tags_only"                # tags_only, blip_only, combined
-  
-  # BLIP Ayarları (Doğal Dil)
-  blip:
-    enabled: true
-    model: "blip-base"             # blip-base, blip-large
-    max_length: 75
-  
-  # WD14 Etiketleyici (Danbooru Etiketleri)
-  wd14:
-    enabled: true
-    model: "wd-v1-4-vit-tagger-v2"
-  
-  # Etiket Ayarları
-  tags:
-    trigger_word: ""               # Her açıklamaya eklenir
-    max_tags: 30                   # Görüntü başına max etiket
-    min_confidence: 0.35           # Min güven (0.0-1.0)
-    negative_tags: []              # Hariç tutulacak etiketler
-```
-
-</details>
+| Parametre | Varsayilan | Etkisi |
+|-----------|-----------|--------|
+| `--model` | `buffalo_l` | InsightFace modeli. `buffalo_l`=dogru, `buffalo_s`=hizli |
+| `--threshold` | `0.45` | Yuz benzerligi siniri (0-1). Dusuk = daha kati eslestirme |
+| `--max-characters` | `1` | Ciktıyi 1-6 karakter klasoruyle sinirla. Fazlasi `other/`'a |
+| `--cluster-eps` | `0.6` | Bilinmeyen yuzler icin DBSCAN epsilon |
+| `--cluster-min` | `2` | Kume olusturmak icin gereken min gorsel sayisi |
+| `--no-cluster` | KAPALI | Otomatik kumelemeyi kapat; eslesmeyenler `unknown/`'a |
+| `--copy` | KAPALI | Dosyalari tasimak yerine kopyala |
+| `--recursive` | KAPALI | Alt klasorleri de tara |
 
 ---
 
-## � Otomatik Açıklama Kılavuzu (YENİ v2.0)
+### Hizli Onayarlar
 
-<div align="center">
-
-### 🎨 **BLIP + WD14 İkili Açıklama Sistemi**
-
-</div>
-
-v2.0 sürümü iki yapay zeka modeli kullanarak güçlü otomatik açıklama içerir:
-- **BLIP**: Doğal dil açıklamaları (İngilizce)
-- **WD14 Tagger**: Danbooru tarzı etiketler (anime/booru formatı)
-
-<details open>
-<summary><b>🎯 Açıklama Modları</b></summary>
-
-| Mod | Açıklama | Çıktı Örneği |
-|-----|----------|--------------|
-| `tags_only` | Sadece WD14 etiketleri | `sks person, 1girl, solo, long hair, blue eyes, smile` |
-| `blip_only` | Sadece BLIP açıklaması | `A young woman with long hair smiling at camera` |
-| `blip_first` | BLIP + etiketler | `A young woman with long hair smiling at camera, 1girl, solo, smile` |
-| `tags_first` | Etiketler + BLIP | `sks person, 1girl, solo, smile, A young woman with long hair` |
-| `combined` | İkisi de ayrı satırlarda | Satır 1: BLIP, Satır 2: Etiketler |
-
-</details>
-
-<details>
-<summary><b>🏷️ Etiket Ayarları</b></summary>
-
-```bash
-# Basit açıklama
-python cli.py video.mp4 --caption
-
-# Tetikleyici kelime ile
-python cli.py video.mp4 --caption --trigger "sks person"
-
-# Etiket sayısını sınırla
-python cli.py video.mp4 --caption --max-tags 20
-
-# İstenmeyen etiketleri hariç tut
-python cli.py video.mp4 --caption --negative-tags "watermark,signature,text"
-
-# Joker karakter hariç tutma
-python cli.py video.mp4 --caption --negative-tags "watermark*,*signature*"
-```
-
-</details>
-
-<details>
-<summary><b>🎨 Açıklama Ön Ayarları</b></summary>
-
-Yaygın senaryolar için önceden yapılandırılmış ayarları kullanın:
-
-```bash
-# Anime karakter eğitimi
-python cli.py video.mp4 --caption --preset anime_character
-
-# Gerçekçi kişi/portre
-python cli.py video.mp4 --caption --preset realistic_person
-
-# Nesne/ürün dataseti
-python cli.py video.mp4 --caption --preset object
-
-# Stil transferi
-python cli.py video.mp4 --caption --preset style
-```
-
-**Mevcut Ön Ayarlar:**
-- `anime_character`: WD14 etiketleri, max 30 etiket, anime odaklı
-- `realistic_person`: BLIP + etiketler birleşik, portre odaklı
-- `object`: Açıklayıcı BLIP açıklamaları
-- `style`: Stil odaklı etiketler ve açıklamalar
-- `general`: Dengeli BLIP + WD14 etiketleri
-
-</details>
-
-<details>
-<summary><b>💡 Gelişmiş Örnekler</b></summary>
-
-#### Tam LoRA Eğitim Hattı
-```bash
-# Açıklamalı karakter LoRA
-python cli.py karakter_videolari/*.mp4 \
-    -f 1:1 -i 20 --quality --no-blur --no-duplicates \
-    --caption --trigger "sks person" --max-tags 25 \
-    --negative-tags "filigran,metin,imza,logo" \
-    --ensemble --turbo
-```
-
-#### Anime Dataseti
-```bash
-python cli.py anime_sahneleri/*.mp4 \
-    --caption --preset anime_character \
-    --trigger "karakteradi" \
-    --negative-tags "sansurlu,mozaik*,filigran*"
-```
-
-#### Ürün/Nesne Dataseti
-```bash
-python cli.py urun_video.mp4 \
-    --caption --preset object \
-    --caption-mode blip_only \
-    -f 1:1
-```
-
-</details>
-
-<div align="center">
-
-### 📄 **Çıktı Formatı**
-
-</div>
-
-Kaydedilen her kare için `output/frame_001.jpg`, bir açıklama dosyası oluşturulur:
-
-**frame_001.txt:**
-```
-sks person, 1girl, solo, long hair, blue eyes, smile, looking at viewer
-```
-
-Veya BLIP ile:
-```
-A beautiful young woman with long hair and blue eyes smiling at the camera
-```
+| Hedef | Komut |
+|-------|-------|
+| En iyi LoRA dataseti | `python scripts/cli.py video.mp4 -f 1:1 -i 15 -c 0.7 --ensemble --turbo --quality` |
+| Hizli toplama | `python scripts/cli.py video.mp4 -f 1:1 -i 50 --turbo` |
+| Maksimum kalite | `python scripts/cli.py video.mp4 -f 1:1 -i 10 --ensemble --voting-threshold 3 --quality` |
+| Dikey icerik | `python scripts/cli.py video.mp4 -f 9:16 -i 30 --turbo` |
+| Caption ile | `python scripts/cli.py video.mp4 -f 1:1 --caption --preset anime_character --trigger "karakterim"` |
 
 ---
 
-## �🔧 Sistem Gereksinimleri
+### Sorun Giderme
 
-<div align="center">
-
-### 💻 **Donanım Gereksinimleri**
-
-</div>
-
-<table>
-<tr>
-<th></th>
-<th>Minimum</th>
-<th>Önerilen</th>
-</tr>
-<tr>
-<td><b>CPU</b></td>
-<td>Intel i5 / AMD Ryzen 5</td>
-<td>Intel i7 / AMD Ryzen 7</td>
-</tr>
-<tr>
-<td><b>RAM</b></td>
-<td>8 GB</td>
-<td>16 GB</td>
-</tr>
-<tr>
-<td><b>GPU</b></td>
-<td>Opsiyonel (CPU modu)</td>
-<td>NVIDIA GTX 1060 6GB</td>
-</tr>
-<tr>
-<td><b>Depolama</b></td>
-<td>10 GB boş</td>
-<td>20 GB boş</td>
-</tr>
-</table>
-
-<div align="center">
-
-### 📦 **Yazılım Gereksinimleri**
-
-</div>
-
-| Yazılım | Versiyon | Gerekli | Notlar |
-|---------|----------|---------|--------|
-| **Python** | 3.8 - 3.11 | ✅ Evet | Python 3.12 henüz desteklenmiyor |
-| **CUDA Toolkit** | 11.8+ | ⚠️ Sadece GPU | NVIDIA GPU hızlandırma için |
-| **Tesseract OCR** | En son | ⚠️ Opsiyonel | Gelişmiş metin tespiti için |
-| **Windows** | 10/11 | ✅ Önerilen | Linux/Mac da destekleniyor |
+| Sorun | Cozum |
+|-------|-------|
+| CUDA bellek hatasi | `--batch-size` dusur veya `--no-turbo` kullan |
+| Cok az kare cikti | `--interval` veya `--confidence` degerini dusur |
+| Cok fazla yanlis tespit | `--confidence` yukselт, `--ensemble` kullan |
+| Caption olusmuyor | `pip install onnxruntime` calistir |
+| Ciktida filigran var | Kalite filtresini ac; `config.yaml`'da `overlay.sensitivity: "high"` yap |
+| Karlı/karanlik kareler | `--quality` ac; `config.yaml`'da `noise_threshold` degerini dusur |
+| InsightFace eksik | `pip install insightface scikit-learn onnxruntime` calistir |
 
 ---
 
-## 🚀 Performans Kılavuzu
-
-<div align="center">
-
-### ⚡ **Hız Karşılaştırması**
-
-</div>
-
-| Mod | GPU | CPU | 10dk Video |
-|-----|-----|-----|------------|
-| **Standart (YOLO)** | ~30 FPS | ~5 FPS | 20-30 sn |
-| **Turbo (YOLO)** | ~60 FPS | ~10 FPS | 10-15 sn |
-| **Ensemble (3 model)** | ~10 FPS | ~2 FPS | 60-90 sn |
-| **Ensemble + Turbo** | ~20 FPS | ~4 FPS | 30-45 sn |
-
-<div align="center">
-
-### 💡 **Optimizasyon İpuçları**
-
-</div>
-
-<table>
-<tr>
-<td width="33%">
-
-#### 🐌 Çok Yavaş mı?
-- ✅ Turbo modunu aktif et
-- ✅ Kare aralığını artır
-- ✅ Küçük YOLO modeli kullan
-- ✅ Ensemble modunu kapat
-
-</td>
-<td width="33%">
-
-#### 💾 Bellek Doldu mu?
-- ✅ Toplu boyutunu azalt
-- ✅ Kare aralığını artır
-- ✅ CPU modunu kullan
-- ✅ Diğer programları kapat
-
-</td>
-<td width="33%">
-
-#### 📉 Kalite Düşük mü?
-- ✅ Ensemble modunu aktif et
-- ✅ Kare aralığını azalt
-- ✅ Confidence'ı artır
-- ✅ Büyük YOLO modeli kullan
-
-</td>
-</tr>
-</table>
-
----
-
-## 🎬 Kullanım Alanları & Uygulamalar
-
-<div align="center">
-
-### 🎯 **Gerçek Dünya Uygulamaları**
-
-</div>
-
-<table>
-<tr>
-<td align="center" width="25%">
-
-### 👤 Karakter LoRA
-**Stable Diffusion**
-
-Özel karakter modelleri eğit
-
-✅ Yüz tutarlılığı  
-✅ Çoklu açılar  
-✅ Çeşitli ifadeler  
-
-</td>
-<td align="center" width="25%">
-
-### 🐾 Hayvan/Pet LoRA
-**Evcil Hayvan Tanıma**
-
-Pet-özel modeller oluştur
-
-✅ Pet portreleri  
-✅ Cins eğitimi  
-✅ Yaban hayatı datasetleri  
-
-</td>
-<td align="center" width="25%">
-
-### 🎨 Stil Transferi
-**Sanatsal Yapay Zeka**
-
-Stil modelleri eğit
-
-✅ Sanat stilleri  
-✅ Nesne tutarlılığı  
-✅ Sahne datasetleri  
-
-</td>
-<td align="center" width="25%">
-
-
-</td>
-</tr>
-</table>
-
----
-
-## 🐛 Sorun Giderme
-
-<details>
-<summary><b>❌ CUDA Kullanılamıyor</b></summary>
-
-**Problem**: CPU'da çalışıyor, yavaş performans
-
-**Çözüm**:
-```bash
-# CUDA-etkin PyTorch kur
-pip uninstall torch torchvision
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-
-# GPU'yu doğrula
-python -c "import torch; print(torch.cuda.is_available())"
-```
-
-</details>
-
-<details>
-<summary><b>💾 Bellek Yetersiz Hatası</b></summary>
-
-**Problem**: GPU/RAM belleği doldu
-
-**Çözümler**:
-```bash
-# Seçenek 1: Toplu boyutunu azalt
-python cli.py video.mp4 --batch-size 2
-
-# Seçenek 2: Kare aralığını artır
-python cli.py video.mp4 -i 60
-
-# Seçenek 3: Küçük model kullan
-python cli.py video.mp4 -m yolov8n.pt
-
-# Seçenek 4: Ensemble'ı kapat
-python cli.py video.mp4  # --ensemble bayrağı yok
-```
-
-</details>
-
-<details>
-<summary><b>📉 Hiç Kare Kaydedilmedi / Çok Az Kare</b></summary>
-
-**Problem**: Çıktı klasörü boş veya çok az kare
-
-**Çözümler**:
-```bash
-# Seçenek 1: Confidence eşiğini düşür
-python cli.py video.mp4 -c 0.3
-
-# Seçenek 2: Daha fazla kare işle
-python cli.py video.mp4 -i 15
-
-# Seçenek 3: Metin karelerini dahil et
-python cli.py video.mp4 --no-skip-text
-
-# Seçenek 4: Video kalitesini kontrol et
-# Videonun net ve iyi aydınlatılmış olduğundan emin ol
-```
-
-</details>
-
-<details>
-<summary><b>🤖 Ensemble Modu Çok Yavaş</b></summary>
-
-**Problem**: Ensemble çok uzun sürüyor
-
-**Çözümler**:
-```bash
-# Seçenek 1: Sadece 2 model kullan
-python cli.py video.mp4 --ensemble --ensemble-models yolo detr
-
-# Seçenek 2: Kare aralığını artır
-python cli.py video.mp4 --ensemble -i 60
-
-# Seçenek 3: Turbo'yu aktif et (zaten değilse)
-python cli.py video.mp4 --ensemble --turbo
-
-# Seçenek 4: GPU kullan
-# Ensemble modu gerçekten GPU gerektirir
-```
-
-</details>
-
-<details>
-<summary><b>📝 Çok Fazla Yanlış Tespit</b></summary>
-
-**Problem**: Kötü/yanlış tespitler kaydediliyor
-
-**Çözümler**:
-```bash
-# Seçenek 1: Katı oylamayla ensemble kullan
-python cli.py video.mp4 --ensemble --voting-threshold 3
-
-# Seçenek 2: Confidence'ı artır
-python cli.py video.mp4 -c 0.7
-
-# Seçenek 3: İkisini birleştir
-python cli.py video.mp4 --ensemble --voting-threshold 3 -c 0.7
-```
-
-</details>
-
-<details>
-<summary><b>📝 Açıklama Çalışmıyor (YENİ v2.0)</b></summary>
-
-**Problem**: Açıklama dosyaları oluşturulmuyor veya hatalar var
-
-**Çözümler**:
-```bash
-# Seçenek 1: Açıklamanın etkin olup olmadığını kontrol et
-python cli.py video.mp4 --caption
-
-# Seçenek 2: WD14 için ONNX runtime kur
-pip install onnxruntime
-
-# Seçenek 3: Sadece BLIP modunu dene
-python cli.py video.mp4 --caption --caption-mode blip_only
-
-# Seçenek 4: Model indirmeyi kontrol et
-# Modeller ilk çalıştırmada otomatik indirilir
-# Takılırsa internet bağlantısını kontrol et
-```
-
-</details>
-
----
-
-## 📚 Ek Kaynaklar
-
-<div align="center">
-
-### 📖 **Dokümantasyon**
-
-</div>
-
-| Belge | Açıklama | Link |
-|-------|----------|------|
-| 🚀 **QUICKSTART_NEW.md** | Hızlı referans & örnekler | [Görüntüle](QUICKSTART_NEW.md) |
-| 📝 **CHANGELOG.md** | Son sürümdeki yenilikler | [Görüntüle](CHANGELOG.md) |
-| 🤖 **ENSEMBLE.md** | Ensemble modu detaylı kılavuz | [Görüntüle](ENSEMBLE.md) |
-| ⚡ **OPTIMIZATION.md** | Performans optimizasyon ipuçları | [Görüntüle](OPTIMIZATION.md) |
-
-<div align="center">
-
-### 🔗 **Harici Linkler**
-
-</div>
-
-- 🐙 **GitHub Deposu**: [AllastorV/LoRA-Harvester](https://github.com/AllastorV/LoRA-Harvester)
-- 📧 **Sorunlar & Destek**: [GitHub Issues](https://github.com/AllastorV/LoRA-Harvester/issues)
-- 🌟 **GitHub'da Yıldızla**: [Bize ⭐ ver](https://github.com/AllastorV/LoRA-Harvester)
-
----
-
-## 📝 Lisans & Katkılar
-
-<div align="center">
-
-### 📜 **Lisans**
-
-**GNU Genel Kamu Lisansı v3.0**
-
-Copyleft gereklilikleriyle kişisel ve ticari kullanım için ücretsiz
-
-</div>
+### Proje Yapisi
 
 ```
-Bu program özgür bir yazılımdır: Free Software Foundation tarafından
-yayınlanan GNU Genel Kamu Lisansı'nın 3. veya daha sonraki bir sürümünün
-şartları altında yeniden dağıtabilir ve/veya değiştirebilirsiniz.
+LoRA-Harvester/
+├── main.py                       # GUI giris noktasi
+├── run.bat                       # Windows baslayicisi (CMD kapanir)
+├── run_silent.vbs                # Sessiz baslayici (pencere yok)
+├── config.yaml                   # Gelismis yapilandirma
+├── requirements.txt
+├── assets/
+│   └── icon.png                  # Uygulama ikonu
+├── src/
+│   ├── core/
+│   │   ├── unified_processor.py
+│   │   ├── character_recognizer.py
+│   │   └── advanced_captioner.py
+│   └── ui/
+│       ├── main_window.py
+│       ├── captioning_page.py
+│       ├── character_sort_page.py
+│       ├── translations.py
+│       └── theme.py
+├── scripts/
+│   ├── cli.py                    # Komut satiri arayuzu
+│   ├── character_sort.py         # Karakter siralayici CLI
+│   ├── check_gpu.py              # GPU tani araci
+│   ├── install.bat
+│   ├── install_gpu.bat
+│   └── run_batch.bat
+└── docs/
+    ├── CHANGELOG.md
+    ├── QUICKSTART.md
+    ├── OPTIMIZATION.md
+    ├── ENSEMBLE.md
+    └── SECURITY.md
 ```
-
-<div align="center">
-
-### 🙏 **Teşekkürler**
-
-</div>
-
-<table>
-<tr>
-<td align="center">
-<b>🤖 YOLOv8</b><br>
-Ultralytics tarafından<br>
-Nesne Tespiti
-</td>
-<td align="center">
-<b>🧠 DETR</b><br>
-Facebook/Meta tarafından<br>
-Transformer Tespiti
-</td>
-<td align="center">
-<b>🔍 Faster R-CNN</b><br>
-Torchvision tarafından<br>
-Bölge-tabanlı Tespit
-</td>
-<td align="center">
-<b>📝 EasyOCR</b><br>
-JaidedAI tarafından<br>
-Metin Tespiti
-</td>
-</tr>
-<tr>
-<td align="center">
-<b>🔥 PyTorch</b><br>
-Derin Öğrenme<br>
-Framework'ü
-</td>
-<td align="center">
-<b>🎨 OpenCV</b><br>
-Video İşleme<br>
-Kütüphanesi
-</td>
-<td align="center">
-<b>🖼️ PyQt5</b><br>
-GUI Framework'ü<br>
-Arayüz
-</td>
-<td align="center">
-<b>💜 Topluluk</b><br>
-Katkıda Bulunanlar<br>
-& Kullanıcılar
-</td>
-</tr>
-</table>
-
----
-
-## 🤝 Katkıda Bulunma
-
-<div align="center">
-
-**🎉 Katkılarınızı bekliyoruz!**
-
-</div>
-
-1. 🍴 Depoyu fork'layın
-2. 🌿 Feature branch'inizi oluşturun (`git checkout -b feature/HarikaOzellik`)
-3. 💾 Değişikliklerinizi commit'leyin (`git commit -m 'Harika özellik ekle'`)
-4. 📤 Branch'e push yapın (`git push origin feature/HarikaOzellik`)
-5. 🎁 Pull Request açın
-
----
-
-## 📧 Destek
-
-<div align="center">
-
-### 💬 **Yardıma mı İhtiyacınız Var?**
-
-</div>
-
-<table>
-<tr>
-<td align="center" width="33%">
-
-### 📖 Dokümantasyon
-Önce kılavuzlara bakın
-
-[Dokümanları Oku](#documentation)
-
-</td>
-<td align="center" width="33%">
-
-### 🐛 Hata Bildirimi
-Bir sorun mu buldunuz?
-
-[GitHub'da Bildir](https://github.com/AllastorV/LoRA-Harvester/issues)
-
-</td>
-<td align="center" width="33%">
-
-### 💡 Özellik İsteği
-Bir fikriniz mi var?
-
-[GitHub'da Önerin](https://github.com/AllastorV/LoRA-Harvester/issues)
-
-</td>
-</tr>
-</table>
 
 ---
 
 <div align="center">
 
-## 🌟 Faydalı Bulduysanız Yıldız Verin! / Star if You Find it Useful!
+GPL v3 License &nbsp;|&nbsp; [GitHub](https://github.com/AllastorV/LoRA-Harvester) &nbsp;|&nbsp; [Issues](https://github.com/AllastorV/LoRA-Harvester/issues)
 
-[![GitHub stars](https://img.shields.io/github/stars/AllastorV/LoRA-Harvester?style=social)](https://github.com/AllastorV/LoRA-Harvester)
-
-**Made with 💜 by [AllastorV](https://github.com/AllastorV)**
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  🌾 LoRA-Harvester - AI-Powered Dataset Collection         │
-│  🚀 Fast • 🎯 Accurate • 📦 Batch Processing • 🤖 Ensemble │
-│  ⭐ Star on GitHub • 🐛 Report Issues • 💡 Contribute      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**[⬆ Back to top](#top)**
-
-
----
-
-<div align="center">
-
-**[GitHub @AllastorV](https://github.com/AllastorV)**
-
-*Faydalı bulursanız ⭐ yıldız verin!*
+Star the repo if you find it useful!
 
 </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

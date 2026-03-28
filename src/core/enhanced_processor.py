@@ -5,6 +5,7 @@ Includes: Quality Analysis, Scene Detection, Checkpoint/Resume, Async I/O
 
 import cv2
 import json
+import logging
 import numpy as np
 import torch
 import time
@@ -14,6 +15,8 @@ from typing import Optional, Callable, Dict, List, Union
 from queue import Queue, Empty
 from dataclasses import dataclass, asdict
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from src.core.quality_analyzer import QualityAnalyzer, SceneChangeDetector
 
@@ -57,7 +60,7 @@ class AsyncFrameSaver:
             worker.start()
             self.workers.append(worker)
         
-        print(f"💾 Async saver started with {self.num_workers} workers")
+        logger.info("Async saver started with %d workers", self.num_workers)
     
     def stop(self):
         """Stop workers and wait for queue to empty"""
@@ -67,7 +70,7 @@ class AsyncFrameSaver:
         
         # Wait for workers
         for worker in self.workers:
-            worker.join(timeout=1.0)
+            worker.join(timeout=5.0)
         
         self.workers.clear()
     
@@ -173,7 +176,7 @@ class FramePrefetcher:
             if frame_count % self.frame_interval == 0:
                 try:
                     self.buffer.put((frame_count, frame), timeout=1.0)
-                except:
+                except Exception:
                     if not self.running:
                         break
 
@@ -350,7 +353,7 @@ class EnhancedVideoProcessor:
             with open(checkpoint_file, 'w') as f:
                 json.dump(asdict(checkpoint), f, indent=2)
         except Exception as e:
-            print(f"⚠️ Checkpoint save error: {e}")
+            logger.warning("Checkpoint save error: %s", e)
     
     def load_checkpoint(self, video_path: str) -> Optional[ProcessingCheckpoint]:
         """Load checkpoint if exists"""
@@ -368,11 +371,11 @@ class EnhancedVideoProcessor:
             
             # Check if same video
             if checkpoint.video_path == video_path:
-                print(f"📂 Found checkpoint at frame {checkpoint.last_frame}/{checkpoint.total_frames}")
+                logger.info("Found checkpoint at frame %d/%d", checkpoint.last_frame, checkpoint.total_frames)
                 return checkpoint
-                
+
         except Exception as e:
-            print(f"⚠️ Checkpoint load error: {e}")
+            logger.warning("Checkpoint load error: %s", e)
         
         return None
     
