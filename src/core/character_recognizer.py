@@ -8,14 +8,23 @@ Supports:
 
 import os
 import cv2
+import json
+import time
+import queue
 import shutil
+import sqlite3
 import logging
 import threading
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
+
+# Embedding dimension produced by all InsightFace `buffalo_*` / `antelopev2`
+# recognition models.
+_EMBED_DIM = 512
 
 # Lazy imports to avoid hard crash if not installed
 _insightface = None
@@ -39,6 +48,190 @@ def _imread_unicode(path) -> Optional[np.ndarray]:
     except Exception as e:
         logger.debug("Failed to read image %s: %s", path, e)
         return None
+
+
+FaceList = List[Tuple[np.ndarray, float]]  # [(embedding[512], bbox_area), ...]
+
+
+class EmbeddingCache:
+    """
+    SQLite-backed cache of face detection results keyed by
+    ``(absolute path, mtime_ns, size)``. Invalidated automatically when the
+    source file is modified.
+
+    Storage format per row:
+      * ``n_faces`` faces, each with a 512-D float32 embedding + one float32
+        bbox area, packed contiguously as ``(n_faces, 513)`` and stored as a
+        raw BLOB. Zero-face rows (no face detected) store an empty BLOB and
+        are still cached — this is important so that empty images don't get
+        re-inferred on every run.
+
+    The cache is process-wide thread safe (serialises writes through a
+    mutex) and uses WAL + NORMAL sync for fast concurrent access.
+    """
+
+    _SCHEMA = """
+    CREATE TABLE IF NOT EXISTS embeddings (
+        path     TEXT PRIMARY KEY,
+        mtime_ns INTEGER NOT NULL,
+        size     INTEGER NOT NULL,
+        n_faces  INTEGER NOT NULL,
+        data     BLOB    NOT NULL,
+        model    TEXT    NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_embeddings_model ON embeddings(model);
+    """
+
+    def __init__(self, path: Path, model_name: str = "buffalo_l"):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.model_name = model_name
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(
+            str(self.path),
+            check_same_thread=False,
+            isolation_level=None,  # autocommit; we manage transactions ourselves
+        )
+        self._conn.executescript(self._SCHEMA)
+        # Performance pragmas — small risk of losing the last few inserts on
+        # a hard crash, which is acceptable for a cache that can be rebuilt.
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA temp_store=MEMORY")
+        self._pending = 0
+        self.hits = 0
+        self.misses = 0
+        self._dirty = False
+
+    # ── single-row ops ────────────────────────────────────────────────────
+
+    def get(self, file_path: Path) -> Optional[FaceList]:
+        """Return cached faces or None on miss / stale entry."""
+        try:
+            stat = os.stat(str(file_path))
+        except OSError:
+            return None
+        key = str(Path(file_path).resolve())
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT mtime_ns, size, n_faces, data FROM embeddings "
+                "WHERE path=? AND model=?",
+                (key, self.model_name),
+            ).fetchone()
+        if row is None:
+            self.misses += 1
+            return None
+        mtime_ns, size, n_faces, data = row
+        if mtime_ns != stat.st_mtime_ns or size != stat.st_size:
+            self.misses += 1
+            return None
+        self.hits += 1
+        if n_faces == 0:
+            return []
+        arr = np.frombuffer(data, dtype=np.float32)
+        arr = arr.reshape(n_faces, _EMBED_DIM + 1).copy()  # copy → writable
+        return [(arr[i, :_EMBED_DIM], float(arr[i, _EMBED_DIM])) for i in range(n_faces)]
+
+    def put(self, file_path: Path, faces: FaceList) -> None:
+        """Store (or replace) faces for ``file_path``."""
+        try:
+            stat = os.stat(str(file_path))
+        except OSError:
+            return
+        key = str(Path(file_path).resolve())
+        if faces:
+            packed = np.zeros((len(faces), _EMBED_DIM + 1), dtype=np.float32)
+            for i, (emb, area) in enumerate(faces):
+                packed[i, :_EMBED_DIM] = emb
+                packed[i, _EMBED_DIM] = area
+            blob = packed.tobytes()
+        else:
+            blob = b""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO embeddings "
+                "(path, mtime_ns, size, n_faces, data, model) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (key, stat.st_mtime_ns, stat.st_size, len(faces), blob, self.model_name),
+            )
+            self._pending += 1
+            self._dirty = True
+            if self._pending >= 64:
+                self._conn.commit()
+                self._pending = 0
+
+    def flush(self) -> None:
+        with self._lock:
+            if self._pending:
+                self._conn.commit()
+                self._pending = 0
+
+    def close(self) -> None:
+        with self._lock:
+            try:
+                if self._pending:
+                    self._conn.commit()
+                    self._pending = 0
+            finally:
+                self._conn.close()
+
+    def stats(self) -> Dict[str, int]:
+        return {"hits": self.hits, "misses": self.misses}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Parallel image decoding
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _prefetch_decode(
+    paths: Iterable[Path],
+    workers: int = 4,
+    max_inflight: int = 16,
+) -> Iterator[Tuple[Path, Optional[np.ndarray]]]:
+    """
+    Yield ``(path, decoded_image_or_None)`` pairs in the original order while
+    decoding images concurrently in the background.
+
+    InsightFace inference itself must run on a single thread (ONNXRuntime
+    sessions are not safe to call from multiple Python threads
+    simultaneously), but image decoding is pure CPU and releases the GIL
+    inside OpenCV — so running the decode in a small thread pool lets us
+    overlap disk I/O + JPEG decoding with GPU inference on the next item.
+    """
+    paths = list(paths)
+    if not paths:
+        return
+
+    if workers <= 1 or len(paths) == 1:
+        for p in paths:
+            yield p, _imread_unicode(p)
+        return
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        it = iter(paths)
+        pending: "list[tuple[Path, object]]" = []
+
+        # Prime the pipeline
+        for _ in range(max_inflight):
+            try:
+                p = next(it)
+            except StopIteration:
+                break
+            pending.append((p, ex.submit(_imread_unicode, p)))
+
+        while pending:
+            p, fut = pending.pop(0)
+            try:
+                img = fut.result()
+            except Exception as e:
+                logger.warning("Decode failed for %s: %s", p, e)
+                img = None
+            yield p, img
+            try:
+                next_p = next(it)
+                pending.append((next_p, ex.submit(_imread_unicode, next_p)))
+            except StopIteration:
+                pass
 
 
 def _get_insightface():
@@ -94,6 +287,9 @@ class CharacterRecognizer:
         use_gpu: bool = True,
         model_name: str = "buffalo_l",
         progress_callback=None,
+        cache_path: Optional[str] = None,
+        use_cache: bool = True,
+        num_workers: int = 4,
     ):
         """
         Args:
@@ -110,6 +306,13 @@ class CharacterRecognizer:
             use_gpu: Use GPU if available.
             model_name: InsightFace model pack ('buffalo_l' recommended).
             progress_callback: Optional callable(current, total, message).
+            cache_path: Path to the embedding cache SQLite file. When None
+                        (and ``use_cache`` is True) a cache is created inside
+                        the directory being processed. Set ``use_cache=False``
+                        to disable caching entirely.
+            use_cache: Enable/disable the persistent embedding cache.
+            num_workers: Number of background threads used to decode images
+                        in parallel. Set to 1 to disable prefetching.
         """
         self.reference_dir = Path(reference_dir) if reference_dir else None
         self.similarity_threshold = similarity_threshold
@@ -119,6 +322,10 @@ class CharacterRecognizer:
         self.use_gpu = use_gpu
         self.model_name = model_name
         self.progress_callback = progress_callback
+        self.num_workers = max(1, int(num_workers))
+        self.use_cache = use_cache
+        self._cache_path_override = cache_path
+        self._cache: Optional[EmbeddingCache] = None
 
         # {character_name: np.ndarray of shape (N, 512)}
         self.reference_embeddings: Dict[str, np.ndarray] = {}
@@ -127,8 +334,19 @@ class CharacterRecognizer:
         # ``match_to_reference``).
         self.reference_means: Dict[str, np.ndarray] = {}
 
+        # Vectorised reference matching state — populated by load_references
+        # and used by match_to_reference. Storing the stacked matrix once lets
+        # us do one matmul per query instead of one per character.
+        self._ref_matrix: Optional[np.ndarray] = None  # (N_total, 512)
+        self._ref_char_names: List[str] = []           # per-character order
+        self._ref_char_slices: List[Tuple[int, int]] = []  # (start, end) per char
+
         self._app = None  # InsightFace FaceAnalysis (lazy)
         self._app_lock = threading.Lock()  # guard lazy model init across threads
+        # InsightFace sessions are not safe to call from multiple Python
+        # threads simultaneously, so serialise inference even if the caller
+        # fans out.
+        self._inference_lock = threading.Lock()
 
     # ─── InsightFace initialization ───────────────────────────────────────────
 
@@ -183,7 +401,7 @@ class CharacterRecognizer:
         emb = emb.astype(np.float32)
         return emb / (np.linalg.norm(emb) + 1e-6)
 
-    def _detect_faces(self, image: np.ndarray) -> List[Tuple[np.ndarray, float]]:
+    def _detect_faces(self, image: np.ndarray) -> FaceList:
         """
         Run InsightFace once and return [(normalised_embedding, bbox_area), ...]
         sorted by bbox area descending. This is the single entry point used by
@@ -191,8 +409,9 @@ class CharacterRecognizer:
         run the detection pipeline twice on the same image.
         """
         self._load_model()
-        faces = self._app.get(image)  # BGR expected (OpenCV default)
-        results: List[Tuple[np.ndarray, float]] = []
+        with self._inference_lock:
+            faces = self._app.get(image)  # BGR expected (OpenCV default)
+        results: FaceList = []
         for face in faces:
             if face.embedding is None:
                 continue
@@ -202,6 +421,43 @@ class CharacterRecognizer:
         # Sort descending by area so results[0] is always the largest face
         results.sort(key=lambda x: x[1], reverse=True)
         return results
+
+    # ─── Embedding cache helpers ─────────────────────────────────────────────
+
+    def _open_cache(self, anchor_dir: Path) -> Optional[EmbeddingCache]:
+        """
+        Open (or re-use) the embedding cache. When no explicit cache path is
+        configured the cache lives alongside the directory being processed so
+        it's scoped per-dataset and trivially cleanable.
+        """
+        if not self.use_cache:
+            return None
+        if self._cache is not None:
+            return self._cache
+        if self._cache_path_override:
+            cache_path = Path(self._cache_path_override)
+        else:
+            cache_path = Path(anchor_dir) / ".lora_harvester_cache.db"
+        try:
+            self._cache = EmbeddingCache(cache_path, model_name=self.model_name)
+            logger.info("Embedding cache: %s", cache_path)
+        except sqlite3.Error as e:
+            logger.warning("Could not open embedding cache at %s: %s", cache_path, e)
+            self._cache = None
+        return self._cache
+
+    def close_cache(self) -> None:
+        if self._cache is not None:
+            try:
+                self._cache.close()
+            finally:
+                self._cache = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close_cache()
 
     def get_embeddings(self, image: np.ndarray) -> List[np.ndarray]:
         """
@@ -218,6 +474,30 @@ class CharacterRecognizer:
         return faces[0][0]
 
     # ─── Reference loading ────────────────────────────────────────────────────
+
+    def _get_faces_for_path(
+        self,
+        path: Path,
+        decoded: Optional[np.ndarray],
+    ) -> Optional[FaceList]:
+        """
+        Return faces for ``path``, preferring the cache. ``decoded`` is the
+        already-decoded image (from the prefetcher) or None if the caller
+        didn't decode — useful when the cache hits and we can skip decode
+        entirely on the fast path. Returns None on decode failure.
+        """
+        if self._cache is not None:
+            cached = self._cache.get(path)
+            if cached is not None:
+                return cached
+        # Cache miss: make sure we have pixels
+        img = decoded if decoded is not None else _imread_unicode(path)
+        if img is None:
+            return None
+        faces = self._detect_faces(img)
+        if self._cache is not None:
+            self._cache.put(path, faces)
+        return faces
 
     def load_references(self, reference_dir: Optional[str] = None) -> Dict[str, int]:
         """
@@ -243,7 +523,8 @@ class CharacterRecognizer:
             raise FileNotFoundError(f"Reference directory not found: {ref_path}")
 
         self._load_model()
-        counts = {}
+        self._open_cache(ref_path)
+        counts: Dict[str, int] = {}
 
         char_dirs = [d for d in sorted(ref_path.iterdir()) if d.is_dir()]
         if not char_dirs:
@@ -251,6 +532,11 @@ class CharacterRecognizer:
             return {}
 
         print(f"Loading references from: {ref_path}")
+
+        # Reset previous state so back-to-back calls behave deterministically.
+        self.reference_embeddings.clear()
+        self.reference_means.clear()
+
         for char_dir in char_dirs:
             char_name = char_dir.name
             embeddings: List[np.ndarray] = []
@@ -263,29 +549,47 @@ class CharacterRecognizer:
                 if f.suffix.lower() in self.SUPPORTED_EXTENSIONS
             ]
 
-            for img_path in image_files:
-                img = _imread_unicode(img_path)
+            # Split into cache hits (no decode) vs misses (need prefetch).
+            to_decode: List[Path] = []
+            direct_hits: Dict[Path, FaceList] = {}
+            for f in image_files:
+                if self._cache is not None:
+                    hit = self._cache.get(f)
+                    if hit is not None:
+                        direct_hits[f] = hit
+                        continue
+                to_decode.append(f)
+
+            # Process cache hits first (trivial).
+            for f in image_files:
+                if f in direct_hits:
+                    faces = direct_hits[f]
+                    if not faces:
+                        no_face += 1
+                        continue
+                    if len(faces) > 1:
+                        multi_face_refs += 1
+                    embeddings.append(faces[0][0])
+
+            # Then prefetch-decode + infer the misses.
+            for f, img in _prefetch_decode(to_decode, workers=self.num_workers):
                 if img is None:
                     unreadable += 1
-                    logger.warning("Could not read reference image: %s", img_path)
+                    logger.warning("Could not read reference image: %s", f)
                     continue
-
                 faces = self._detect_faces(img)
+                if self._cache is not None:
+                    self._cache.put(f, faces)
                 if not faces:
                     no_face += 1
-                    logger.warning("No face detected in reference image: %s", img_path)
+                    logger.warning("No face detected in reference image: %s", f)
                     continue
-
-                # Use only the largest face from each reference. Warn the user
-                # if extra faces were silently discarded — they should crop
-                # their references so each image contains only the target
-                # character.
                 if len(faces) > 1:
                     multi_face_refs += 1
                     logger.info(
                         "Reference %s contains %d faces; using only the largest. "
                         "Consider cropping to a single face for better accuracy.",
-                        img_path, len(faces),
+                        f, len(faces),
                     )
                 embeddings.append(faces[0][0])
 
@@ -310,7 +614,35 @@ class CharacterRecognizer:
                     f"(unreadable={unreadable}, no_face={no_face}) — skipping"
                 )
 
+        # Build the stacked reference matrix once for fast matching.
+        self._rebuild_reference_matrix()
+        if self._cache is not None:
+            self._cache.flush()
         return counts
+
+    def _rebuild_reference_matrix(self) -> None:
+        """
+        Flatten per-character reference embeddings into a single (N_total, 512)
+        matrix so ``match_to_reference`` can do one matmul per query instead
+        of one per character. Also stores a parallel list of (start, end)
+        slices per character name.
+        """
+        self._ref_char_names = []
+        self._ref_char_slices = []
+        rows: List[np.ndarray] = []
+        cursor = 0
+        for name, arr in self.reference_embeddings.items():
+            n = arr.shape[0]
+            if n == 0:
+                continue
+            rows.append(arr)
+            self._ref_char_names.append(name)
+            self._ref_char_slices.append((cursor, cursor + n))
+            cursor += n
+        if rows:
+            self._ref_matrix = np.concatenate(rows, axis=0).astype(np.float32)
+        else:
+            self._ref_matrix = None
 
     # ─── Matching ─────────────────────────────────────────────────────────────
 
@@ -322,48 +654,47 @@ class CharacterRecognizer:
         """
         Match a query embedding to the closest reference character.
 
-        For each character the distance is the *minimum* cosine distance to
-        any of that character's reference embeddings — this preserves recall
-        when a character is represented by multiple angles/styles (taking a
-        mean embedding blurs them together).
+        Uses a single matmul against the pre-stacked reference matrix
+        (O(total_refs) instead of one loop per character), then reduces per
+        character by taking the max similarity within that character's slice.
 
         Returns the character name only when:
           - the best distance is within ``similarity_threshold``, AND
-          - the gap to the second-best character is at least ``match_margin``
-            (otherwise the result is ambiguous and we return None so the
-            image is handed off to the clustering stage).
+          - the gap to the second-best character is at least ``match_margin``.
         """
-        if not self.reference_embeddings:
+        if self._ref_matrix is None or not self._ref_char_names:
             return None
 
-        # Compute per-character min distance using vectorised dot product.
-        ranked: List[Tuple[str, float]] = []
-        for char_name, emb_array in self.reference_embeddings.items():
-            # emb_array: (N, 512); embedding: (512,)
-            sims = emb_array @ embedding  # (N,)
-            # Best (smallest) distance for this character
-            best = float(1.0 - np.max(sims))
-            ranked.append((char_name, best))
+        sims = self._ref_matrix @ embedding  # (N_total,)
 
-        ranked.sort(key=lambda x: x[1])
-        best_name, best_dist = ranked[0]
+        # Reduce per character — these slices are tiny (one per character,
+        # typically <10 characters) so a Python loop is cheaper than fancy
+        # reduction tricks.
+        per_char = np.empty(len(self._ref_char_names), dtype=np.float32)
+        for i, (start, end) in enumerate(self._ref_char_slices):
+            per_char[i] = sims[start:end].max()
+
+        # Argsort descending (higher similarity first == lower distance).
+        order = np.argsort(-per_char)
+        best_idx = int(order[0])
+        best_dist = float(1.0 - per_char[best_idx])
 
         if best_dist > self.similarity_threshold:
             return None
 
-        # Ambiguity check: if the runner-up is almost as close, reject the
-        # match rather than guessing.
-        if len(ranked) >= 2:
-            _, runner_up_dist = ranked[1]
-            if (runner_up_dist - best_dist) < self.match_margin:
+        if len(order) >= 2:
+            runner_idx = int(order[1])
+            runner_dist = float(1.0 - per_char[runner_idx])
+            if (runner_dist - best_dist) < self.match_margin:
                 logger.debug(
                     "Ambiguous match: %s@%.3f vs %s@%.3f (margin=%.3f)",
-                    best_name, best_dist, ranked[1][0], runner_up_dist,
+                    self._ref_char_names[best_idx], best_dist,
+                    self._ref_char_names[runner_idx], runner_dist,
                     self.match_margin,
                 )
                 return None
 
-        return best_name
+        return self._ref_char_names[best_idx]
 
     # ─── Main sorting pipeline ────────────────────────────────────────────────
 
@@ -403,57 +734,45 @@ class CharacterRecognizer:
         input_path = Path(input_dir).resolve()
         if not input_path.exists():
             raise FileNotFoundError(f"Input directory not found: {input_dir}")
+        if not input_path.is_dir():
+            raise NotADirectoryError(f"Input path is not a directory: {input_dir}")
 
         out_path = (
             Path(output_dir).resolve() if output_dir
             else input_path / "_sorted"
         )
+
+        # Safety: never allow the output to *equal* the input — that would
+        # make the sort walk over its own destination and is almost certainly
+        # a mistake. Always force an output sub-directory in that case.
+        if out_path == input_path:
+            out_path = input_path / "_sorted"
+            logger.warning(
+                "output_dir equals input_dir; redirecting output to %s", out_path,
+            )
+
         out_path.mkdir(parents=True, exist_ok=True)
 
-        # Collect image files. We must be careful NOT to pick up files that
-        # live inside the output directory (common when running twice) or
-        # inside any previously-sorted directory whose name starts with '_'.
-        # The original implementation only inspected the immediate parent
-        # which broke with recursive=True.
-        def _is_under(path: Path, base: Path) -> bool:
-            try:
-                path.resolve().relative_to(base)
-                return True
-            except ValueError:
-                return False
-
-        def _has_sorted_component(path: Path) -> bool:
-            try:
-                rel = path.resolve().relative_to(input_path)
-            except ValueError:
-                return False
-            return any(part.startswith('_') for part in rel.parts)
-
-        pattern = "**/*" if recursive else "*"
-        image_files: List[Path] = []
-        for f in input_path.glob(pattern):
-            if not f.is_file():
-                continue
-            if f.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
-                continue
-            # Skip anything inside the output directory (prevents re-processing)
-            if _is_under(f, out_path):
-                continue
-            # Skip any path containing a "_*" component anywhere in the chain
-            if _has_sorted_component(f):
-                continue
-            image_files.append(f)
+        # Fast, single-pass directory walk via os.scandir. For large datasets
+        # this is noticeably faster than Path.glob("**/*") because it avoids
+        # stat() calls and Path object overhead for every intermediate entry.
+        image_files: List[Path] = self._scan_images(
+            input_path, out_path, recursive,
+        )
 
         if not image_files:
             print(f"No image files found in {input_dir}")
             return {}
 
+        run_started = time.monotonic()
         self._load_model()
+        self._open_cache(input_path)
 
         total = len(image_files)
         print(f"\nProcessing {total} images...")
         print(f"References loaded: {list(self.reference_embeddings.keys()) or 'None (auto-cluster only)'}")
         print(f"Similarity threshold: {self.similarity_threshold}  margin: {self.match_margin}")
+        print(f"Workers: {self.num_workers}  Cache: {'on' if self._cache else 'off'}")
 
         # ── Pass 1: extract embeddings & do reference matching ──────────────
         unknown_items: List[Tuple[Path, np.ndarray]] = []   # (path, embedding)
@@ -461,18 +780,65 @@ class CharacterRecognizer:
         multi_face_paths: List[Path] = []
         assignments: Dict[Path, str] = {}  # path → character name
 
+        # Split into cache hits vs misses. The fast path never touches the
+        # disk for hits — we only prefetch-decode the actual misses.
+        cache_hits: Dict[Path, FaceList] = {}
+        to_decode: List[Path] = []
+        if self._cache is not None:
+            for f in image_files:
+                hit = self._cache.get(f)
+                if hit is not None:
+                    cache_hits[f] = hit
+                else:
+                    to_decode.append(f)
+        else:
+            to_decode = list(image_files)
+
+        # Run all face detections first, stashing into a dict keyed by path.
+        faces_by_path: Dict[Path, FaceList] = dict(cache_hits)
+
+        if to_decode:
+            started = time.monotonic()
+            for idx_decode, (img_path, img) in enumerate(
+                _prefetch_decode(to_decode, workers=self.num_workers), 1,
+            ):
+                if self.progress_callback:
+                    self.progress_callback(
+                        idx_decode, len(to_decode),
+                        f"Inferring {img_path.name}",
+                    )
+                if img is None:
+                    logger.warning("Failed to decode image: %s", img_path)
+                    faces_by_path[img_path] = []  # treat as "no face detected"
+                    if self._cache is not None:
+                        # Don't cache decode failures — they may be transient
+                        pass
+                    continue
+                faces = self._detect_faces(img)
+                faces_by_path[img_path] = faces
+                if self._cache is not None:
+                    self._cache.put(img_path, faces)
+            elapsed = time.monotonic() - started
+            if elapsed > 0 and len(to_decode) > 0:
+                logger.info(
+                    "Face inference: %d images in %.2fs (%.1f img/s)",
+                    len(to_decode), elapsed, len(to_decode) / elapsed,
+                )
+
+        if self._cache is not None:
+            self._cache.flush()
+            logger.info(
+                "Cache: %d hits, %d misses",
+                self._cache.hits, self._cache.misses,
+            )
+
+        # Pass 1b: route every image using its (cached or fresh) face list.
         for idx, img_path in enumerate(image_files, 1):
-            if self.progress_callback:
-                self.progress_callback(idx, total, f"Scanning {img_path.name}")
+            if self.progress_callback and self._cache is not None and cache_hits:
+                # Keep progress ticking during the (fast) routing phase.
+                self.progress_callback(idx, total, f"Sorting {img_path.name}")
 
-            img = _imread_unicode(img_path)
-            if img is None:
-                # File exists but could not be decoded — this is an error,
-                # not "no face". Log it and skip (don't pollute no_face/).
-                logger.warning("Failed to decode image: %s", img_path)
-                continue
-
-            faces = self._detect_faces(img)  # single inference
+            faces = faces_by_path.get(img_path, [])
 
             if not faces:
                 no_face_paths.append(img_path)
@@ -488,9 +854,6 @@ class CharacterRecognizer:
                 continue
 
             # Multi-face image: try to match *every* face against references.
-            # If exactly one unambiguously matches, assign to that character.
-            # If several different characters match (or nothing matches at all
-            # but we still have multiple faces), route to multi_face/.
             matches = []
             for emb, _area in faces:
                 m = self.match_to_reference(emb)
@@ -503,9 +866,7 @@ class CharacterRecognizer:
             elif len(unique_matches) > 1:
                 multi_face_paths.append(img_path)
             else:
-                # No reference matched any face. In auto-cluster mode we can
-                # still try clustering using the largest face. In pure
-                # reference mode with no matches at all, this is multi_face.
+                # No reference matched any face.
                 if self.reference_embeddings:
                     multi_face_paths.append(img_path)
                 else:
@@ -533,13 +894,26 @@ class CharacterRecognizer:
 
         stats: Dict[str, int] = {}
         errors = 0
-        action = shutil.copy2 if copy else shutil.move
 
         for img_path, char_name in all_assignments.items():
             dest_dir = out_path / char_name
             try:
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 dest_file = dest_dir / img_path.name
+
+                # Resolve both sides so src==dest comparison is meaningful
+                # across symlinks and relative paths.
+                try:
+                    same_file = (
+                        img_path.resolve() == dest_file.resolve()
+                    )
+                except OSError:
+                    same_file = False
+                if same_file:
+                    # Nothing to do — already at the destination. Still count
+                    # it so the stats match user expectations.
+                    stats[char_name] = stats.get(char_name, 0) + 1
+                    continue
 
                 # Handle name collisions
                 if dest_file.exists():
@@ -549,7 +923,12 @@ class CharacterRecognizer:
                         dest_file = dest_dir / f"{stem}_{counter}{suffix}"
                         counter += 1
 
-                action(str(img_path), str(dest_file))
+                if copy:
+                    shutil.copy2(str(img_path), str(dest_file))
+                else:
+                    # shutil.move handles cross-device fallback correctly;
+                    # on same-device moves it's effectively an os.rename.
+                    shutil.move(str(img_path), str(dest_file))
                 stats[char_name] = stats.get(char_name, 0) + 1
             except (OSError, shutil.Error) as e:
                 errors += 1
@@ -563,7 +942,110 @@ class CharacterRecognizer:
 
         # ── Summary ──────────────────────────────────────────────────────────
         self._print_summary(stats, out_path, copy)
+
+        # ── Manifest: write a machine-readable record of this run ───────────
+        try:
+            manifest = {
+                "version": 2,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                "duration_seconds": round(time.monotonic() - run_started, 2),
+                "input_dir": str(input_path),
+                "output_dir": str(out_path),
+                "total_images": total,
+                "stats": stats,
+                "errors": errors,
+                "settings": {
+                    "model": self.model_name,
+                    "similarity_threshold": self.similarity_threshold,
+                    "match_margin": self.match_margin,
+                    "cluster_eps": self.cluster_eps,
+                    "cluster_min_samples": self.cluster_min_samples,
+                    "max_characters": max_characters,
+                    "copy": copy,
+                    "recursive": recursive,
+                    "num_workers": self.num_workers,
+                    "cache_enabled": self._cache is not None,
+                },
+                "cache_stats": (
+                    self._cache.stats() if self._cache is not None else None
+                ),
+                "references": {
+                    name: int(arr.shape[0])
+                    for name, arr in self.reference_embeddings.items()
+                },
+            }
+            manifest_path = out_path / "_manifest.json"
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f, ensure_ascii=False, indent=2)
+            logger.info("Manifest written: %s", manifest_path)
+        except Exception as e:
+            # Manifest failure is non-fatal — the sort itself already succeeded.
+            logger.warning("Failed to write manifest: %s", e)
+
         return stats
+
+    # ─── Fast directory walk ─────────────────────────────────────────────────
+
+    def _scan_images(
+        self,
+        input_path: Path,
+        out_path: Path,
+        recursive: bool,
+    ) -> List[Path]:
+        """
+        Fast scandir-based image walk. Skips anything inside ``out_path`` and
+        any directory whose name begins with '_' (our convention for
+        already-sorted output) — checks are performed at the *directory*
+        level so we never descend into those subtrees at all, rather than
+        filtering file-by-file.
+        """
+        try:
+            out_resolved = out_path.resolve()
+        except OSError:
+            out_resolved = out_path
+
+        def _should_skip_dir(dir_path: Path) -> bool:
+            # Skip any sub-directory whose basename starts with '_' (that's
+            # how previous sort runs mark their output).
+            if dir_path.name.startswith('_'):
+                return True
+            # Skip the actual output directory (even if its name doesn't
+            # start with '_') to prevent recursive self-ingestion.
+            try:
+                if dir_path.resolve() == out_resolved:
+                    return True
+            except OSError:
+                pass
+            return False
+
+        results: List[Path] = []
+        supported = self.SUPPORTED_EXTENSIONS
+
+        def _walk(d: Path):
+            try:
+                with os.scandir(d) as it:
+                    for entry in it:
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                if recursive and not _should_skip_dir(Path(entry.path)):
+                                    _walk(Path(entry.path))
+                            elif entry.is_file(follow_symlinks=False):
+                                name = entry.name
+                                dot = name.rfind('.')
+                                if dot == -1:
+                                    continue
+                                if name[dot:].lower() not in supported:
+                                    continue
+                                results.append(Path(entry.path))
+                        except OSError as e:
+                            logger.debug("scandir entry error for %s: %s", entry.path, e)
+            except OSError as e:
+                logger.warning("Cannot read directory %s: %s", d, e)
+
+        _walk(input_path)
+        # Deterministic ordering so progress/tests are reproducible.
+        results.sort()
+        return results
 
     # ─── Clustering helpers ───────────────────────────────────────────────────
 

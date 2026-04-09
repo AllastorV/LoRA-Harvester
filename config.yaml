@@ -221,6 +221,18 @@ character_recognition:
   # antelopev2: best for non-frontal / anime faces
   model: "buffalo_l"
 
+  # Performance
+  # Number of background threads used to decode images in parallel while
+  # the GPU runs inference on the current image. 1 = no prefetching.
+  num_workers: 4
+
+  # Persistent embedding cache (SQLite). On re-runs, faces whose source
+  # file has not been modified are read from the cache in ~0ms instead
+  # of running InsightFace again — massively speeds up iterative tuning
+  # of thresholds, margins, cluster eps, etc.
+  use_cache: true
+  cache_path: null          # null = <input_dir>/.lora_harvester_cache.db
+
   # File handling
   copy_files: false         # Copy instead of move when sorting
 

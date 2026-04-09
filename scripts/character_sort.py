@@ -157,6 +157,33 @@ Output structure:
         action="store_true",
         help="Run on CPU (slower but no GPU required)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        metavar="INT",
+        help="Number of background threads for parallel image decoding "
+             "(default: 4). Set to 1 to disable prefetching.",
+    )
+
+    # ── Cache ─────────────────────────────────────────────────────────────────
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable the persistent embedding cache (re-runs will be slow).",
+    )
+    parser.add_argument(
+        "--cache-path",
+        default=None,
+        metavar="PATH",
+        help="Path to the embedding cache SQLite file. "
+             "Default: <input_dir>/.lora_harvester_cache.db",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Delete the embedding cache before running.",
+    )
 
     # ── File handling ─────────────────────────────────────────────────────────
     parser.add_argument(
@@ -227,6 +254,13 @@ Output structure:
         else config_char.get('cluster_min_samples', 2)
     )
     use_gpu = not args.no_gpu
+    num_workers = (
+        args.workers
+        if args.workers is not None
+        else config_char.get('num_workers', 4)
+    )
+    use_cache = not args.no_cache and config_char.get('use_cache', True)
+    cache_path = args.cache_path or config_char.get('cache_path')
     # CLI --model only overrides config when it differs from the argparse default
     model_name = args.model
     if model_name == "buffalo_l" and config_char.get('model'):
@@ -243,7 +277,9 @@ Output structure:
     print(f"🔍 Threshold : {threshold}  (margin: {match_margin})")
     print(f"🔢 Max chars : {args.max_characters}")
     print(f"🔗 Cluster eps: {cluster_eps}  min: {cluster_min}")
-    print(f"💻 Device  : {'GPU' if use_gpu else 'CPU'}")
+    print(f"💻 Device  : {'GPU' if use_gpu else 'CPU'}  workers: {num_workers}")
+    print(f"💾 Cache   : {'on' if use_cache else 'off'}"
+          + (f"  ({cache_path})" if use_cache and cache_path else ""))
     print(f"📋 Action  : {'Copy' if args.copy else 'Move'}")
     print("=" * 60)
 
@@ -296,7 +332,27 @@ Output structure:
         use_gpu=use_gpu,
         model_name=model_name,
         progress_callback=progress,
+        cache_path=cache_path,
+        use_cache=use_cache,
+        num_workers=num_workers,
     )
+
+    # Clear cache if requested — doing it here (after instantiation but
+    # before load_references) avoids a race where another process opens the
+    # DB between unlink and recreate.
+    if args.clear_cache:
+        from pathlib import Path as _Path
+        candidates = [
+            _Path(cache_path) if cache_path else None,
+            _Path(args.input) / ".lora_harvester_cache.db",
+        ]
+        for c in candidates:
+            if c and c.exists():
+                try:
+                    c.unlink()
+                    print(f"🗑  Cleared cache: {c}")
+                except OSError as e:
+                    print(f"⚠️  Could not delete cache {c}: {e}")
 
     # ── Load references ───────────────────────────────────────────────────────
     if args.references:
@@ -323,12 +379,16 @@ Output structure:
         )
     except KeyboardInterrupt:
         print("\n\n⏹️  Interrupted by user")
+        recognizer.close_cache()
         sys.exit(0)
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
         traceback.print_exc()
+        recognizer.close_cache()
         sys.exit(1)
+    # Normal path — close cache so SQLite flushes WAL before we exit
+    recognizer.close_cache()
 
     if not stats:
         print("⚠️  No images were processed.")

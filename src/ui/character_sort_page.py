@@ -67,6 +67,9 @@ class CharacterSortThread(QThread):
                 use_gpu=s.get('use_gpu', True),
                 model_name=s.get('model', 'buffalo_l'),
                 progress_callback=progress_cb,
+                num_workers=s.get('num_workers', 4),
+                use_cache=s.get('use_cache', True),
+                cache_path=s.get('cache_path'),
             )
 
             if self.reference_dir:
@@ -77,13 +80,18 @@ class CharacterSortThread(QThread):
 
             self.log_msg.emit("🔄 Scanning images...")
 
-            stats = recognizer.sort_directory(
-                input_dir=self.input_dir,
-                output_dir=self.output_dir if self.output_dir else None,
-                copy=s.get('copy_files', False),
-                recursive=s.get('recursive', False),
-                max_characters=s.get('max_characters', 6),
-            )
+            try:
+                stats = recognizer.sort_directory(
+                    input_dir=self.input_dir,
+                    output_dir=self.output_dir if self.output_dir else None,
+                    copy=s.get('copy_files', False),
+                    recursive=s.get('recursive', False),
+                    max_characters=s.get('max_characters', 6),
+                )
+            finally:
+                # Always release the SQLite cache so WAL is flushed before
+                # this worker thread terminates.
+                recognizer.close_cache()
 
             if self._running:
                 self.finished.emit(stats)
