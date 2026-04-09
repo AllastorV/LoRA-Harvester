@@ -61,6 +61,7 @@ class CharacterSortThread(QThread):
             recognizer = CharacterRecognizer(
                 reference_dir=self.reference_dir if self.reference_dir else None,
                 similarity_threshold=s.get('threshold', 0.45),
+                match_margin=s.get('match_margin', 0.05),
                 cluster_eps=cluster_eps,
                 cluster_min_samples=cluster_min,
                 use_gpu=s.get('use_gpu', True),
@@ -81,7 +82,7 @@ class CharacterSortThread(QThread):
                 output_dir=self.output_dir if self.output_dir else None,
                 copy=s.get('copy_files', False),
                 recursive=s.get('recursive', False),
-                max_characters=s.get('max_characters', 1),
+                max_characters=s.get('max_characters', 6),
             )
 
             if self._running:
@@ -414,13 +415,13 @@ class CharacterSortPage(QWidget):
         self.max_char_slider = QSlider(Qt.Horizontal)
         self.max_char_slider.setMinimum(1)
         self.max_char_slider.setMaximum(6)
-        self.max_char_slider.setValue(1)
+        self.max_char_slider.setValue(6)
         self.max_char_slider.setTickPosition(QSlider.TicksBelow)
         self.max_char_slider.setTickInterval(1)
         self.max_char_slider.setFixedWidth(180)
         self.max_char_slider.setStyleSheet(theme.slider())
 
-        self.max_char_value_lbl = QLabel("1")
+        self.max_char_value_lbl = QLabel("6")
         self.max_char_value_lbl.setFixedWidth(20)
         self.max_char_value_lbl.setStyleSheet(theme.label_value())
         self.max_char_slider.valueChanged.connect(

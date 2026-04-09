@@ -10,6 +10,7 @@ import os
 import cv2
 import shutil
 import logging
+import threading
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -19,6 +20,25 @@ logger = logging.getLogger(__name__)
 # Lazy imports to avoid hard crash if not installed
 _insightface = None
 _sklearn = None
+
+
+def _imread_unicode(path) -> Optional[np.ndarray]:
+    """
+    Read an image robustly, including from paths containing non-ASCII
+    characters on Windows (where ``cv2.imread`` silently returns None
+    because it uses a narrow-char C string).
+
+    Returns the decoded BGR image, or None on failure.
+    """
+    try:
+        data = np.fromfile(str(path), dtype=np.uint8)
+        if data.size == 0:
+            return None
+        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        return img
+    except Exception as e:
+        logger.debug("Failed to read image %s: %s", path, e)
+        return None
 
 
 def _get_insightface():
@@ -68,6 +88,7 @@ class CharacterRecognizer:
         self,
         reference_dir: Optional[str] = None,
         similarity_threshold: float = 0.45,
+        match_margin: float = 0.05,
         cluster_eps: float = 0.6,
         cluster_min_samples: int = 2,
         use_gpu: bool = True,
@@ -80,6 +101,10 @@ class CharacterRecognizer:
                            E.g. references/naruto/*.jpg  references/sasuke/*.jpg
             similarity_threshold: Cosine distance threshold for reference matching.
                                   Lower = stricter. Typical range 0.3-0.6.
+            match_margin: Minimum gap required between the best and the
+                          second-best reference match. If two references are
+                          too close (distance difference < margin) the result
+                          is considered ambiguous and rejected.
             cluster_eps: DBSCAN eps parameter for clustering unknowns.
             cluster_min_samples: DBSCAN min_samples parameter.
             use_gpu: Use GPU if available.
@@ -88,6 +113,7 @@ class CharacterRecognizer:
         """
         self.reference_dir = Path(reference_dir) if reference_dir else None
         self.similarity_threshold = similarity_threshold
+        self.match_margin = match_margin
         self.cluster_eps = cluster_eps
         self.cluster_min_samples = cluster_min_samples
         self.use_gpu = use_gpu
@@ -96,53 +122,100 @@ class CharacterRecognizer:
 
         # {character_name: np.ndarray of shape (N, 512)}
         self.reference_embeddings: Dict[str, np.ndarray] = {}
-        # Mean embedding per character for fast matching
+        # Mean embedding per character (kept for backwards compatibility;
+        # matching now prefers the full per-sample distance, see
+        # ``match_to_reference``).
         self.reference_means: Dict[str, np.ndarray] = {}
 
         self._app = None  # InsightFace FaceAnalysis (lazy)
+        self._app_lock = threading.Lock()  # guard lazy model init across threads
 
     # ─── InsightFace initialization ───────────────────────────────────────────
 
     def _load_model(self):
         if self._app is not None:
             return
-        FaceAnalysis = _get_insightface()
-        ctx_id = 0 if self.use_gpu else -1
-        self._app = FaceAnalysis(name=self.model_name, allowed_modules=['detection', 'recognition'])
-        self._app.prepare(ctx_id=ctx_id, det_size=(640, 640))
-        logger.info("InsightFace model loaded (ctx_id=%d)", ctx_id)
+        with self._app_lock:
+            if self._app is not None:
+                return
+            FaceAnalysis = _get_insightface()
+
+            # Explicitly set ONNXRuntime providers so GPU preference is honoured
+            # and users get a clear log line if CUDA is unavailable and we
+            # silently fall back to CPU.
+            if self.use_gpu:
+                providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+                try:
+                    import onnxruntime as ort
+                    available = set(ort.get_available_providers())
+                    if 'CUDAExecutionProvider' not in available:
+                        logger.warning(
+                            "CUDAExecutionProvider not available in onnxruntime "
+                            "(available: %s). Falling back to CPU. Install "
+                            "onnxruntime-gpu for GPU acceleration.",
+                            sorted(available),
+                        )
+                        providers = ['CPUExecutionProvider']
+                except ImportError:
+                    logger.warning(
+                        "onnxruntime not importable — provider selection skipped."
+                    )
+            else:
+                providers = ['CPUExecutionProvider']
+
+            ctx_id = 0 if providers[0] == 'CUDAExecutionProvider' else -1
+            app = FaceAnalysis(
+                name=self.model_name,
+                allowed_modules=['detection', 'recognition'],
+                providers=providers,
+            )
+            app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+            self._app = app
+            logger.info(
+                "InsightFace model '%s' loaded (ctx_id=%d, providers=%s)",
+                self.model_name, ctx_id, providers,
+            )
 
     # ─── Embedding extraction ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _normalise(emb: np.ndarray) -> np.ndarray:
+        emb = emb.astype(np.float32)
+        return emb / (np.linalg.norm(emb) + 1e-6)
+
+    def _detect_faces(self, image: np.ndarray) -> List[Tuple[np.ndarray, float]]:
+        """
+        Run InsightFace once and return [(normalised_embedding, bbox_area), ...]
+        sorted by bbox area descending. This is the single entry point used by
+        both ``get_embeddings`` and ``get_largest_face_embedding`` so we never
+        run the detection pipeline twice on the same image.
+        """
+        self._load_model()
+        faces = self._app.get(image)  # BGR expected (OpenCV default)
+        results: List[Tuple[np.ndarray, float]] = []
+        for face in faces:
+            if face.embedding is None:
+                continue
+            bbox = face.bbox
+            area = float((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+            results.append((self._normalise(face.embedding), area))
+        # Sort descending by area so results[0] is always the largest face
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results
 
     def get_embeddings(self, image: np.ndarray) -> List[np.ndarray]:
         """
         Detect all faces in an image and return their L2-normalised embeddings.
         Returns empty list if no face detected.
         """
-        self._load_model()
-        # InsightFace expects BGR (OpenCV default)
-        faces = self._app.get(image)
-        embeddings = []
-        for face in faces:
-            if face.embedding is not None:
-                emb = face.embedding.astype(np.float32)
-                emb = emb / (np.linalg.norm(emb) + 1e-6)
-                embeddings.append(emb)
-        return embeddings
+        return [emb for emb, _ in self._detect_faces(image)]
 
     def get_largest_face_embedding(self, image: np.ndarray) -> Optional[np.ndarray]:
         """Return embedding of the largest face only (most likely the main subject)."""
-        self._load_model()
-        faces = self._app.get(image)
+        faces = self._detect_faces(image)
         if not faces:
             return None
-        # Pick largest face by bounding-box area
-        largest = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-        if largest.embedding is None:
-            return None
-        emb = largest.embedding.astype(np.float32)
-        emb = emb / (np.linalg.norm(emb) + 1e-6)
-        return emb
+        return faces[0][0]
 
     # ─── Reference loading ────────────────────────────────────────────────────
 
@@ -180,7 +253,10 @@ class CharacterRecognizer:
         print(f"Loading references from: {ref_path}")
         for char_dir in char_dirs:
             char_name = char_dir.name
-            embeddings = []
+            embeddings: List[np.ndarray] = []
+            unreadable = 0
+            no_face = 0
+            multi_face_refs = 0
 
             image_files = [
                 f for f in sorted(char_dir.iterdir())
@@ -188,22 +264,51 @@ class CharacterRecognizer:
             ]
 
             for img_path in image_files:
-                img = cv2.imread(str(img_path))
+                img = _imread_unicode(img_path)
                 if img is None:
+                    unreadable += 1
+                    logger.warning("Could not read reference image: %s", img_path)
                     continue
-                emb = self.get_largest_face_embedding(img)
-                if emb is not None:
-                    embeddings.append(emb)
+
+                faces = self._detect_faces(img)
+                if not faces:
+                    no_face += 1
+                    logger.warning("No face detected in reference image: %s", img_path)
+                    continue
+
+                # Use only the largest face from each reference. Warn the user
+                # if extra faces were silently discarded — they should crop
+                # their references so each image contains only the target
+                # character.
+                if len(faces) > 1:
+                    multi_face_refs += 1
+                    logger.info(
+                        "Reference %s contains %d faces; using only the largest. "
+                        "Consider cropping to a single face for better accuracy.",
+                        img_path, len(faces),
+                    )
+                embeddings.append(faces[0][0])
 
             if embeddings:
                 emb_array = np.stack(embeddings)  # (N, 512)
                 self.reference_embeddings[char_name] = emb_array
-                self.reference_means[char_name] = emb_array.mean(axis=0)
-                self.reference_means[char_name] /= (np.linalg.norm(self.reference_means[char_name]) + 1e-6)
+                mean = emb_array.mean(axis=0)
+                self.reference_means[char_name] = mean / (np.linalg.norm(mean) + 1e-6)
                 counts[char_name] = len(embeddings)
-                print(f"  {char_name}: {len(embeddings)} reference(s) loaded")
+                extra = []
+                if unreadable:
+                    extra.append(f"{unreadable} unreadable")
+                if no_face:
+                    extra.append(f"{no_face} no-face")
+                if multi_face_refs:
+                    extra.append(f"{multi_face_refs} multi-face (used largest)")
+                extra_str = f" ({', '.join(extra)})" if extra else ""
+                print(f"  {char_name}: {len(embeddings)} reference(s) loaded{extra_str}")
             else:
-                print(f"  {char_name}: No faces detected in references - skipping")
+                print(
+                    f"  {char_name}: No usable references "
+                    f"(unreadable={unreadable}, no_face={no_face}) — skipping"
+                )
 
         return counts
 
@@ -216,23 +321,49 @@ class CharacterRecognizer:
     def match_to_reference(self, embedding: np.ndarray) -> Optional[str]:
         """
         Match a query embedding to the closest reference character.
-        Returns character name if within threshold, else None.
+
+        For each character the distance is the *minimum* cosine distance to
+        any of that character's reference embeddings — this preserves recall
+        when a character is represented by multiple angles/styles (taking a
+        mean embedding blurs them together).
+
+        Returns the character name only when:
+          - the best distance is within ``similarity_threshold``, AND
+          - the gap to the second-best character is at least ``match_margin``
+            (otherwise the result is ambiguous and we return None so the
+            image is handed off to the clustering stage).
         """
-        if not self.reference_means:
+        if not self.reference_embeddings:
             return None
 
-        best_name = None
-        best_dist = float('inf')
+        # Compute per-character min distance using vectorised dot product.
+        ranked: List[Tuple[str, float]] = []
+        for char_name, emb_array in self.reference_embeddings.items():
+            # emb_array: (N, 512); embedding: (512,)
+            sims = emb_array @ embedding  # (N,)
+            # Best (smallest) distance for this character
+            best = float(1.0 - np.max(sims))
+            ranked.append((char_name, best))
 
-        for char_name, mean_emb in self.reference_means.items():
-            dist = self.cosine_distance(embedding, mean_emb)
-            if dist < best_dist:
-                best_dist = dist
-                best_name = char_name
+        ranked.sort(key=lambda x: x[1])
+        best_name, best_dist = ranked[0]
 
-        if best_dist <= self.similarity_threshold:
-            return best_name
-        return None
+        if best_dist > self.similarity_threshold:
+            return None
+
+        # Ambiguity check: if the runner-up is almost as close, reject the
+        # match rather than guessing.
+        if len(ranked) >= 2:
+            _, runner_up_dist = ranked[1]
+            if (runner_up_dist - best_dist) < self.match_margin:
+                logger.debug(
+                    "Ambiguous match: %s@%.3f vs %s@%.3f (margin=%.3f)",
+                    best_name, best_dist, ranked[1][0], runner_up_dist,
+                    self.match_margin,
+                )
+                return None
+
+        return best_name
 
     # ─── Main sorting pipeline ────────────────────────────────────────────────
 
@@ -245,7 +376,7 @@ class CharacterRecognizer:
         output_dir: Optional[str] = None,
         copy: bool = False,
         recursive: bool = False,
-        max_characters: int = 1,
+        max_characters: int = 6,
     ) -> Dict[str, int]:
         """
         Sort images in input_dir into character sub-folders.
@@ -254,7 +385,7 @@ class CharacterRecognizer:
           - If references loaded → tries reference matching first
           - Unmatched faces → auto-clustered into character_01/, character_02/ ...
           - No faces detected → no_face/
-          - Multiple faces with no clear match → multi_face/
+          - Multiple faces with ambiguous reference match → multi_face/
           - If more character folders than max_characters → smallest ones merged to other/
 
         Args:
@@ -269,20 +400,49 @@ class CharacterRecognizer:
         Returns:
             {folder_name: count} stats dict.
         """
-        input_path = Path(input_dir)
+        input_path = Path(input_dir).resolve()
         if not input_path.exists():
             raise FileNotFoundError(f"Input directory not found: {input_dir}")
 
-        out_path = Path(output_dir) if output_dir else input_path / "_sorted"
+        out_path = (
+            Path(output_dir).resolve() if output_dir
+            else input_path / "_sorted"
+        )
         out_path.mkdir(parents=True, exist_ok=True)
 
-        # Collect image files
+        # Collect image files. We must be careful NOT to pick up files that
+        # live inside the output directory (common when running twice) or
+        # inside any previously-sorted directory whose name starts with '_'.
+        # The original implementation only inspected the immediate parent
+        # which broke with recursive=True.
+        def _is_under(path: Path, base: Path) -> bool:
+            try:
+                path.resolve().relative_to(base)
+                return True
+            except ValueError:
+                return False
+
+        def _has_sorted_component(path: Path) -> bool:
+            try:
+                rel = path.resolve().relative_to(input_path)
+            except ValueError:
+                return False
+            return any(part.startswith('_') for part in rel.parts)
+
         pattern = "**/*" if recursive else "*"
-        image_files = [
-            f for f in input_path.glob(pattern)
-            if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXTENSIONS
-            and not f.parent.name.startswith('_')  # skip already-sorted folders
-        ]
+        image_files: List[Path] = []
+        for f in input_path.glob(pattern):
+            if not f.is_file():
+                continue
+            if f.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
+                continue
+            # Skip anything inside the output directory (prevents re-processing)
+            if _is_under(f, out_path):
+                continue
+            # Skip any path containing a "_*" component anywhere in the chain
+            if _has_sorted_component(f):
+                continue
+            image_files.append(f)
 
         if not image_files:
             print(f"No image files found in {input_dir}")
@@ -293,7 +453,7 @@ class CharacterRecognizer:
         total = len(image_files)
         print(f"\nProcessing {total} images...")
         print(f"References loaded: {list(self.reference_embeddings.keys()) or 'None (auto-cluster only)'}")
-        print(f"Similarity threshold: {self.similarity_threshold}")
+        print(f"Similarity threshold: {self.similarity_threshold}  margin: {self.match_margin}")
 
         # ── Pass 1: extract embeddings & do reference matching ──────────────
         unknown_items: List[Tuple[Path, np.ndarray]] = []   # (path, embedding)
@@ -305,40 +465,58 @@ class CharacterRecognizer:
             if self.progress_callback:
                 self.progress_callback(idx, total, f"Scanning {img_path.name}")
 
-            img = cv2.imread(str(img_path))
+            img = _imread_unicode(img_path)
             if img is None:
+                # File exists but could not be decoded — this is an error,
+                # not "no face". Log it and skip (don't pollute no_face/).
+                logger.warning("Failed to decode image: %s", img_path)
+                continue
+
+            faces = self._detect_faces(img)  # single inference
+
+            if not faces:
                 no_face_paths.append(img_path)
                 continue
 
-            embeddings = self.get_embeddings(img)
-
-            if not embeddings:
-                no_face_paths.append(img_path)
+            if len(faces) == 1:
+                emb = faces[0][0]
+                matched = self.match_to_reference(emb)
+                if matched:
+                    assignments[img_path] = matched
+                else:
+                    unknown_items.append((img_path, emb))
                 continue
 
-            if len(embeddings) > 1:
-                # Multiple faces: try largest-face only
-                main_emb = self.get_largest_face_embedding(img)
-                if main_emb is None:
-                    multi_face_paths.append(img_path)
-                    continue
-                embeddings = [main_emb]
+            # Multi-face image: try to match *every* face against references.
+            # If exactly one unambiguously matches, assign to that character.
+            # If several different characters match (or nothing matches at all
+            # but we still have multiple faces), route to multi_face/.
+            matches = []
+            for emb, _area in faces:
+                m = self.match_to_reference(emb)
+                if m is not None:
+                    matches.append(m)
 
-            emb = embeddings[0]
-
-            # Try reference match
-            matched = self.match_to_reference(emb)
-            if matched:
-                assignments[img_path] = matched
+            unique_matches = set(matches)
+            if len(unique_matches) == 1:
+                assignments[img_path] = matches[0]
+            elif len(unique_matches) > 1:
+                multi_face_paths.append(img_path)
             else:
-                unknown_items.append((img_path, emb))
+                # No reference matched any face. In auto-cluster mode we can
+                # still try clustering using the largest face. In pure
+                # reference mode with no matches at all, this is multi_face.
+                if self.reference_embeddings:
+                    multi_face_paths.append(img_path)
+                else:
+                    unknown_items.append((img_path, faces[0][0]))
 
         # ── Pass 2: cluster unknowns ─────────────────────────────────────────
         cluster_assignments: Dict[Path, str] = {}
 
         if unknown_items:
             if len(unknown_items) >= self.cluster_min_samples:
-                cluster_assignments = self._cluster_unknowns(unknown_items)
+                cluster_assignments = self._cluster_unknowns(unknown_items, out_path)
             else:
                 # Too few images to cluster meaningfully — put in unknown/
                 for path, _ in unknown_items:
@@ -354,23 +532,34 @@ class CharacterRecognizer:
         all_assignments = self._apply_max_characters(all_assignments, max_characters)
 
         stats: Dict[str, int] = {}
+        errors = 0
         action = shutil.copy2 if copy else shutil.move
 
         for img_path, char_name in all_assignments.items():
             dest_dir = out_path / char_name
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest_file = dest_dir / img_path.name
+            try:
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest_file = dest_dir / img_path.name
 
-            # Handle name collisions
-            if dest_file.exists():
-                stem, suffix = img_path.stem, img_path.suffix
-                counter = 1
-                while dest_file.exists():
-                    dest_file = dest_dir / f"{stem}_{counter}{suffix}"
-                    counter += 1
+                # Handle name collisions
+                if dest_file.exists():
+                    stem, suffix = img_path.stem, img_path.suffix
+                    counter = 1
+                    while dest_file.exists():
+                        dest_file = dest_dir / f"{stem}_{counter}{suffix}"
+                        counter += 1
 
-            action(str(img_path), str(dest_file))
-            stats[char_name] = stats.get(char_name, 0) + 1
+                action(str(img_path), str(dest_file))
+                stats[char_name] = stats.get(char_name, 0) + 1
+            except (OSError, shutil.Error) as e:
+                errors += 1
+                logger.error(
+                    "Failed to %s %s → %s: %s",
+                    "copy" if copy else "move", img_path, dest_dir, e,
+                )
+
+        if errors:
+            print(f"⚠️  {errors} file(s) failed to {'copy' if copy else 'move'} — see log")
 
         # ── Summary ──────────────────────────────────────────────────────────
         self._print_summary(stats, out_path, copy)
@@ -381,6 +570,7 @@ class CharacterRecognizer:
     def _cluster_unknowns(
         self,
         items: List[Tuple[Path, np.ndarray]],
+        out_path: Optional[Path] = None,
     ) -> Dict[Path, str]:
         """
         DBSCAN clustering on face embeddings.
@@ -404,8 +594,15 @@ class CharacterRecognizer:
 
         labels = clustering.labels_  # -1 = noise
 
-        # Find next free cluster index (don't overlap with reference names)
+        # Avoid colliding with reference character names *and* any
+        # character_XX folders that already exist in the output directory
+        # (e.g. from a previous run).
         existing = set(self.reference_embeddings.keys())
+        if out_path is not None and out_path.exists():
+            for child in out_path.iterdir():
+                if child.is_dir():
+                    existing.add(child.name)
+
         cluster_idx = 1
         label_to_name: Dict[int, str] = {}
 
@@ -418,6 +615,7 @@ class CharacterRecognizer:
                     cluster_idx += 1
                     name = f"character_{cluster_idx:02d}"
                 label_to_name[label] = name
+                existing.add(name)
                 cluster_idx += 1
 
         result: Dict[Path, str] = {}
@@ -492,7 +690,7 @@ class CharacterRecognizer:
         Returns character name, 'unknown', 'no_face', or 'multi_face'.
         """
         self._load_model()
-        img = cv2.imread(image_path)
+        img = _imread_unicode(image_path)
         if img is None:
             return "no_face"
 

@@ -204,6 +204,12 @@ character_recognition:
   # Typical range: 0.3 (very strict) – 0.6 (lenient)
   similarity_threshold: 0.45
 
+  # Minimum distance gap required between the best and the second-best
+  # reference match. If two characters are nearly equidistant from a query
+  # face the match is considered ambiguous and the image is sent to the
+  # clustering stage (or multi_face/) instead of being guessed.
+  match_margin: 0.05
+
   # Auto-clustering settings (for unmatched faces)
   cluster_eps: 0.6          # DBSCAN eps — lower = smaller/tighter groups
   cluster_min_samples: 2    # Minimum images to form a cluster
