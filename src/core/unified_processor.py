@@ -9,6 +9,7 @@ import logging
 import numpy as np
 import torch
 import time
+import threading
 from pathlib import Path
 from typing import Optional, Callable, Dict, List, Union, Any
 
@@ -194,32 +195,47 @@ class UnifiedVideoProcessor:
                           skip_text: bool = True,
                           use_quick_text_check: bool = True,
                           progress_callback: Optional[Callable] = None,
-                          stop_callback: Optional[Callable] = None) -> Dict:
+                          stop_callback: Optional[Callable] = None,
+                          skip_event: Optional[threading.Event] = None) -> Dict:
         """
         Process all videos in the list
-        
+
         Args:
             frame_interval: Process every Nth frame
             skip_text: Skip frames with subtitles
             use_quick_text_check: Use fast text detection
             progress_callback: Callback for progress updates
             stop_callback: Callback to check if processing should stop
-            
+            skip_event: Optional threading.Event. When set, the *current*
+                        video is abandoned and processing continues with
+                        the next one. The event is cleared automatically
+                        before each video starts, so it behaves as a
+                        one-shot "skip current" signal.
+
         Returns:
             Overall statistics for all videos
         """
         total_start = time.time()
-        
+
         for idx, video_path in enumerate(self.video_paths, 1):
             print(f"\n{'='*60}")
             print(f"Processing video {idx}/{len(self.video_paths)}")
             print(f"{'='*60}")
-            
+
             # Check stop signal
             if stop_callback and stop_callback():
                 print("\n⏹️  Batch processing stopped by user")
                 break
-            
+
+            # Clear any pre-existing skip flag so each video starts fresh.
+            # Build a read-only callable for the inner loops — keeps the
+            # signature consistent with ``stop_callback``.
+            if skip_event is not None:
+                skip_event.clear()
+                skip_callback: Optional[Callable[[], bool]] = skip_event.is_set
+            else:
+                skip_callback = None
+
             # Process single video
             video_stats = self.process_single_video(
                 video_path,
@@ -227,9 +243,17 @@ class UnifiedVideoProcessor:
                 skip_text,
                 use_quick_text_check,
                 progress_callback,
-                stop_callback
+                stop_callback,
+                skip_callback,
             )
-            
+
+            # Log whether this video was skipped mid-flight so the UI can
+            # reflect it in the per-video summary.
+            if skip_event is not None and skip_event.is_set():
+                video_stats['skipped_by_user'] = True
+                print(f"\n⏭️  Video {idx}/{len(self.video_paths)} skipped by user "
+                      f"— moving to next")
+
             # Update overall stats
             self.overall_stats['processed_videos'] += 1
             self.overall_stats['total_frames_saved'] += video_stats['saved_frames']
@@ -252,15 +276,24 @@ class UnifiedVideoProcessor:
                             skip_text: bool = True,
                             use_quick_text_check: bool = True,
                             progress_callback: Optional[Callable] = None,
-                            stop_callback: Optional[Callable] = None) -> Dict:
-        """Process a single video"""
+                            stop_callback: Optional[Callable] = None,
+                            skip_callback: Optional[Callable] = None) -> Dict:
+        """Process a single video
+
+        Args:
+            skip_callback: Optional zero-arg callable. When it returns True
+                           the inner loop exits early and the current video
+                           is abandoned. The outer batch loop is responsible
+                           for clearing / resetting the underlying flag so
+                           the next video starts fresh.
+        """
         if not self.open_video(video_path):
             return self._create_empty_stats()
-        
+
         # Create output structure for this video
         video_name = Path(video_path).stem
         self.create_output_structure(video_name)
-        
+
         # Reset stats for this video
         self.stats = self._create_empty_stats()
         self.start_time = time.time()
@@ -268,17 +301,17 @@ class UnifiedVideoProcessor:
         # Reset duplicate detection history for each video
         if self.quality_analyzer and hasattr(self.quality_analyzer, 'clear_history'):
             self.quality_analyzer.clear_history()
-        
+
         try:
             if self.use_turbo:
                 self._process_video_turbo(
                     frame_interval, skip_text, use_quick_text_check,
-                    progress_callback, stop_callback
+                    progress_callback, stop_callback, skip_callback
                 )
             else:
                 self._process_video_standard(
                     frame_interval, skip_text, use_quick_text_check,
-                    progress_callback, stop_callback
+                    progress_callback, stop_callback, skip_callback
                 )
         finally:
             if self.cap:
@@ -300,14 +333,20 @@ class UnifiedVideoProcessor:
                                skip_text: bool,
                                use_quick_text: bool,
                                progress_callback: Optional[Callable],
-                               stop_callback: Optional[Callable]):
+                               stop_callback: Optional[Callable],
+                               skip_callback: Optional[Callable] = None):
         """Standard video processing (frame by frame)"""
         frame_count = 0
-        
+
         while True:
             if stop_callback and stop_callback():
                 break
-            
+            if skip_callback and skip_callback():
+                # Caller asked to abandon the current video — the outer
+                # batch loop will continue with the next one.
+                print("\n⏭️  Skipping current video by user request")
+                break
+
             ret, frame = self.cap.read()
             if not ret:
                 break
@@ -332,18 +371,27 @@ class UnifiedVideoProcessor:
                             skip_text: bool,
                             use_quick_text: bool,
                             progress_callback: Optional[Callable],
-                            stop_callback: Optional[Callable]):
+                            stop_callback: Optional[Callable],
+                            skip_callback: Optional[Callable] = None):
         """Turbo video processing (batch frames)"""
         frame_count = 0
         frame_batch = []
         frame_numbers = []
-        
+
         while True:
             if stop_callback and stop_callback():
                 if frame_batch:
                     self._process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                 break
-            
+            if skip_callback and skip_callback():
+                # Flush whatever's already buffered before abandoning the
+                # rest of this video, then break to let the outer loop
+                # move on to the next file.
+                if frame_batch:
+                    self._process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                print("\n⏭️  Skipping current video by user request")
+                break
+
             ret, frame = self.cap.read()
             
             if not ret:

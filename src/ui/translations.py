@@ -20,6 +20,8 @@ TRANSLATIONS = {
         'browse_multiple_btn': '📁+ Add Multiple Videos',
         'clear_videos_btn': '🗑️ Clear List',
         'start_btn': '🚀 Start Processing',
+        'skip_btn': '⏭ Skip Current',
+        'skip_btn_tooltip': 'Abandon the video that is currently being processed and continue with the next one in the batch.',
         'stop_btn': '⏹ Stop Processing',
         'open_output_btn': '📂 Open Output Folder',
         
@@ -64,6 +66,7 @@ TRANSLATIONS = {
         'log_processing': '🎬 Starting video processing...',
         'log_turbo': '⚡ Turbo mode activated (batch processing)',
         'log_stopping': '⏹️  Stopping processing...',
+        'log_skipping_current': '⏭️  Skipping current video, moving to next...',
         'log_progress': '📊 Progress: {:.1f}% | Saved: {} | Persons: {} | Animals: {} | Objects: {}',
         'log_complete': '🎉 PROCESSING COMPLETE!',
         'log_total': '📁 Total saved: {} frames',
@@ -253,6 +256,8 @@ TRANSLATIONS = {
         'browse_multiple_btn': '📁+ Çoklu Video Ekle',
         'clear_videos_btn': '🗑️ Listeyi Temizle',
         'start_btn': '🚀 İşlemi Başlat',
+        'skip_btn': '⏭ Mevcudu Atla',
+        'skip_btn_tooltip': 'Şu an işlenen videoyu bırakıp sıradaki videoya geç.',
         'stop_btn': '⏹ İşlemi Durdur',
         'open_output_btn': '📂 Çıktı Klasörünü Aç',
         
@@ -297,6 +302,7 @@ TRANSLATIONS = {
         'log_processing': '🎬 Video işleme başlatılıyor...',
         'log_turbo': '⚡ Turbo modu aktif (toplu işleme)',
         'log_stopping': '⏹️  İşlem durduruluyor...',
+        'log_skipping_current': '⏭️  Mevcut video atlanıyor, sıradakine geçiliyor...',
         'log_progress': '📊 İlerleme: {:.1f}% | Kaydedilen: {} | Kişiler: {} | Hayvanlar: {} | Nesneler: {}',
         'log_complete': '🎉 İŞLEM TAMAMLANDI!',
         'log_total': '📁 Toplam kaydedilen: {} kare',

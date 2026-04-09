@@ -8,6 +8,7 @@ Featuring Page-based navigation: Video Processing + Standalone Captioning
 import sys
 import os
 import subprocess
+import threading
 from pathlib import Path
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QSlider, 
@@ -42,6 +43,10 @@ class ProcessingThread(QThread):
         self._is_running = True
         self._finished_emitted = False
         self.processor = None
+        # One-shot "skip current video" signal. Set by ``skip()`` from the
+        # UI thread, read by the processor's inner loops, and cleared by
+        # the processor itself at the start of each new video.
+        self._skip_event = threading.Event()
 
     def run(self):
         """Initialize models and run video processing"""
@@ -198,6 +203,7 @@ class ProcessingThread(QThread):
                 skip_text=cfg['skip_text'],
                 progress_callback=self.progress_callback,
                 stop_callback=self.should_stop,
+                skip_event=self._skip_event,
             )
 
             if not self._is_running:
@@ -250,6 +256,16 @@ class ProcessingThread(QThread):
     def stop(self):
         """Stop processing gracefully"""
         self._is_running = False
+        # Wake up any loop that's blocked waiting on the skip event.
+        self._skip_event.set()
+
+    def skip_current_video(self):
+        """
+        Abandon the currently processing video and continue with the next
+        one in the batch. Idempotent — setting the event twice has no
+        effect. The processor clears it before each new video starts.
+        """
+        self._skip_event.set()
 
     def safe_wait(self, timeout_ms=5000):
         """Wait for thread to finish with timeout, return True if finished"""
@@ -770,18 +786,25 @@ class VideoSmartCropperUI(QMainWindow):
         self.process_btn.setEnabled(False)
         self.process_btn.setStyleSheet(theme.btn_primary())
         self.process_btn.clicked.connect(self.start_processing)
-        
+
+        self.skip_btn = QPushButton(get_text('skip_btn', self.current_lang))
+        self.skip_btn.setEnabled(False)
+        self.skip_btn.setStyleSheet(theme.btn_secondary())
+        self.skip_btn.setToolTip(get_text('skip_btn_tooltip', self.current_lang))
+        self.skip_btn.clicked.connect(self.skip_current_video)
+
         self.stop_btn = QPushButton(get_text('stop_btn', self.current_lang))
         self.stop_btn.setEnabled(False)
         self.stop_btn.setStyleSheet(theme.btn_danger())
         self.stop_btn.clicked.connect(self.stop_processing)
-        
+
         # Open output folder button
         self.open_output_btn = QPushButton(get_text('open_output_btn', self.current_lang))
         self.open_output_btn.setStyleSheet(theme.btn_secondary())
         self.open_output_btn.clicked.connect(self.open_output_folder)
-        
+
         buttons_layout.addWidget(self.process_btn)
+        buttons_layout.addWidget(self.skip_btn)
         buttons_layout.addWidget(self.stop_btn)
         buttons_layout.addWidget(self.open_output_btn)
         layout.addLayout(buttons_layout)
@@ -887,7 +910,20 @@ class VideoSmartCropperUI(QMainWindow):
             self.log(get_text('log_stopping', self.current_lang))
             self.processing_thread.stop()
             self.stop_btn.setEnabled(False)
+            self.skip_btn.setEnabled(False)
             # Don't block UI — the thread's finished signal will trigger cleanup
+
+    def skip_current_video(self):
+        """Skip the currently processing video and move on to the next one."""
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.log(get_text('log_skipping_current', self.current_lang))
+            self.processing_thread.skip_current_video()
+            # Briefly disable the skip button to debounce rapid clicks —
+            # it's re-enabled once the next video actually starts. The
+            # simplest approximation: leave it disabled until the user
+            # sees the progress bar advance again (we'll just re-enable
+            # it on the next progress update).
+            self.skip_btn.setEnabled(False)
     
     def start_processing(self):
         """Start video processing with v2.0 features"""
@@ -898,6 +934,9 @@ class VideoSmartCropperUI(QMainWindow):
         # Disable UI during processing
         self.process_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
+        # Skip only makes sense when there's more than one video in the
+        # batch — otherwise it's just a funny-looking Stop.
+        self.skip_btn.setEnabled(len(self.video_paths) > 1)
         self.drop_zone.setEnabled(False)
 
         # Get settings
@@ -971,6 +1010,13 @@ class VideoSmartCropperUI(QMainWindow):
     def on_progress(self, progress: float, stats: dict):
         """Update progress"""
         self.progress_bar.setValue(int(progress))
+        # The skip button gets disabled while the "skip" request is
+        # in-flight; as soon as we see a progress tick again it means
+        # the next video has started and the button is safe to re-arm.
+        if (self.processing_thread and self.processing_thread.isRunning()
+                and len(self.video_paths) > 1
+                and not self.skip_btn.isEnabled()):
+            self.skip_btn.setEnabled(True)
         
         # Update log with stats
         if stats['processed_frames'] % 10 == 0:  # Update every 10 frames
@@ -1036,6 +1082,7 @@ class VideoSmartCropperUI(QMainWindow):
         # Re-enable UI
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.skip_btn.setEnabled(False)
         self.drop_zone.setEnabled(True)
         self._cleanup_processing_thread()
 
@@ -1044,6 +1091,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.log(get_text('log_error', self.current_lang).format(error_msg))
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.skip_btn.setEnabled(False)
         self.drop_zone.setEnabled(True)
         self._cleanup_processing_thread()
 
@@ -1116,6 +1164,8 @@ class VideoSmartCropperUI(QMainWindow):
         self.padding_label.setText(get_text('min_padding', self.current_lang))
         self.padding_help.setToolTip(get_text('min_padding_tooltip', self.current_lang))
         self.process_btn.setText(get_text('start_btn', self.current_lang))
+        self.skip_btn.setText(get_text('skip_btn', self.current_lang))
+        self.skip_btn.setToolTip(get_text('skip_btn_tooltip', self.current_lang))
         self.stop_btn.setText(get_text('stop_btn', self.current_lang))
         self.open_output_btn.setText(get_text('open_output_btn', self.current_lang))
         self.log_label.setText(get_text('log_title', self.current_lang))
