@@ -10,15 +10,15 @@ import os
 import cv2
 import json
 import time
-import queue
 import shutil
 import sqlite3
 import logging
 import threading
 import numpy as np
+from collections import deque
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor
+from typing import Deque, Dict, Iterable, Iterator, List, Optional, Tuple
+from concurrent.futures import Future, ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +70,18 @@ class EmbeddingCache:
     mutex) and uses WAL + NORMAL sync for fast concurrent access.
     """
 
+    _SCHEMA_VERSION = 2
+
     _SCHEMA = """
     CREATE TABLE IF NOT EXISTS embeddings (
-        path     TEXT PRIMARY KEY,
+        path     TEXT NOT NULL,
+        model    TEXT NOT NULL,
         mtime_ns INTEGER NOT NULL,
         size     INTEGER NOT NULL,
         n_faces  INTEGER NOT NULL,
         data     BLOB    NOT NULL,
-        model    TEXT    NOT NULL
+        PRIMARY KEY (path, model)
     );
-    CREATE INDEX IF NOT EXISTS ix_embeddings_model ON embeddings(model);
     """
 
     def __init__(self, path: Path, model_name: str = "buffalo_l"):
@@ -87,18 +89,35 @@ class EmbeddingCache:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.model_name = model_name
         self._lock = threading.Lock()
+        # Autocommit mode — we manage BEGIN/COMMIT explicitly around
+        # batches. Passing isolation_level=None *without* explicit
+        # transactions would silently defeat the periodic commit() below
+        # (each execute would commit on its own).
         self._conn = sqlite3.connect(
             str(self.path),
             check_same_thread=False,
-            isolation_level=None,  # autocommit; we manage transactions ourselves
+            isolation_level=None,
         )
-        self._conn.executescript(self._SCHEMA)
         # Performance pragmas — small risk of losing the last few inserts on
         # a hard crash, which is acceptable for a cache that can be rebuilt.
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA temp_store=MEMORY")
+
+        # Schema migration: if the stored schema version is older than the
+        # current one, drop the old table (cache entries can always be
+        # rebuilt from the source images). Handles the v1 → v2 upgrade
+        # where the primary key changed from (path) to (path, model).
+        row = self._conn.execute("PRAGMA user_version").fetchone()
+        current_version = row[0] if row else 0
+        if current_version < self._SCHEMA_VERSION:
+            self._conn.execute("DROP TABLE IF EXISTS embeddings")
+            self._conn.execute("DROP INDEX IF EXISTS ix_embeddings_model")
+            self._conn.execute(f"PRAGMA user_version = {self._SCHEMA_VERSION}")
+        self._conn.executescript(self._SCHEMA)
+
         self._pending = 0
+        self._in_tx = False
         self.hits = 0
         self.misses = 0
         self._dirty = False
@@ -148,29 +167,35 @@ class EmbeddingCache:
         else:
             blob = b""
         with self._lock:
+            if not self._in_tx:
+                self._conn.execute("BEGIN")
+                self._in_tx = True
             self._conn.execute(
                 "INSERT OR REPLACE INTO embeddings "
-                "(path, mtime_ns, size, n_faces, data, model) "
+                "(path, model, mtime_ns, size, n_faces, data) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (key, stat.st_mtime_ns, stat.st_size, len(faces), blob, self.model_name),
+                (key, self.model_name, stat.st_mtime_ns, stat.st_size, len(faces), blob),
             )
             self._pending += 1
             self._dirty = True
             if self._pending >= 64:
-                self._conn.commit()
+                self._conn.execute("COMMIT")
+                self._in_tx = False
                 self._pending = 0
 
     def flush(self) -> None:
         with self._lock:
-            if self._pending:
-                self._conn.commit()
+            if self._in_tx:
+                self._conn.execute("COMMIT")
+                self._in_tx = False
                 self._pending = 0
 
     def close(self) -> None:
         with self._lock:
             try:
-                if self._pending:
-                    self._conn.commit()
+                if self._in_tx:
+                    self._conn.execute("COMMIT")
+                    self._in_tx = False
                     self._pending = 0
             finally:
                 self._conn.close()
@@ -209,7 +234,10 @@ def _prefetch_decode(
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         it = iter(paths)
-        pending: "list[tuple[Path, object]]" = []
+        # deque gives O(1) popleft vs O(N) list.pop(0) — matters when
+        # max_inflight is large and/or we're processing tens of thousands
+        # of images.
+        pending: Deque[Tuple[Path, "Future[Optional[np.ndarray]]"]] = deque()
 
         # Prime the pipeline
         for _ in range(max_inflight):
@@ -220,7 +248,7 @@ def _prefetch_decode(
             pending.append((p, ex.submit(_imread_unicode, p)))
 
         while pending:
-            p, fut = pending.pop(0)
+            p, fut = pending.popleft()
             try:
                 img = fut.result()
             except Exception as e:
@@ -429,20 +457,37 @@ class CharacterRecognizer:
         Open (or re-use) the embedding cache. When no explicit cache path is
         configured the cache lives alongside the directory being processed so
         it's scoped per-dataset and trivially cleanable.
+
+        If a cache is already open at a *different* path, it is closed and
+        re-opened at the new anchor. This ensures that calling
+        ``load_references()`` (anchored on the reference dir) followed by
+        ``sort_directory()`` (anchored on the input dir) ends up using the
+        dataset's own cache, not the reference directory's.
         """
         if not self.use_cache:
             return None
-        if self._cache is not None:
-            return self._cache
         if self._cache_path_override:
-            cache_path = Path(self._cache_path_override)
+            target = Path(self._cache_path_override).resolve()
         else:
-            cache_path = Path(anchor_dir) / ".lora_harvester_cache.db"
+            target = (Path(anchor_dir) / ".lora_harvester_cache.db").resolve()
+
+        if self._cache is not None:
+            try:
+                current = Path(self._cache.path).resolve()
+            except OSError:
+                current = Path(self._cache.path)
+            if current == target:
+                return self._cache
+            try:
+                self._cache.close()
+            finally:
+                self._cache = None
+
         try:
-            self._cache = EmbeddingCache(cache_path, model_name=self.model_name)
-            logger.info("Embedding cache: %s", cache_path)
+            self._cache = EmbeddingCache(target, model_name=self.model_name)
+            logger.info("Embedding cache: %s", target)
         except sqlite3.Error as e:
-            logger.warning("Could not open embedding cache at %s: %s", cache_path, e)
+            logger.warning("Could not open embedding cache at %s: %s", target, e)
             self._cache = None
         return self._cache
 
@@ -579,7 +624,10 @@ class CharacterRecognizer:
                     continue
                 faces = self._detect_faces(img)
                 if self._cache is not None:
-                    self._cache.put(f, faces)
+                    try:
+                        self._cache.put(f, faces)
+                    except sqlite3.Error as e:
+                        logger.warning("Cache put failed for %s: %s", f, e)
                 if not faces:
                     no_face += 1
                     logger.warning("No face detected in reference image: %s", f)
@@ -640,7 +688,9 @@ class CharacterRecognizer:
             self._ref_char_slices.append((cursor, cursor + n))
             cursor += n
         if rows:
-            self._ref_matrix = np.concatenate(rows, axis=0).astype(np.float32)
+            # rows already come from np.stack on float32 embeddings, so
+            # concatenate preserves the float32 dtype and C-contiguity.
+            self._ref_matrix = np.concatenate(rows, axis=0)
         else:
             self._ref_matrix = None
 
@@ -817,7 +867,10 @@ class CharacterRecognizer:
                 faces = self._detect_faces(img)
                 faces_by_path[img_path] = faces
                 if self._cache is not None:
-                    self._cache.put(img_path, faces)
+                    try:
+                        self._cache.put(img_path, faces)
+                    except sqlite3.Error as e:
+                        logger.warning("Cache put failed for %s: %s", img_path, e)
             elapsed = time.monotonic() - started
             if elapsed > 0 and len(to_decode) > 0:
                 logger.info(
@@ -833,9 +886,11 @@ class CharacterRecognizer:
             )
 
         # Pass 1b: route every image using its (cached or fresh) face list.
+        # Only emit routing progress when the decode phase did nothing
+        # (i.e. everything was a cache hit) so we don't double-tick the bar.
+        routing_progress = self.progress_callback is not None and not to_decode
         for idx, img_path in enumerate(image_files, 1):
-            if self.progress_callback and self._cache is not None and cache_hits:
-                # Keep progress ticking during the (fast) routing phase.
+            if routing_progress:
                 self.progress_callback(idx, total, f"Sorting {img_path.name}")
 
             faces = faces_by_path.get(img_path, [])
@@ -1021,14 +1076,19 @@ class CharacterRecognizer:
         results: List[Path] = []
         supported = self.SUPPORTED_EXTENSIONS
 
-        def _walk(d: Path):
+        # Iterative DFS with an explicit stack — avoids Python's recursion
+        # limit on very deep directory trees and keeps the per-frame cost
+        # as low as a scandir iterator.
+        stack: List[Path] = [input_path]
+        while stack:
+            d = stack.pop()
             try:
                 with os.scandir(d) as it:
                     for entry in it:
                         try:
                             if entry.is_dir(follow_symlinks=False):
                                 if recursive and not _should_skip_dir(Path(entry.path)):
-                                    _walk(Path(entry.path))
+                                    stack.append(Path(entry.path))
                             elif entry.is_file(follow_symlinks=False):
                                 name = entry.name
                                 dot = name.rfind('.')
@@ -1042,7 +1102,6 @@ class CharacterRecognizer:
             except OSError as e:
                 logger.warning("Cannot read directory %s: %s", d, e)
 
-        _walk(input_path)
         # Deterministic ordering so progress/tests are reproducible.
         results.sort()
         return results
