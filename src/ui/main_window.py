@@ -27,6 +27,7 @@ from src.ui.advanced_settings import (
 )
 from src.ui.captioning_page import StandaloneCaptioningPage
 from src.ui.character_sort_page import CharacterSortPage
+from src.ui.caption_editor_page import CaptionEditorPage
 
 
 class ProcessingThread(QThread):
@@ -36,6 +37,9 @@ class ProcessingThread(QThread):
     log_message = pyqtSignal(str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
+    # Emitted right after a cropped frame is written to disk. Carries
+    # the absolute path as a string so the UI can load the thumbnail.
+    frame_saved = pyqtSignal(str)
 
     def __init__(self, config: dict):
         super().__init__()
@@ -47,6 +51,10 @@ class ProcessingThread(QThread):
         # UI thread, read by the processor's inner loops, and cleared by
         # the processor itself at the start of each new video.
         self._skip_event = threading.Event()
+        # Pause/Resume. Inverted semantics for convenience: set() means
+        # "running", clear() means "paused". Starts set (= running).
+        self._pause_event = threading.Event()
+        self._pause_event.set()
 
     def run(self):
         """Initialize models and run video processing"""
@@ -204,6 +212,10 @@ class ProcessingThread(QThread):
                 progress_callback=self.progress_callback,
                 stop_callback=self.should_stop,
                 skip_event=self._skip_event,
+                pause_event=self._pause_event,
+                start_skip_seconds=cfg.get('start_skip_seconds', 0.0),
+                end_skip_seconds=cfg.get('end_skip_seconds', 0.0),
+                frame_saved_callback=self._on_frame_saved,
             )
 
             if not self._is_running:
@@ -253,11 +265,27 @@ class ProcessingThread(QThread):
         """Check if processing should stop"""
         return not self._is_running
 
+    def _on_frame_saved(self, path: str):
+        """Called from the processor thread. Emit a signal so the UI can
+        load the thumbnail on the main thread."""
+        if self._is_running:
+            self.frame_saved.emit(path)
+
     def stop(self):
         """Stop processing gracefully"""
         self._is_running = False
-        # Wake up any loop that's blocked waiting on the skip event.
+        # Wake up any loop that's blocked on pause or skip.
+        self._pause_event.set()
         self._skip_event.set()
+
+    def toggle_pause(self) -> bool:
+        """Toggle pause/resume. Returns True if now paused."""
+        if self._pause_event.is_set():
+            self._pause_event.clear()
+            return True
+        else:
+            self._pause_event.set()
+            return False
 
     def skip_current_video(self):
         """
@@ -443,9 +471,14 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_char_sort_btn.setStyleSheet(self._page_btn_style(False))
         self.page_char_sort_btn.clicked.connect(lambda: self.switch_page(2))
 
+        self.page_caption_editor_btn = QPushButton(get_text('page_caption_editor', self.current_lang))
+        self.page_caption_editor_btn.setStyleSheet(self._page_btn_style(False))
+        self.page_caption_editor_btn.clicked.connect(lambda: self.switch_page(3))
+
         top_bar.addWidget(self.page_video_btn)
         top_bar.addWidget(self.page_caption_btn)
         top_bar.addWidget(self.page_char_sort_btn)
+        top_bar.addWidget(self.page_caption_editor_btn)
         top_bar.addStretch()
         
         # Language selector
@@ -489,6 +522,14 @@ class VideoSmartCropperUI(QMainWindow):
         char_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(char_scroll)
 
+        # Page 4: Caption Editor
+        self.caption_editor_page = CaptionEditorPage(self.current_lang)
+        ce_scroll = QScrollArea()
+        ce_scroll.setWidgetResizable(True)
+        ce_scroll.setWidget(self.caption_editor_page)
+        ce_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_stack.addWidget(ce_scroll)
+
         main_layout.addWidget(self.page_stack)
         
         # Apply unified dark theme (black/gray/orange)
@@ -523,6 +564,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_video_btn.setStyleSheet(self._page_btn_style(index == 0))
         self.page_caption_btn.setStyleSheet(self._page_btn_style(index == 1))
         self.page_char_sort_btn.setStyleSheet(self._page_btn_style(index == 2))
+        self.page_caption_editor_btn.setStyleSheet(self._page_btn_style(index == 3))
     
     def setup_video_page(self):
         """Setup video processing page"""
@@ -776,7 +818,40 @@ class VideoSmartCropperUI(QMainWindow):
         padding_layout.addWidget(self.padding_spinbox)
         padding_layout.addStretch()
         settings_layout.addLayout(padding_layout)
-        
+
+        # ── Batch-wide video trim ────────────────────────────────────
+        trim_layout = QHBoxLayout()
+        self.trim_label = QLabel(get_text('trim_label', self.current_lang))
+        self.trim_label.setStyleSheet(theme.label_default())
+        self.trim_help = QLabel("ℹ️")
+        self.trim_help.setStyleSheet(theme.info_icon())
+        self.trim_help.setToolTip(get_text('trim_tooltip', self.current_lang))
+        self.trim_help.setCursor(Qt.WhatsThisCursor)
+        self.trim_start_spin = QSpinBox()
+        self.trim_start_spin.setMinimum(0)
+        self.trim_start_spin.setMaximum(600)
+        self.trim_start_spin.setValue(0)
+        self.trim_start_spin.setSuffix("s")
+        self.trim_start_spin.setStyleSheet(theme.spinbox())
+        self.trim_start_lbl = QLabel(get_text('trim_start', self.current_lang))
+        self.trim_start_lbl.setStyleSheet(theme.label_default())
+        self.trim_end_spin = QSpinBox()
+        self.trim_end_spin.setMinimum(0)
+        self.trim_end_spin.setMaximum(600)
+        self.trim_end_spin.setValue(0)
+        self.trim_end_spin.setSuffix("s")
+        self.trim_end_spin.setStyleSheet(theme.spinbox())
+        self.trim_end_lbl = QLabel(get_text('trim_end', self.current_lang))
+        self.trim_end_lbl.setStyleSheet(theme.label_default())
+        trim_layout.addWidget(self.trim_label)
+        trim_layout.addWidget(self.trim_help)
+        trim_layout.addWidget(self.trim_start_lbl)
+        trim_layout.addWidget(self.trim_start_spin)
+        trim_layout.addWidget(self.trim_end_lbl)
+        trim_layout.addWidget(self.trim_end_spin)
+        trim_layout.addStretch()
+        settings_layout.addLayout(trim_layout)
+
         layout.addWidget(self.settings_group)
         
         # Process and Stop buttons
@@ -786,6 +861,12 @@ class VideoSmartCropperUI(QMainWindow):
         self.process_btn.setEnabled(False)
         self.process_btn.setStyleSheet(theme.btn_primary())
         self.process_btn.clicked.connect(self.start_processing)
+
+        self.pause_btn = QPushButton(get_text('pause_btn', self.current_lang))
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setStyleSheet(theme.btn_secondary())
+        self.pause_btn.setToolTip(get_text('pause_btn_tooltip', self.current_lang))
+        self.pause_btn.clicked.connect(self.toggle_pause)
 
         self.skip_btn = QPushButton(get_text('skip_btn', self.current_lang))
         self.skip_btn.setEnabled(False)
@@ -804,27 +885,61 @@ class VideoSmartCropperUI(QMainWindow):
         self.open_output_btn.clicked.connect(self.open_output_folder)
 
         buttons_layout.addWidget(self.process_btn)
+        buttons_layout.addWidget(self.pause_btn)
         buttons_layout.addWidget(self.skip_btn)
         buttons_layout.addWidget(self.stop_btn)
         buttons_layout.addWidget(self.open_output_btn)
         layout.addLayout(buttons_layout)
-        
+
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet(theme.progress_bar())
         layout.addWidget(self.progress_bar)
-        
+
+        # ── Live preview thumbnail grid ──────────────────────────────
+        self.preview_label = QLabel(get_text('preview_title', self.current_lang))
+        self.preview_label.setStyleSheet(
+            f"font-weight: bold; margin-top: 6px; color: {theme.TEXT_PRIMARY};"
+        )
+        layout.addWidget(self.preview_label)
+
+        from PyQt5.QtWidgets import QGridLayout
+        self._preview_frame = QFrame()
+        self._preview_frame.setStyleSheet(
+            f"background-color: {theme.BG_DARK}; border-radius: 6px;"
+        )
+        self._preview_grid = QGridLayout(self._preview_frame)
+        self._preview_grid.setSpacing(4)
+        self._preview_grid.setContentsMargins(4, 4, 4, 4)
+        self._PREVIEW_COLS = 6
+        self._PREVIEW_ROWS = 2
+        self._preview_labels: list = []
+        for r in range(self._PREVIEW_ROWS):
+            for c in range(self._PREVIEW_COLS):
+                lbl = QLabel()
+                lbl.setFixedSize(96, 96)
+                lbl.setAlignment(Qt.AlignCenter)
+                lbl.setStyleSheet(
+                    f"background-color: {theme.BG_CARD}; border-radius: 4px;"
+                )
+                self._preview_grid.addWidget(lbl, r, c)
+                self._preview_labels.append(lbl)
+        self._preview_frame.setMaximumHeight(
+            self._PREVIEW_ROWS * 100 + 12
+        )
+        layout.addWidget(self._preview_frame)
+
         # Status/Log area
         self.log_label = QLabel(get_text('log_title', self.current_lang))
         self.log_label.setStyleSheet(f"font-weight: bold; margin-top: 10px; color: {theme.TEXT_PRIMARY};")
         layout.addWidget(self.log_label)
-        
+
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(150)
         self.log_text.setStyleSheet(theme.log_area())
         layout.addWidget(self.log_text)
-        
+
         self.log(get_text('log_started', self.current_lang))
     
     def log(self, message: str):
@@ -866,21 +981,62 @@ class VideoSmartCropperUI(QMainWindow):
         except Exception as e:
             self.log(f"❌ Failed to open output folder: {str(e)}")
     
+    _VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v'}
+
     def on_files_dropped(self, file_paths: List[str]):
-        """Handle file selection - supports multiple files"""
-        self.video_paths = file_paths
+        """Handle file / folder / .txt list selection.
+
+        Folder drop → recursively walk and collect all video files.
+        .txt drop   → read line-by-line as video paths.
+        Otherwise   → treat each item as a direct video path.
+        """
+        resolved: List[str] = []
+        for p in file_paths:
+            pp = Path(p)
+            if pp.is_dir():
+                # Recursive video walk
+                found = sorted(
+                    str(f) for f in pp.rglob('*')
+                    if f.is_file() and f.suffix.lower() in self._VIDEO_EXTENSIONS
+                )
+                resolved.extend(found)
+                if found:
+                    self.log(f"📂 Folder scanned: {pp.name} ({len(found)} videos)")
+                else:
+                    self.log(f"⚠️ No videos found in {pp.name}")
+            elif pp.suffix.lower() == '.txt' and pp.is_file():
+                try:
+                    lines = pp.read_text(encoding='utf-8').splitlines()
+                    for line in lines:
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                        lp = Path(line)
+                        if lp.is_file() and lp.suffix.lower() in self._VIDEO_EXTENSIONS:
+                            resolved.append(str(lp))
+                    self.log(f"📋 Loaded {len(resolved)} paths from {pp.name}")
+                except Exception as e:
+                    self.log(f"❌ Failed to read list file {pp.name}: {e}")
+            else:
+                resolved.append(str(pp))
+
+        if not resolved:
+            self.log("⚠️ No valid video files found")
+            return
+
+        self.video_paths = resolved
         self.process_btn.setEnabled(True)
-        
-        if len(file_paths) == 1:
-            self.log(get_text('log_loaded', self.current_lang).format(Path(file_paths[0]).name))
+
+        if len(resolved) == 1:
+            self.log(get_text('log_loaded', self.current_lang).format(Path(resolved[0]).name))
             self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(1))
         else:
-            names = ', '.join([Path(f).name for f in file_paths[:3]])
-            if len(file_paths) > 3:
-                names += f' ... (+{len(file_paths)-3} more)'
+            names = ', '.join([Path(f).name for f in resolved[:3]])
+            if len(resolved) > 3:
+                names += f' ... (+{len(resolved)-3} more)'
             self.log(get_text('log_loaded', self.current_lang).format(names))
-            self.log(get_text('log_batch_mode', self.current_lang).format(len(file_paths)))
-            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(len(file_paths)))
+            self.log(get_text('log_batch_mode', self.current_lang).format(len(resolved)))
+            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(len(resolved)))
     
     def _cleanup_processing_thread(self):
         """Disconnect signals and schedule deletion of the current processing thread"""
@@ -904,6 +1060,17 @@ class VideoSmartCropperUI(QMainWindow):
                     pass
             self.processing_thread = None
 
+    def toggle_pause(self):
+        """Toggle pause/resume on the processing thread."""
+        if self.processing_thread and self.processing_thread.isRunning():
+            now_paused = self.processing_thread.toggle_pause()
+            if now_paused:
+                self.pause_btn.setText(get_text('resume_btn', self.current_lang))
+                self.log(get_text('log_paused', self.current_lang))
+            else:
+                self.pause_btn.setText(get_text('pause_btn', self.current_lang))
+                self.log(get_text('log_resumed', self.current_lang))
+
     def stop_processing(self):
         """Stop video processing"""
         if self.processing_thread and self.processing_thread.isRunning():
@@ -911,6 +1078,7 @@ class VideoSmartCropperUI(QMainWindow):
             self.processing_thread.stop()
             self.stop_btn.setEnabled(False)
             self.skip_btn.setEnabled(False)
+            self.pause_btn.setEnabled(False)
             # Don't block UI — the thread's finished signal will trigger cleanup
 
     def skip_current_video(self):
@@ -934,10 +1102,15 @@ class VideoSmartCropperUI(QMainWindow):
         # Disable UI during processing
         self.process_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
+        self.pause_btn.setEnabled(True)
+        self.pause_btn.setText(get_text('pause_btn', self.current_lang))
         # Skip only makes sense when there's more than one video in the
         # batch — otherwise it's just a funny-looking Stop.
         self.skip_btn.setEnabled(len(self.video_paths) > 1)
         self.drop_zone.setEnabled(False)
+        # Clear the preview thumbnails for a fresh run.
+        for lbl in self._preview_labels:
+            lbl.clear()
 
         # Get settings
         frame_interval = self.interval_slider.value()
@@ -991,6 +1164,8 @@ class VideoSmartCropperUI(QMainWindow):
             'models_to_use': models_to_use,
             'voting_threshold': voting_threshold,
             'use_turbo': use_turbo,
+            'start_skip_seconds': float(self.trim_start_spin.value()),
+            'end_skip_seconds': float(self.trim_end_spin.value()),
             'quality_settings': quality_settings,
             'caption_settings': caption_settings,
             'tag_settings': tag_settings,
@@ -1005,8 +1180,36 @@ class VideoSmartCropperUI(QMainWindow):
         self.processing_thread.log_message.connect(self.log)
         self.processing_thread.finished.connect(self.on_finished)
         self.processing_thread.error.connect(self.on_error)
+        self.processing_thread.frame_saved.connect(self._on_preview_frame)
         self.processing_thread.start()
     
+    def _on_preview_frame(self, path: str):
+        """Slot connected to ProcessingThread.frame_saved.
+
+        Shifts the preview grid left and places the new thumbnail at the
+        rightmost position. The image is down-sampled to 96x96 in the
+        main thread; since JPEGs are small (typically <100KB) and we fire
+        at most once per saved frame the overhead is negligible."""
+        from PyQt5.QtGui import QPixmap
+        try:
+            pix = QPixmap(path)
+            if pix.isNull():
+                return
+            thumb = pix.scaled(
+                96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation,
+            )
+        except Exception:
+            return
+        # Shift left: move every label's pixmap one slot to the left, then
+        # set the last slot to the new thumbnail.
+        for i in range(len(self._preview_labels) - 1):
+            pm = self._preview_labels[i + 1].pixmap()
+            if pm and not pm.isNull():
+                self._preview_labels[i].setPixmap(pm)
+            else:
+                self._preview_labels[i].clear()
+        self._preview_labels[-1].setPixmap(thumb)
+
     def on_progress(self, progress: float, stats: dict):
         """Update progress"""
         self.progress_bar.setValue(int(progress))
@@ -1083,6 +1286,8 @@ class VideoSmartCropperUI(QMainWindow):
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.skip_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText(get_text('pause_btn', self.current_lang))
         self.drop_zone.setEnabled(True)
         self._cleanup_processing_thread()
 
@@ -1092,6 +1297,8 @@ class VideoSmartCropperUI(QMainWindow):
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.skip_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText(get_text('pause_btn', self.current_lang))
         self.drop_zone.setEnabled(True)
         self._cleanup_processing_thread()
 
@@ -1131,6 +1338,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_video_btn.setText(get_text('page_video_processing', self.current_lang))
         self.page_caption_btn.setText(get_text('page_captioning', self.current_lang))
         self.page_char_sort_btn.setText(get_text('page_character_sort', self.current_lang))
+        self.page_caption_editor_btn.setText(get_text('page_caption_editor', self.current_lang))
 
         # Update captioning page language
         if hasattr(self, 'captioning_page'):
@@ -1139,7 +1347,11 @@ class VideoSmartCropperUI(QMainWindow):
         # Update character sort page language
         if hasattr(self, 'char_sort_page'):
             self.char_sort_page.update_language(self.current_lang)
-        
+
+        # Update caption editor page language
+        if hasattr(self, 'caption_editor_page'):
+            self.caption_editor_page.update_language(self.current_lang)
+
         # Video page elements
         self.title_label.setText(get_text('title', self.current_lang))
         self.subtitle_label.setText(get_text('subtitle', self.current_lang))
@@ -1164,10 +1376,17 @@ class VideoSmartCropperUI(QMainWindow):
         self.padding_label.setText(get_text('min_padding', self.current_lang))
         self.padding_help.setToolTip(get_text('min_padding_tooltip', self.current_lang))
         self.process_btn.setText(get_text('start_btn', self.current_lang))
+        self.pause_btn.setText(get_text('pause_btn', self.current_lang))
+        self.pause_btn.setToolTip(get_text('pause_btn_tooltip', self.current_lang))
         self.skip_btn.setText(get_text('skip_btn', self.current_lang))
         self.skip_btn.setToolTip(get_text('skip_btn_tooltip', self.current_lang))
         self.stop_btn.setText(get_text('stop_btn', self.current_lang))
         self.open_output_btn.setText(get_text('open_output_btn', self.current_lang))
+        self.trim_label.setText(get_text('trim_label', self.current_lang))
+        self.trim_help.setToolTip(get_text('trim_tooltip', self.current_lang))
+        self.trim_start_lbl.setText(get_text('trim_start', self.current_lang))
+        self.trim_end_lbl.setText(get_text('trim_end', self.current_lang))
+        self.preview_label.setText(get_text('preview_title', self.current_lang))
         self.log_label.setText(get_text('log_title', self.current_lang))
         self.update_drop_zone_text()
         

@@ -749,7 +749,7 @@ class CharacterRecognizer:
     # ─── Main sorting pipeline ────────────────────────────────────────────────
 
     # System folder names that are never counted toward the character limit
-    _SYSTEM_FOLDERS = {"no_face", "multi_face", "unknown", "other"}
+    _SYSTEM_FOLDERS = {"no_face", "multi_face", "unknown", "other", "trimmed"}
 
     def sort_directory(
         self,
@@ -758,6 +758,7 @@ class CharacterRecognizer:
         copy: bool = False,
         recursive: bool = False,
         max_characters: int = 6,
+        max_per_character: int = 0,
     ) -> Dict[str, int]:
         """
         Sort images in input_dir into character sub-folders.
@@ -946,6 +947,12 @@ class CharacterRecognizer:
             all_assignments[path] = "multi_face"
 
         all_assignments = self._apply_max_characters(all_assignments, max_characters)
+
+        # Optional quality-ranked trim: keep top-N sharpest per character.
+        if max_per_character > 0:
+            all_assignments = self.trim_per_character(
+                all_assignments, max_per_character,
+            )
 
         stats: Dict[str, int] = {}
         errors = 0
@@ -1207,6 +1214,71 @@ class CharacterRecognizer:
                 result[path] = "other"
             else:
                 result[path] = name
+        return result
+
+    # ─── Quality-ranked trim ────────────────────────────────────────────────
+
+    @staticmethod
+    def _sharpness(path: Path) -> float:
+        """Laplacian variance — higher = sharper. Returns 0.0 on failure."""
+        img = _imread_unicode(path)
+        if img is None:
+            return 0.0
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+    def trim_per_character(
+        self,
+        assignments: Dict[Path, str],
+        max_per_character: int,
+    ) -> Dict[Path, str]:
+        """
+        Within each character group, keep only the ``max_per_character``
+        sharpest images (by Laplacian variance). Excess images are
+        re-assigned to ``trimmed/``.
+
+        System folders (no_face, multi_face, unknown, other) are not
+        trimmed.
+
+        Args:
+            assignments: {path → character_name} dict.
+            max_per_character: Keep at most this many per character.
+                               0 or negative → no trimming.
+
+        Returns:
+            Updated assignments dict.
+        """
+        if max_per_character <= 0:
+            return assignments
+
+        # Group paths by character, skipping system folders.
+        from collections import defaultdict
+        groups: Dict[str, List[Path]] = defaultdict(list)
+        for path, name in assignments.items():
+            groups[name].append(path)
+
+        trimmed_count = 0
+        result = dict(assignments)
+        for name, paths in groups.items():
+            if name in self._SYSTEM_FOLDERS:
+                continue
+            if len(paths) <= max_per_character:
+                continue
+            # Rank by sharpness descending
+            scored = sorted(
+                ((p, self._sharpness(p)) for p in paths),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+            keep = {p for p, _ in scored[:max_per_character]}
+            for p in paths:
+                if p not in keep:
+                    result[p] = "trimmed"
+                    trimmed_count += 1
+
+        if trimmed_count:
+            print(f"  ✂  Trimmed {trimmed_count} excess image(s) → trimmed/")
+
         return result
 
     # ─── Utility ──────────────────────────────────────────────────────────────

@@ -87,6 +87,7 @@ class CharacterSortThread(QThread):
                     copy=s.get('copy_files', False),
                     recursive=s.get('recursive', False),
                     max_characters=s.get('max_characters', 6),
+                    max_per_character=s.get('max_per_character', 0),
                 )
             finally:
                 # Always release the SQLite cache so WAL is flushed before
@@ -449,6 +450,26 @@ class CharacterSortPage(QWidget):
         row_max.addStretch()
         lay.addLayout(row_max)
 
+        # Row 2b: max per character (quality-ranked top-N trim)
+        row_topn = QHBoxLayout()
+        self.topn_lbl = QLabel(get_text('char_max_per_char', self.lang))
+        self.topn_lbl.setStyleSheet(theme.label_frame())
+        self.topn_info = QLabel("ℹ️")
+        self.topn_info.setStyleSheet(theme.info_icon_frame())
+        self.topn_info.setToolTip(get_text('char_max_per_char_tooltip', self.lang))
+        self.topn_info.setCursor(Qt.WhatsThisCursor)
+        self.topn_spin = QSpinBox()
+        self.topn_spin.setMinimum(0)
+        self.topn_spin.setMaximum(9999)
+        self.topn_spin.setValue(0)
+        self.topn_spin.setSpecialValueText("off")
+        self.topn_spin.setStyleSheet(theme.spinbox() if hasattr(theme, 'spinbox') else "")
+        row_topn.addWidget(self.topn_lbl)
+        row_topn.addWidget(self.topn_info)
+        row_topn.addWidget(self.topn_spin)
+        row_topn.addStretch()
+        lay.addLayout(row_topn)
+
         # Row 3: checkboxes
         row3 = QHBoxLayout()
 
@@ -608,6 +629,7 @@ class CharacterSortPage(QWidget):
             'recursive': self.recursive_cb.isChecked(),
             'use_gpu': self.gpu_cb.isChecked(),
             'max_characters': self.max_char_slider.value(),
+            'max_per_character': self.topn_spin.value(),
         }
 
     # ─── Image counting ───────────────────────────────────────────────────────

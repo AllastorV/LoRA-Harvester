@@ -67,6 +67,13 @@ class UnifiedVideoProcessor:
         self.cropper = cropper
         self.use_turbo = use_turbo
         self.batch_size = batch_size
+        # Smallest batch size we'll auto-shrink down to on OOM before
+        # giving up. 1 effectively disables turbo but still produces
+        # correct output.
+        self._min_batch_size = 1
+        # Set by process_all_videos. Kept on the instance so the save
+        # helpers don't need new arguments.
+        self._frame_saved_callback: Optional[Callable[[str], None]] = None
         
         # V2.0 components
         self.quality_analyzer = quality_analyzer
@@ -196,7 +203,11 @@ class UnifiedVideoProcessor:
                           use_quick_text_check: bool = True,
                           progress_callback: Optional[Callable] = None,
                           stop_callback: Optional[Callable] = None,
-                          skip_event: Optional[threading.Event] = None) -> Dict:
+                          skip_event: Optional[threading.Event] = None,
+                          pause_event: Optional[threading.Event] = None,
+                          start_skip_seconds: float = 0.0,
+                          end_skip_seconds: float = 0.0,
+                          frame_saved_callback: Optional[Callable] = None) -> Dict:
         """
         Process all videos in the list
 
@@ -211,11 +222,31 @@ class UnifiedVideoProcessor:
                         the next one. The event is cleared automatically
                         before each video starts, so it behaves as a
                         one-shot "skip current" signal.
+            pause_event: Optional threading.Event. Semantics are inverted
+                        for convenience: set() means "running", clear()
+                        means "paused". The inner loops block on
+                        pause_event.wait() at the top of every iteration,
+                        so pausing is instantaneous *between* frames.
+                        If None, processing never pauses.
+            start_skip_seconds: Skip the first N seconds of every video.
+                        Applied uniformly to the whole batch — handy for
+                        dropping intros from a folder of episodes without
+                        clicking through each one.
+            end_skip_seconds: Skip the last N seconds of every video.
+                        Same batch-wide semantics as ``start_skip_seconds``.
+            frame_saved_callback: Optional zero-arg + path callable invoked
+                        right after a frame is written to disk. Used by
+                        the UI's live preview thumbnail grid.
 
         Returns:
             Overall statistics for all videos
         """
         total_start = time.time()
+
+        # Expose the frame-saved callback to the frame-saving helpers.
+        # Stashing it on the instance keeps the signatures of the
+        # deeply-nested save paths unchanged.
+        self._frame_saved_callback = frame_saved_callback
 
         for idx, video_path in enumerate(self.video_paths, 1):
             print(f"\n{'='*60}")
@@ -245,6 +276,9 @@ class UnifiedVideoProcessor:
                 progress_callback,
                 stop_callback,
                 skip_callback,
+                pause_event,
+                start_skip_seconds,
+                end_skip_seconds,
             )
 
             # Log whether this video was skipped mid-flight so the UI can
@@ -277,7 +311,10 @@ class UnifiedVideoProcessor:
                             use_quick_text_check: bool = True,
                             progress_callback: Optional[Callable] = None,
                             stop_callback: Optional[Callable] = None,
-                            skip_callback: Optional[Callable] = None) -> Dict:
+                            skip_callback: Optional[Callable] = None,
+                            pause_event: Optional[threading.Event] = None,
+                            start_skip_seconds: float = 0.0,
+                            end_skip_seconds: float = 0.0) -> Dict:
         """Process a single video
 
         Args:
@@ -286,6 +323,12 @@ class UnifiedVideoProcessor:
                            is abandoned. The outer batch loop is responsible
                            for clearing / resetting the underlying flag so
                            the next video starts fresh.
+            pause_event: See ``process_all_videos`` — set() means running,
+                           clear() means paused. The inner loop blocks on
+                           ``wait()`` at the top of every iteration.
+            start_skip_seconds / end_skip_seconds: Batch-wide trim applied
+                           to this video as frame-count windows, computed
+                           from ``self.fps`` and ``self.total_frames``.
         """
         if not self.open_video(video_path):
             return self._create_empty_stats()
@@ -302,16 +345,36 @@ class UnifiedVideoProcessor:
         if self.quality_analyzer and hasattr(self.quality_analyzer, 'clear_history'):
             self.quality_analyzer.clear_history()
 
+        # Resolve the trim window [start_frame, end_frame) in source frames.
+        # Clamp to [0, total_frames]. If the window is empty (start >= end)
+        # skip the whole video with a clear log line.
+        start_frame = int(max(0.0, start_skip_seconds) * self.fps)
+        end_frame = self.total_frames - int(max(0.0, end_skip_seconds) * self.fps)
+        if end_frame <= start_frame:
+            logger.warning(
+                "Trim window [%.1fs .. -%.1fs] is empty for %s (fps=%.1f, "
+                "total=%d). Skipping video entirely.",
+                start_skip_seconds, end_skip_seconds, video_path,
+                self.fps, self.total_frames,
+            )
+            self.cap.release()
+            return self.stats
+        if start_frame > 0 or end_frame < self.total_frames:
+            print(f"   ✂  Trim: frames [{start_frame} .. {end_frame}) "
+                  f"({start_skip_seconds:.1f}s head, {end_skip_seconds:.1f}s tail)")
+
         try:
             if self.use_turbo:
                 self._process_video_turbo(
                     frame_interval, skip_text, use_quick_text_check,
-                    progress_callback, stop_callback, skip_callback
+                    progress_callback, stop_callback, skip_callback,
+                    pause_event, start_frame, end_frame,
                 )
             else:
                 self._process_video_standard(
                     frame_interval, skip_text, use_quick_text_check,
-                    progress_callback, stop_callback, skip_callback
+                    progress_callback, stop_callback, skip_callback,
+                    pause_event, start_frame, end_frame,
                 )
         finally:
             if self.cap:
@@ -334,11 +397,23 @@ class UnifiedVideoProcessor:
                                use_quick_text: bool,
                                progress_callback: Optional[Callable],
                                stop_callback: Optional[Callable],
-                               skip_callback: Optional[Callable] = None):
+                               skip_callback: Optional[Callable] = None,
+                               pause_event: Optional[threading.Event] = None,
+                               start_frame: int = 0,
+                               end_frame: Optional[int] = None):
         """Standard video processing (frame by frame)"""
         frame_count = 0
 
         while True:
+            # Pause check: if the event is cleared, block here until
+            # resume (or stop). wait() returns True immediately when the
+            # event is already set — i.e. not paused — so the hot path
+            # is effectively free.
+            if pause_event is not None and not pause_event.is_set():
+                print("\n⏸  Paused — waiting for resume...")
+                pause_event.wait()
+                print("▶  Resumed")
+
             if stop_callback and stop_callback():
                 break
             if skip_callback and skip_callback():
@@ -350,12 +425,18 @@ class UnifiedVideoProcessor:
             ret, frame = self.cap.read()
             if not ret:
                 break
-            
+
             frame_count += 1
-            
+
+            # Respect the trim window — drop head and tail frames silently.
+            if frame_count < start_frame:
+                continue
+            if end_frame is not None and frame_count >= end_frame:
+                break
+
             if frame_count % frame_interval != 0:
                 continue
-            
+
             self.stats['processed_frames'] += 1
 
             # Progress callback — fire every 10 processed frames (independent of frame_interval)
@@ -372,50 +453,143 @@ class UnifiedVideoProcessor:
                             use_quick_text: bool,
                             progress_callback: Optional[Callable],
                             stop_callback: Optional[Callable],
-                            skip_callback: Optional[Callable] = None):
+                            skip_callback: Optional[Callable] = None,
+                            pause_event: Optional[threading.Event] = None,
+                            start_frame: int = 0,
+                            end_frame: Optional[int] = None):
         """Turbo video processing (batch frames)"""
         frame_count = 0
         frame_batch = []
         frame_numbers = []
 
         while True:
+            if pause_event is not None and not pause_event.is_set():
+                # Flush whatever is already buffered before parking —
+                # otherwise a long pause would hold onto VRAM/RAM for
+                # no reason.
+                if frame_batch:
+                    self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                    frame_batch = []
+                    frame_numbers = []
+                print("\n⏸  Paused — waiting for resume...")
+                pause_event.wait()
+                print("▶  Resumed")
+
             if stop_callback and stop_callback():
                 if frame_batch:
-                    self._process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                    self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                 break
             if skip_callback and skip_callback():
                 # Flush whatever's already buffered before abandoning the
                 # rest of this video, then break to let the outer loop
                 # move on to the next file.
                 if frame_batch:
-                    self._process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                    self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                 print("\n⏭️  Skipping current video by user request")
                 break
 
             ret, frame = self.cap.read()
-            
+
             if not ret:
                 if frame_batch:
-                    self._process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                    self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                 break
-            
+
             frame_count += 1
-            
+
+            # Respect the trim window.
+            if frame_count < start_frame:
+                continue
+            if end_frame is not None and frame_count >= end_frame:
+                if frame_batch:
+                    self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                break
+
             if frame_count % frame_interval != 0:
                 continue
-            
+
             frame_batch.append(frame)
             frame_numbers.append(frame_count)
-            
+
             if len(frame_batch) >= self.batch_size:
-                self._process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                 frame_batch = []
                 frame_numbers = []
-            
+
             if progress_callback and frame_count % (frame_interval * 10) == 0:
                 progress = (frame_count / self.total_frames) * 100 if self.total_frames > 0 else 0
                 progress_callback(progress, self.stats)
-    
+
+    # ─── VRAM-safe batch wrapper ──────────────────────────────────────────
+    def _safe_process_batch(self,
+                           frames: List[np.ndarray],
+                           frame_numbers: List[int],
+                           skip_text: bool,
+                           use_quick_text: bool,
+                           depth: int = 0) -> None:
+        """
+        Wrap ``_process_batch`` with CUDA OOM recovery. If the batch
+        explodes we:
+
+          1. Drain the CUDA caching allocator via ``empty_cache()``.
+          2. Halve the instance-wide ``batch_size`` (down to
+             ``self._min_batch_size``) so subsequent batches are smaller.
+          3. Split the current batch in half and retry each half
+             recursively. This way a single over-sized batch degrades
+             gracefully instead of aborting the whole run.
+          4. If we're already at size 1 and still blowing up the only
+             sane thing is to drop the frame and log it — re-raising
+             would kill the whole video.
+        """
+        if not frames:
+            return
+        try:
+            self._process_batch(frames, frame_numbers, skip_text, use_quick_text)
+            return
+        except RuntimeError as e:
+            # Only intercept OOMs — everything else is a real bug.
+            if 'out of memory' not in str(e).lower():
+                raise
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            logger.warning(
+                "CUDA OOM on batch of %d frames (depth=%d). Shrinking "
+                "batch_size %d → %d and retrying.",
+                len(frames), depth, self.batch_size,
+                max(self._min_batch_size, self.batch_size // 2),
+            )
+            # Permanently shrink the default batch size for subsequent calls.
+            self.batch_size = max(self._min_batch_size, self.batch_size // 2)
+
+            if len(frames) == 1:
+                # Can't split further — drop with a warning. Counting
+                # this lets us surface it in the final summary.
+                self.stats['oom_dropped_frames'] = (
+                    self.stats.get('oom_dropped_frames', 0) + 1
+                )
+                logger.error(
+                    "Dropping frame %s: still OOM at batch_size=1",
+                    frame_numbers[0],
+                )
+                return
+            if depth > 6:
+                # Pathological case — bail out rather than recursing forever.
+                logger.error(
+                    "OOM retry depth exceeded — dropping %d frames",
+                    len(frames),
+                )
+                self.stats['oom_dropped_frames'] = (
+                    self.stats.get('oom_dropped_frames', 0) + len(frames)
+                )
+                return
+            mid = len(frames) // 2
+            self._safe_process_batch(
+                frames[:mid], frame_numbers[:mid], skip_text, use_quick_text, depth + 1,
+            )
+            self._safe_process_batch(
+                frames[mid:], frame_numbers[mid:], skip_text, use_quick_text, depth + 1,
+            )
+
     def _process_batch(self, frames: List[np.ndarray], frame_numbers: List[int],
                       skip_text: bool, use_quick_text: bool):
         """Process a batch of frames with GPU batch detection"""
@@ -665,8 +839,19 @@ class UnifiedVideoProcessor:
         
         filename = f"frame_{frame_number:06d}_q{int(quality*100)}.jpg"
         output_path = output_dir / filename
-        
+
         cv2.imwrite(str(output_path), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+        # Notify the UI's live preview grid (throttled / no-op if None).
+        # Wrapped in try/except so a broken callback can never crash the
+        # processor — the preview is a nice-to-have, not essential.
+        cb = self._frame_saved_callback
+        if cb is not None:
+            try:
+                cb(str(output_path))
+            except Exception as e:
+                logger.debug("frame_saved_callback raised: %s", e)
+
         return output_path
     
     def print_video_stats(self):
