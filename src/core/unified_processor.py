@@ -39,7 +39,8 @@ class UnifiedVideoProcessor:
                  quality_analyzer: Any = None,
                  captioner: Any = None,
                  caption_mode: str = "tags_only",
-                 log_callback: Optional[Callable] = None):
+                 log_callback: Optional[Callable] = None,
+                 jpeg_quality: int = 95):
         """
         Initialize unified processor
 
@@ -80,6 +81,7 @@ class UnifiedVideoProcessor:
         self.captioner = captioner
         self.caption_mode = caption_mode
         self.log_callback = log_callback
+        self.jpeg_quality = max(1, min(100, jpeg_quality))
         
         # Check if using ensemble mode
         self.is_ensemble = hasattr(detector, 'models_to_use')
@@ -841,7 +843,7 @@ class UnifiedVideoProcessor:
         filename = f"frame_{frame_number:06d}_q{int(quality*100)}.jpg"
         output_path = output_dir / filename
 
-        cv2.imwrite(str(output_path), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        cv2.imwrite(str(output_path), frame, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
 
         # Notify the UI's live preview grid (throttled / no-op if None).
         # Wrapped in try/except so a broken callback can never crash the

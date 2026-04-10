@@ -28,6 +28,7 @@ from src.ui.advanced_settings import (
 from src.ui.captioning_page import StandaloneCaptioningPage
 from src.ui.character_sort_page import CharacterSortPage
 from src.ui.caption_editor_page import CaptionEditorPage
+from src.ui.resource_settings import ResourceSettingsDrawer, load_settings as load_resource_settings
 
 
 class ProcessingThread(QThread):
@@ -188,7 +189,9 @@ class ProcessingThread(QThread):
             if not self._is_running:
                 return
 
-            # Create processor
+            # Create processor — pull batch_size and jpeg_quality from
+            # the resource settings drawer instead of hard-coding them.
+            res = cfg.get('resource_settings', {})
             self.processor = UnifiedVideoProcessor(
                 video_paths=cfg['video_paths'],
                 output_dir="output",
@@ -196,11 +199,12 @@ class ProcessingThread(QThread):
                 text_detector=text_detector,
                 cropper=cropper,
                 use_turbo=cfg['use_turbo'],
-                batch_size=4,
+                batch_size=res.get('batch_size', 4),
                 quality_analyzer=quality_analyzer,
                 captioner=captioner,
                 caption_mode=caption_mode,
                 log_callback=lambda msg: self.log_message.emit(msg),
+                jpeg_quality=res.get('jpeg_quality', 95),
             )
 
             self.log_message.emit("All models loaded, processing started...")
@@ -495,7 +499,14 @@ class VideoSmartCropperUI(QMainWindow):
         top_bar.addWidget(self.page_char_sort_btn)
         top_bar.addWidget(self.page_caption_editor_btn)
         top_bar.addStretch()
-        
+
+        # Resource settings button (opens drawer)
+        self.res_settings_btn = QPushButton(get_text('res_menu_btn', self.current_lang))
+        self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
+        self.res_settings_btn.setStyleSheet(theme.btn_secondary())
+        self.res_settings_btn.clicked.connect(self._toggle_resource_drawer)
+        top_bar.addWidget(self.res_settings_btn)
+
         # Language selector
         lang_label = QLabel("🌐")
         lang_label.setFont(QFont('Arial', 14))
@@ -546,7 +557,16 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_stack.addWidget(ce_scroll)
 
         main_layout.addWidget(self.page_stack)
-        
+
+        # ========== RESOURCE SETTINGS DRAWER ==========
+        # The drawer is a child of the central widget so it floats on top.
+        self._resource_drawer = ResourceSettingsDrawer(
+            lang=self.current_lang, parent=central_widget,
+        )
+        self._resource_drawer.settings_changed.connect(self._on_resource_settings_changed)
+        # Pre-load current resource settings for the processor.
+        self._resource_cfg = self._resource_drawer.get_settings()
+
         # Apply unified dark theme (black/gray/orange)
         self.setStyleSheet(theme.global_stylesheet())
     
@@ -561,6 +581,26 @@ class VideoSmartCropperUI(QMainWindow):
         """Style for collapsible panel buttons (unified orange)"""
         return theme.collapsible_btn()
     
+    def _toggle_resource_drawer(self):
+        """Open / close the resource settings drawer."""
+        self._resource_drawer.toggle()
+
+    def _on_resource_settings_changed(self, data: dict):
+        """Slot: user clicked Apply in the resource drawer."""
+        self._resource_cfg = data
+        self.log(get_text('res_apply', self.current_lang))
+
+    def resizeEvent(self, event):
+        """Keep the resource drawer right-aligned when the window resizes."""
+        super().resizeEvent(event)
+        if hasattr(self, '_resource_drawer') and self._resource_drawer._is_open:
+            cw = self.centralWidget()
+            if cw:
+                self._resource_drawer.setGeometry(
+                    cw.width() - self._resource_drawer.DRAWER_WIDTH, 0,
+                    self._resource_drawer.DRAWER_WIDTH, cw.height(),
+                )
+
     def _toggle_panel(self, panel_name: str):
         """Toggle visibility of collapsible panels"""
         panels = {
@@ -1185,6 +1225,8 @@ class VideoSmartCropperUI(QMainWindow):
             'quality_settings': quality_settings,
             'caption_settings': caption_settings,
             'tag_settings': tag_settings,
+            # Resource settings from the drawer
+            'resource_settings': dict(self._resource_cfg),
         }
 
         # Clean up any leftover thread before starting a new one
@@ -1363,6 +1405,12 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_caption_btn.setText(get_text('page_captioning', self.current_lang))
         self.page_char_sort_btn.setText(get_text('page_character_sort', self.current_lang))
         self.page_caption_editor_btn.setText(get_text('page_caption_editor', self.current_lang))
+
+        # Resource settings button + drawer
+        self.res_settings_btn.setText(get_text('res_menu_btn', self.current_lang))
+        self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
+        if hasattr(self, '_resource_drawer'):
+            self._resource_drawer.update_language(self.current_lang)
 
         # Update captioning page language
         if hasattr(self, 'captioning_page'):
