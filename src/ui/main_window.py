@@ -28,6 +28,7 @@ from src.ui.advanced_settings import (
 from src.ui.captioning_page import StandaloneCaptioningPage
 from src.ui.character_sort_page import CharacterSortPage
 from src.ui.caption_editor_page import CaptionEditorPage
+from src.ui.tag_frequency_page import TagFrequencyPage
 from src.ui.resource_settings import ResourceSettingsDrawer, load_settings as load_resource_settings
 
 
@@ -494,10 +495,15 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_caption_editor_btn.setStyleSheet(self._page_btn_style(False))
         self.page_caption_editor_btn.clicked.connect(lambda: self.switch_page(3))
 
+        self.page_tag_freq_btn = QPushButton(get_text('page_tag_frequency', self.current_lang))
+        self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(False))
+        self.page_tag_freq_btn.clicked.connect(lambda: self.switch_page(4))
+
         top_bar.addWidget(self.page_video_btn)
         top_bar.addWidget(self.page_caption_btn)
         top_bar.addWidget(self.page_char_sort_btn)
         top_bar.addWidget(self.page_caption_editor_btn)
+        top_bar.addWidget(self.page_tag_freq_btn)
         top_bar.addStretch()
 
         # Resource settings button (opens drawer)
@@ -556,6 +562,14 @@ class VideoSmartCropperUI(QMainWindow):
         ce_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(ce_scroll)
 
+        # Page 5: Tag Frequency Analyzer
+        self.tag_freq_page = TagFrequencyPage(self.current_lang)
+        tf_scroll = QScrollArea()
+        tf_scroll.setWidgetResizable(True)
+        tf_scroll.setWidget(self.tag_freq_page)
+        tf_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_stack.addWidget(tf_scroll)
+
         main_layout.addWidget(self.page_stack)
 
         # ========== RESOURCE SETTINGS DRAWER ==========
@@ -588,6 +602,12 @@ class VideoSmartCropperUI(QMainWindow):
     def _on_resource_settings_changed(self, data: dict):
         """Slot: user clicked Apply in the resource drawer."""
         self._resource_cfg = data
+        # Apply theme changes if mode or font scale changed
+        new_mode = data.get("theme_mode", "dark")
+        new_scale = data.get("font_scale", 100) / 100.0
+        if new_mode != theme.get_mode() or abs(new_scale - theme.get_font_scale()) > 0.01:
+            theme.set_theme(new_mode, new_scale)
+            self.setStyleSheet(theme.global_stylesheet())
         self.log(get_text('res_apply', self.current_lang))
 
     def resizeEvent(self, event):
@@ -620,6 +640,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_caption_btn.setStyleSheet(self._page_btn_style(index == 1))
         self.page_char_sort_btn.setStyleSheet(self._page_btn_style(index == 2))
         self.page_caption_editor_btn.setStyleSheet(self._page_btn_style(index == 3))
+        self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(index == 4))
     
     def setup_video_page(self):
         """Setup video processing page"""
@@ -1405,6 +1426,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_caption_btn.setText(get_text('page_captioning', self.current_lang))
         self.page_char_sort_btn.setText(get_text('page_character_sort', self.current_lang))
         self.page_caption_editor_btn.setText(get_text('page_caption_editor', self.current_lang))
+        self.page_tag_freq_btn.setText(get_text('page_tag_frequency', self.current_lang))
 
         # Resource settings button + drawer
         self.res_settings_btn.setText(get_text('res_menu_btn', self.current_lang))
@@ -1423,6 +1445,10 @@ class VideoSmartCropperUI(QMainWindow):
         # Update caption editor page language
         if hasattr(self, 'caption_editor_page'):
             self.caption_editor_page.update_language(self.current_lang)
+
+        # Update tag frequency page language
+        if hasattr(self, 'tag_freq_page'):
+            self.tag_freq_page.update_language(self.current_lang)
 
         # Video page elements
         self.title_label.setText(get_text('title', self.current_lang))

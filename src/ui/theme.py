@@ -1,51 +1,128 @@
 """
-Unified Dark Theme for LoRA-Harvester v2.0
-Color Palette: Black, Gray, Orange
+Unified Theme for LoRA-Harvester v2.0
+Color Palette: Black, Gray, Orange (Dark) / White, Gray, Orange (Light)
 All UI components reference this module for consistent styling.
+Supports runtime theme switching via set_theme().
 """
 
-# ═══════════════════════════════════════════════════════════
-#  COLOR PALETTE
-# ═══════════════════════════════════════════════════════════
-
-# Backgrounds (darkest → lightest)
-BG_WINDOW    = "#1e1e1e"   # Main window
-BG_DEEPEST   = "#121212"   # Deepest inputs, log
-BG_DEEP      = "#161616"   # Deep panels
-BG_DARK      = "#1a1a1a"   # Dark panels
-BG_PANEL     = "#1e1e1e"   # Card / panel backgrounds
-BG_SURFACE   = "#252525"   # Elevated surfaces
-BG_HOVER     = "#2d2d2d"   # Hover states
-BG_ELEVATED  = "#353535"   # Higher elevation
-
-# Orange accent family
-ORANGE         = "#e8832a"  # Primary accent
-ORANGE_LIGHT   = "#f5a623"  # Highlights, active text
-ORANGE_DARK    = "#c96f1e"  # Pressed states
-ORANGE_GLOW    = "#ff9f43"  # Glow / bright hover
-ORANGE_DIM     = "#8b5e2f"  # Dimmed / inactive accent
-ORANGE_SUBTLE  = "#3d2a14"  # Very subtle orange tint bg
-
-# Text
-TEXT_PRIMARY   = "#e0e0e0"  # Main text
-TEXT_SECONDARY = "#a0a0a0"  # Secondary text
-TEXT_MUTED     = "#666666"  # Muted / hint text
-TEXT_ACCENT    = "#f5a623"  # Orange accent text
-
-# Borders
-BORDER         = "#333333"  # Default border
-BORDER_LIGHT   = "#444444"  # Lighter border
-BORDER_ACCENT  = "#e8832a"  # Orange accent border
-
-# Semantic
-RED            = "#c0392b"  # Stop / error only
-RED_HOVER      = "#a93226"  # Red hover
-DISABLED_BG    = "#2a2a2a"  # Disabled background
-DISABLED_TEXT  = "#555555"  # Disabled text
-
+import json
+from pathlib import Path as _Path
 
 # ═══════════════════════════════════════════════════════════
-#  STYLE GENERATORS
+#  THEME STATE — persisted in theme_prefs.json
+# ═══════════════════════════════════════════════════════════
+
+_PREFS_PATH = _Path(__file__).resolve().parents[2] / "theme_prefs.json"
+
+_DARK_PALETTE = {
+    "BG_WINDOW":    "#1e1e1e",
+    "BG_DEEPEST":   "#121212",
+    "BG_DEEP":      "#161616",
+    "BG_DARK":      "#1a1a1a",
+    "BG_PANEL":     "#1e1e1e",
+    "BG_CARD":      "#232323",
+    "BG_SURFACE":   "#252525",
+    "BG_HOVER":     "#2d2d2d",
+    "BG_ELEVATED":  "#353535",
+    "ORANGE":       "#e8832a",
+    "ORANGE_LIGHT": "#f5a623",
+    "ORANGE_DARK":  "#c96f1e",
+    "ORANGE_GLOW":  "#ff9f43",
+    "ORANGE_DIM":   "#8b5e2f",
+    "ORANGE_SUBTLE":"#3d2a14",
+    "TEXT_PRIMARY": "#e0e0e0",
+    "TEXT_SECONDARY":"#a0a0a0",
+    "TEXT_MUTED":   "#666666",
+    "TEXT_ACCENT":  "#f5a623",
+    "BORDER":       "#333333",
+    "BORDER_LIGHT": "#444444",
+    "BORDER_ACCENT":"#e8832a",
+    "RED":          "#c0392b",
+    "RED_HOVER":    "#a93226",
+    "DISABLED_BG":  "#2a2a2a",
+    "DISABLED_TEXT":"#555555",
+}
+
+_LIGHT_PALETTE = {
+    "BG_WINDOW":    "#f5f5f5",
+    "BG_DEEPEST":   "#ffffff",
+    "BG_DEEP":      "#fafafa",
+    "BG_DARK":      "#eeeeee",
+    "BG_PANEL":     "#f5f5f5",
+    "BG_CARD":      "#ffffff",
+    "BG_SURFACE":   "#e8e8e8",
+    "BG_HOVER":     "#e0e0e0",
+    "BG_ELEVATED":  "#d5d5d5",
+    "ORANGE":       "#e8832a",
+    "ORANGE_LIGHT": "#f5a623",
+    "ORANGE_DARK":  "#c96f1e",
+    "ORANGE_GLOW":  "#ff9f43",
+    "ORANGE_DIM":   "#d4a574",
+    "ORANGE_SUBTLE":"#fff3e6",
+    "TEXT_PRIMARY": "#1a1a1a",
+    "TEXT_SECONDARY":"#555555",
+    "TEXT_MUTED":   "#888888",
+    "TEXT_ACCENT":  "#c96f1e",
+    "BORDER":       "#cccccc",
+    "BORDER_LIGHT": "#bbbbbb",
+    "BORDER_ACCENT":"#e8832a",
+    "RED":          "#c0392b",
+    "RED_HOVER":    "#a93226",
+    "DISABLED_BG":  "#e0e0e0",
+    "DISABLED_TEXT":"#aaaaaa",
+}
+
+# Current mode: "dark" or "light"
+_current_mode = "dark"
+_font_scale = 1.0  # 0.8 .. 1.4
+
+def _load_prefs():
+    global _current_mode, _font_scale
+    if _PREFS_PATH.exists():
+        try:
+            d = json.loads(_PREFS_PATH.read_text("utf-8"))
+            _current_mode = d.get("mode", "dark")
+            _font_scale = max(0.8, min(1.4, d.get("font_scale", 1.0)))
+        except Exception:
+            pass
+
+def save_prefs():
+    try:
+        _PREFS_PATH.write_text(json.dumps({
+            "mode": _current_mode,
+            "font_scale": _font_scale,
+        }, indent=2), "utf-8")
+    except Exception:
+        pass
+
+_load_prefs()  # run once at import
+
+def set_theme(mode: str = "dark", font_scale: float = 1.0):
+    """Switch palette and update module-level constants."""
+    global _current_mode, _font_scale
+    _current_mode = mode if mode in ("dark", "light") else "dark"
+    _font_scale = max(0.8, min(1.4, font_scale))
+    pal = _LIGHT_PALETTE if _current_mode == "light" else _DARK_PALETTE
+    g = globals()
+    for k, v in pal.items():
+        g[k] = v
+    save_prefs()
+
+def get_mode() -> str:
+    return _current_mode
+
+def get_font_scale() -> float:
+    return _font_scale
+
+def fs(base: int) -> str:
+    """Scale a font-size value and return CSS string."""
+    return f"{max(8, int(base * _font_scale))}px"
+
+# Apply the loaded palette on import
+set_theme(_current_mode, _font_scale)
+
+# ═══════════════════════════════════════════════════════════
+#  BACKWARDS-COMPAT ALIASES — these are updated by set_theme()
 # ═══════════════════════════════════════════════════════════
 
 def global_stylesheet() -> str:

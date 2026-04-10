@@ -56,6 +56,9 @@ def _defaults() -> dict:
         "async_save": True,
         "jpeg_quality": 95,
         "auto_gc": True,
+        # Theme / UI
+        "theme_mode": theme.get_mode(),       # "dark" or "light"
+        "font_scale": int(theme.get_font_scale() * 100),  # 80..140
     }
 
 
@@ -214,6 +217,14 @@ class ResourceSettingsDrawer(QFrame):
             "res_jpeg_quality", 50, 100, 5,
         )
 
+        # ── Theme / UI ──────────────────────────────────────────
+        self._add_section("res_section_theme")
+
+        self.theme_cb = self._add_checkbox("res_light_mode", "theme_mode")
+        self.font_slider, self.font_val = self._add_slider(
+            "res_font_scale", 80, 140, 5, "%",
+        )
+
         self._lay.addStretch()
         scroll.setWidget(inner)
         root.addWidget(scroll, stretch=1)
@@ -250,6 +261,10 @@ class ResourceSettingsDrawer(QFrame):
     def _add_checkbox(self, text_key: str, setting_key: str) -> QCheckBox:
         cb = QCheckBox(get_text(text_key, self.lang))
         cb.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; padding: 3px 0;")
+        tooltip_key = text_key + "_tooltip"
+        tip = get_text(tooltip_key, self.lang)
+        if tip != tooltip_key:
+            cb.setToolTip(tip)
         self._lay.addWidget(cb)
         # Store mapping for language update
         if not hasattr(self, "_cb_keys"):
@@ -262,6 +277,10 @@ class ResourceSettingsDrawer(QFrame):
         lbl = QLabel(get_text(text_key, self.lang))
         lbl.setStyleSheet(theme.label_default())
         lbl.setMinimumWidth(130)
+        tooltip_key = text_key + "_tooltip"
+        tip = get_text(tooltip_key, self.lang)
+        if tip != tooltip_key:
+            lbl.setToolTip(tip)
         row.addWidget(lbl)
 
         sl = QSlider(Qt.Horizontal)
@@ -269,6 +288,8 @@ class ResourceSettingsDrawer(QFrame):
         sl.setMaximum(mx)
         sl.setSingleStep(step)
         sl.setStyleSheet(theme.slider())
+        if tip != tooltip_key:
+            sl.setToolTip(tip)
         row.addWidget(sl, stretch=1)
 
         val = QLabel("")
@@ -306,6 +327,8 @@ class ResourceSettingsDrawer(QFrame):
         self.async_cb.setChecked(s["async_save"])
         self.gc_cb.setChecked(s["auto_gc"])
         self.jpeg_slider.setValue(s["jpeg_quality"])
+        self.theme_cb.setChecked(s.get("theme_mode", "dark") == "light")
+        self.font_slider.setValue(s.get("font_scale", 100))
 
     def _collect_values(self) -> dict:
         return {
@@ -320,6 +343,8 @@ class ResourceSettingsDrawer(QFrame):
             "async_save": self.async_cb.isChecked(),
             "auto_gc": self.gc_cb.isChecked(),
             "jpeg_quality": self.jpeg_slider.value(),
+            "theme_mode": "light" if self.theme_cb.isChecked() else "dark",
+            "font_scale": self.font_slider.value(),
         }
 
     def _apply(self):
@@ -400,5 +425,11 @@ class ResourceSettingsDrawer(QFrame):
             lbl.setText(get_text(key, lang))
         for cb, key in self._cb_keys:
             cb.setText(get_text(key, lang))
+            tip_key = key + "_tooltip"
+            tip = get_text(tip_key, lang)
+            cb.setToolTip(tip if tip != tip_key else "")
         for lbl, key in self._slider_keys:
             lbl.setText(get_text(key, lang))
+            tip_key = key + "_tooltip"
+            tip = get_text(tip_key, lang)
+            lbl.setToolTip(tip if tip != tip_key else "")

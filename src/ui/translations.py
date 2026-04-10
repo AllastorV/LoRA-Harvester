@@ -276,6 +276,20 @@ TRANSLATIONS = {
         'res_jpeg_quality': 'JPEG Quality',
         'res_reset': 'Reset Defaults',
         'res_apply': 'Apply & Save',
+        # Resource Settings Tooltips
+        'res_gpu_enabled_tooltip': 'Enable CUDA GPU acceleration for AI model inference. Requires an NVIDIA GPU with CUDA support.',
+        'res_fp16_tooltip': 'Use half-precision floating point for faster inference and lower VRAM usage. Recommended for most GPUs.',
+        'res_gpu_mem_limit_tooltip': 'Maximum percentage of GPU VRAM to use. Lower this if you get out-of-memory errors.',
+        'res_batch_size_tooltip': 'Number of frames processed simultaneously. Higher = faster but uses more memory.',
+        'res_prefetch_frames_tooltip': 'Number of frames to decode ahead of time. Higher = smoother processing but more RAM usage.',
+        'res_cpu_threads_tooltip': 'Number of CPU threads for parallel processing. Usually best at 2–4 for most systems.',
+        'res_decode_workers_tooltip': 'Number of parallel video decode workers. More workers = faster frame extraction.',
+        'res_ram_limit_tooltip': 'Maximum RAM usage in MB. Processing pauses if this limit is reached.',
+        'res_async_save_tooltip': 'Save files asynchronously in the background. Faster processing but slightly more memory usage.',
+        'res_auto_gc_tooltip': 'Automatically free unused memory during processing. Reduces peak memory at a small speed cost.',
+        'res_jpeg_quality_tooltip': 'JPEG compression quality for saved frames (50–100). Higher = better quality but larger files.',
+        'res_light_mode_tooltip': 'Switch between dark and light interface theme. Changes apply after clicking "Apply & Save".',
+        'res_font_scale_tooltip': 'Scale all text in the interface (80%–140%). Useful for high-DPI displays or accessibility.',
 
         # Standalone Captioning Page (NEW v2.0)
         'captioning_standalone_title': '🏷️ Standalone Image Captioning',
@@ -296,8 +310,36 @@ TRANSLATIONS = {
         'step1_select_folder': '📁 Step 1: Select Folder',
         'step2_settings': '⚙️ Step 2: Settings',
         'step3_start': '🚀 Step 3: Start',
+
+        # Tag Frequency Analyzer
+        'page_tag_frequency': '🏷️ Tag Frequency',
+        'tag_freq_title': '🏷️ Tag Frequency Analyzer',
+        'tag_freq_subtitle': 'Scan caption files, analyze tag frequencies, and bulk-remove unwanted tags',
+        'tag_freq_load': '📂 Load Folder',
+        'tag_freq_apply_bl': '🗑️ Apply Blacklist',
+        'tag_freq_filter': 'Filter tags...',
+        'tag_freq_col_tag': 'Tag',
+        'tag_freq_col_count': 'Count',
+        'tag_freq_col_pct': '%',
+        'tag_freq_bl_title': 'Blacklist',
+        'tag_freq_bl_hint': 'Add tags below (one per line) to remove them from all caption files when you click Apply Blacklist.',
+        'tag_freq_add_selected': '⬅ Add Selected',
+        'tag_freq_no_data': 'No data loaded. Click "Load Folder" to scan caption files.',
+        'tag_freq_select_folder': 'Select Captions Folder',
+        'tag_freq_loaded': '✅ {} files scanned — {} unique tags — {} total occurrences',
+        'tag_freq_bl_applied': '🗑️ Removed {} tag occurrences from {} files',
+        # Tag Frequency Tooltips
+        'tag_freq_load_tooltip': 'Select a folder containing .txt caption files to scan and analyze tag frequencies.',
+        'tag_freq_apply_bl_tooltip': 'Remove all blacklisted tags from every caption file in the loaded folder. This modifies files on disk!',
+        'tag_freq_filter_tooltip': 'Type to filter the tag table. Only matching tags will be shown.',
+        'tag_freq_add_selected_tooltip': 'Add the currently selected tags from the table to the blacklist editor.',
+
+        # Resource Settings - Theme / UI
+        'res_section_theme': '🎨 Theme / UI',
+        'res_light_mode': 'Light Mode',
+        'res_font_scale': 'Font Scale',
     },
-    
+
     'tr': {
         # Main window
         'app_title': 'LoRA-Harvester',
@@ -570,6 +612,20 @@ TRANSLATIONS = {
         'res_jpeg_quality': 'JPEG Kalitesi',
         'res_reset': 'Varsayılana Sıfırla',
         'res_apply': 'Uygula ve Kaydet',
+        # Resource Settings Tooltips
+        'res_gpu_enabled_tooltip': 'AI model çıkarımı için CUDA GPU hızlandırmayı etkinleştir. CUDA destekli NVIDIA GPU gerektirir.',
+        'res_fp16_tooltip': 'Daha hızlı çıkarım ve düşük VRAM kullanımı için yarı hassasiyet kullan. Çoğu GPU için önerilir.',
+        'res_gpu_mem_limit_tooltip': 'Kullanılacak maksimum GPU VRAM yüzdesi. Bellek yetersiz hatası alırsanız düşürün.',
+        'res_batch_size_tooltip': 'Aynı anda işlenen kare sayısı. Yüksek = daha hızlı ama daha fazla bellek kullanır.',
+        'res_prefetch_frames_tooltip': 'Önceden çözümlenecek kare sayısı. Yüksek = daha akıcı işleme ama daha fazla RAM.',
+        'res_cpu_threads_tooltip': 'Paralel işleme için CPU thread sayısı. Çoğu sistem için 2–4 idealdir.',
+        'res_decode_workers_tooltip': 'Paralel video çözümleme worker sayısı. Daha fazla worker = daha hızlı kare çıkarma.',
+        'res_ram_limit_tooltip': 'MB cinsinden maksimum RAM kullanımı. Bu limite ulaşılırsa işleme duraklar.',
+        'res_async_save_tooltip': 'Dosyaları arka planda asenkron kaydet. Daha hızlı işleme ama biraz daha fazla bellek.',
+        'res_auto_gc_tooltip': 'İşleme sırasında kullanılmayan belleği otomatik serbest bırak. Küçük bir hız maliyetiyle bellek kullanımını azaltır.',
+        'res_jpeg_quality_tooltip': 'Kaydedilen kareler için JPEG sıkıştırma kalitesi (50–100). Yüksek = daha iyi kalite ama daha büyük dosya.',
+        'res_light_mode_tooltip': 'Koyu ve açık arayüz teması arasında geçiş yap. "Uygula ve Kaydet"e tıkladıktan sonra uygulanır.',
+        'res_font_scale_tooltip': 'Arayüzdeki tüm metinleri ölçekle (%80–%140). Yüksek DPI ekranlar veya erişilebilirlik için kullanışlı.',
 
         # Standalone Captioning Page (NEW v2.0)
         'captioning_standalone_title': '🏷️ Bağımsız Görsel Etiketleme',
@@ -590,6 +646,34 @@ TRANSLATIONS = {
         'step1_select_folder': '📁 Adım 1: Klasör Seç',
         'step2_settings': '⚙️ Adım 2: Ayarlar',
         'step3_start': '🚀 Adım 3: Başlat',
+
+        # Tag Frequency Analyzer
+        'page_tag_frequency': '🏷️ Etiket Sıklığı',
+        'tag_freq_title': '🏷️ Etiket Sıklığı Analizi',
+        'tag_freq_subtitle': 'Altyazı dosyalarını tara, etiket sıklıklarını analiz et ve istenmeyen etiketleri toplu sil',
+        'tag_freq_load': '📂 Klasör Yükle',
+        'tag_freq_apply_bl': '🗑️ Kara Listeyi Uygula',
+        'tag_freq_filter': 'Etiketleri filtrele...',
+        'tag_freq_col_tag': 'Etiket',
+        'tag_freq_col_count': 'Sayı',
+        'tag_freq_col_pct': '%',
+        'tag_freq_bl_title': 'Kara Liste',
+        'tag_freq_bl_hint': 'Aşağıya etiketleri ekleyin (satır başına bir tane). "Kara Listeyi Uygula"ya tıkladığınızda tüm altyazı dosyalarından silinir.',
+        'tag_freq_add_selected': '⬅ Seçileni Ekle',
+        'tag_freq_no_data': 'Veri yüklenmedi. Altyazı dosyalarını taramak için "Klasör Yükle"ye tıklayın.',
+        'tag_freq_select_folder': 'Altyazı Klasörü Seç',
+        'tag_freq_loaded': '✅ {} dosya tarandı — {} benzersiz etiket — {} toplam kullanım',
+        'tag_freq_bl_applied': '🗑️ {} dosyadan {} etiket kullanımı silindi',
+        # Tag Frequency Tooltips
+        'tag_freq_load_tooltip': '.txt altyazı dosyalarını taramak ve etiket sıklıklarını analiz etmek için bir klasör seçin.',
+        'tag_freq_apply_bl_tooltip': 'Yüklenen klasördeki tüm altyazı dosyalarından kara listedeki etiketleri sil. Dosyaları diskte değiştirir!',
+        'tag_freq_filter_tooltip': 'Etiket tablosunu filtrelemek için yazın. Sadece eşleşen etiketler gösterilir.',
+        'tag_freq_add_selected_tooltip': 'Tablodan seçili etiketleri kara liste düzenleyicisine ekle.',
+
+        # Resource Settings - Theme / UI
+        'res_section_theme': '🎨 Tema / Arayüz',
+        'res_light_mode': 'Açık Mod',
+        'res_font_scale': 'Yazı Tipi Ölçeği',
     }
 }
 
