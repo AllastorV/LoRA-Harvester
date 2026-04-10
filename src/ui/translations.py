@@ -663,7 +663,7 @@ TRANSLATIONS = {
         'tag_freq_no_data': 'Veri yüklenmedi. Altyazı dosyalarını taramak için "Klasör Yükle"ye tıklayın.',
         'tag_freq_select_folder': 'Altyazı Klasörü Seç',
         'tag_freq_loaded': '✅ {} dosya tarandı — {} benzersiz etiket — {} toplam kullanım',
-        'tag_freq_bl_applied': '🗑️ {} dosyadan {} etiket kullanımı silindi',
+        'tag_freq_bl_applied': '🗑️ {} etiket kullanımı {} dosyadan silindi',
         # Tag Frequency Tooltips
         'tag_freq_load_tooltip': '.txt altyazı dosyalarını taramak ve etiket sıklıklarını analiz etmek için bir klasör seçin.',
         'tag_freq_apply_bl_tooltip': 'Yüklenen klasördeki tüm altyazı dosyalarından kara listedeki etiketleri sil. Dosyaları diskte değiştirir!',

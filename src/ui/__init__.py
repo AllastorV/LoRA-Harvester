@@ -6,7 +6,6 @@ __version__ = "2.0.0"
 
 from src.ui.advanced_settings import (
     QualitySettingsPanel,
-    CaptioningSettingsPanel, 
+    CaptioningSettingsPanel,
     TagSettingsPanel,
-    AdvancedSettingsDialog
 )

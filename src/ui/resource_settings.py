@@ -29,7 +29,7 @@ def _detect_gpu_mem_gb() -> float:
     try:
         import torch
         if torch.cuda.is_available():
-            return torch.cuda.get_device_properties(0).total_mem / (1024 ** 3)
+            return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
     except Exception:
         pass
     return 0.0
@@ -394,11 +394,19 @@ class ResourceSettingsDrawer(QFrame):
         end = QRect(pw, 0, self.DRAWER_WIDTH, ph)
         self._anim.setStartValue(start)
         self._anim.setEndValue(end)
+        # Use a one-shot connection to avoid signal accumulation on rapid toggles
+        try:
+            self._anim.finished.disconnect(self._on_close_done)
+        except (TypeError, RuntimeError):
+            pass
         self._anim.finished.connect(self._on_close_done)
         self._anim.start()
 
     def _on_close_done(self):
-        self._anim.finished.disconnect(self._on_close_done)
+        try:
+            self._anim.finished.disconnect(self._on_close_done)
+        except (TypeError, RuntimeError):
+            pass
         self.hide()
         self._is_open = False
         self.closed.emit()
@@ -412,6 +420,36 @@ class ResourceSettingsDrawer(QFrame):
     def get_settings(self) -> dict:
         """Return the current in-memory settings dict."""
         return dict(self._settings)
+
+    # ─── Theme refresh ──────────────────────────────────────────────────
+
+    def refresh_styles(self):
+        """Re-apply all stylesheets after a theme change."""
+        self.setStyleSheet(f"""
+            ResourceSettingsDrawer {{
+                background-color: {theme.BG_PANEL};
+                border-left: 2px solid {theme.BORDER_ACCENT};
+            }}
+        """)
+        self._title.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
+        self._subtitle.setStyleSheet(theme.label_muted())
+        self._close_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {theme.TEXT_SECONDARY};
+                font-size: 18px; border: none; border-radius: 4px;
+            }}
+            QPushButton:hover {{ background: {theme.BG_HOVER}; color: {theme.RED}; }}
+        """)
+        self._reset_btn.setStyleSheet(theme.btn_secondary())
+        self._apply_btn.setStyleSheet(theme.btn_primary())
+        for lbl, _key in self._section_labels:
+            lbl.setStyleSheet(
+                f"color: {theme.ORANGE}; margin-top: 10px; margin-bottom: 2px;"
+            )
+        for cb, _key in self._cb_keys:
+            cb.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; padding: 3px 0;")
+        for lbl, _key in self._slider_keys:
+            lbl.setStyleSheet(theme.label_default())
 
     # ─── Language update ─────────────────────────────────────────────────
 

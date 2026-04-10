@@ -607,8 +607,55 @@ class VideoSmartCropperUI(QMainWindow):
         new_scale = data.get("font_scale", 100) / 100.0
         if new_mode != theme.get_mode() or abs(new_scale - theme.get_font_scale()) > 0.01:
             theme.set_theme(new_mode, new_scale)
-            self.setStyleSheet(theme.global_stylesheet())
+            self._refresh_all_styles()
         self.log(get_text('res_apply', self.current_lang))
+
+    def _refresh_all_styles(self):
+        """Re-apply all stylesheets after a theme change so every widget
+        picks up the new palette colours."""
+        self.setStyleSheet(theme.global_stylesheet())
+
+        # Page navigation buttons
+        current_idx = self.page_stack.currentIndex()
+        for i, btn in enumerate([
+            self.page_video_btn, self.page_caption_btn,
+            self.page_char_sort_btn, self.page_caption_editor_btn,
+            self.page_tag_freq_btn,
+        ]):
+            btn.setStyleSheet(self._page_btn_style(i == current_idx))
+
+        # Resource settings button + drawer
+        self.res_settings_btn.setStyleSheet(theme.btn_secondary())
+        self._resource_drawer.refresh_styles()
+
+        # Video page widgets
+        self.title_label.setStyleSheet(theme.label_title())
+        self.subtitle_label.setStyleSheet(theme.label_muted())
+        self.drop_zone.setStyleSheet(theme.drop_zone_default())
+        self.browse_btn.setStyleSheet(theme.btn_browse())
+        self.settings_group.setStyleSheet(theme.group_box())
+        self.interval_slider.setStyleSheet(theme.slider())
+        self.interval_value_label.setStyleSheet(theme.label_value())
+        self.ratio_combo.setStyleSheet(theme.combo())
+        self.conf_spinbox.setStyleSheet(theme.spinbox())
+        self.padding_spinbox.setStyleSheet(theme.spinbox())
+        self.trim_start_spin.setStyleSheet(theme.spinbox())
+        self.trim_end_spin.setStyleSheet(theme.spinbox())
+        self.process_btn.setStyleSheet(theme.btn_primary())
+        self.pause_btn.setStyleSheet(theme.btn_secondary())
+        self.skip_btn.setStyleSheet(theme.btn_secondary())
+        self.stop_btn.setStyleSheet(theme.btn_danger())
+        self.open_output_btn.setStyleSheet(theme.btn_secondary())
+        self.progress_bar.setStyleSheet(theme.progress_bar())
+        self.log_text.setStyleSheet(theme.log_area())
+        self.lang_combo.setStyleSheet(theme.combo())
+
+        # Collapsible buttons & panels
+        for btn in (self.quality_btn, self.caption_btn, self.tags_btn):
+            btn.setStyleSheet(self._collapsible_btn_style())
+        self.ensemble_group.setStyleSheet(theme.panel_group())
+        self.quality_panel.setStyleSheet(theme.panel_group())
+        self.caption_panel.setStyleSheet(theme.panel_group())
 
     def resizeEvent(self, event):
         """Keep the resource drawer right-aligned when the window resizes."""
