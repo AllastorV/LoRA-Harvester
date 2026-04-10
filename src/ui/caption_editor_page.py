@@ -3,14 +3,13 @@ Caption Editor Page for LoRA-Harvester
 Review and bulk-edit .txt captions alongside their source images.
 """
 
-import os
 from pathlib import Path
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTextEdit, QFileDialog, QListWidget,
-    QListWidgetItem, QInputDialog, QScrollArea, QSplitter,
+    QListWidgetItem, QInputDialog, QSplitter,
 )
-from PyQt5.QtCore import Qt, QSize, pyqtSignal
+from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QFont, QPixmap, QIcon
 from typing import Dict, List, Optional
 from src.ui.translations import get_text
@@ -153,7 +152,7 @@ class CaptionEditorPage(QWidget):
     # ─── Folder loading ──────────────────────────────────────────────────
 
     def _browse_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Image Folder")
+        folder = QFileDialog.getExistingDirectory(self, get_text('ce_select_folder', self.lang))
         if folder:
             self._load_folder(folder)
 
@@ -263,7 +262,9 @@ class CaptionEditorPage(QWidget):
     # ─── Bulk operations ─────────────────────────────────────────────────
 
     def _bulk_add_tag(self):
-        tag, ok = QInputDialog.getText(self, "Add Tag", "Tag to add to all captions:")
+        tag, ok = QInputDialog.getText(
+            self, get_text('ce_add_tag_title', self.lang),
+            get_text('ce_add_tag_prompt', self.lang))
         if not ok or not tag.strip():
             return
         tag = tag.strip()
@@ -280,10 +281,13 @@ class CaptionEditorPage(QWidget):
             self.caption_edit.blockSignals(True)
             self.caption_edit.setPlainText(self._captions.get(cap_path, ""))
             self.caption_edit.blockSignals(False)
-        self.status_lbl.setText(f"Added '{tag}' to {len(self._captions)} captions")
+        self.status_lbl.setText(
+            get_text('ce_add_tag_result', self.lang).format(tag, len(self._captions)))
 
     def _bulk_remove_tag(self):
-        tag, ok = QInputDialog.getText(self, "Remove Tag", "Tag to remove from all captions:")
+        tag, ok = QInputDialog.getText(
+            self, get_text('ce_remove_tag_title', self.lang),
+            get_text('ce_remove_tag_prompt', self.lang))
         if not ok or not tag.strip():
             return
         tag = tag.strip()
@@ -300,13 +304,18 @@ class CaptionEditorPage(QWidget):
             self.caption_edit.blockSignals(True)
             self.caption_edit.setPlainText(self._captions.get(cap_path, ""))
             self.caption_edit.blockSignals(False)
-        self.status_lbl.setText(f"Removed '{tag}' from {removed} captions")
+        self.status_lbl.setText(
+            get_text('ce_remove_tag_result', self.lang).format(tag, removed))
 
     def _bulk_replace_tag(self):
-        old, ok1 = QInputDialog.getText(self, "Replace Tag", "Tag to find:")
+        old, ok1 = QInputDialog.getText(
+            self, get_text('ce_replace_tag_title', self.lang),
+            get_text('ce_replace_find_prompt', self.lang))
         if not ok1 or not old.strip():
             return
-        new, ok2 = QInputDialog.getText(self, "Replace Tag", f"Replace '{old.strip()}' with:")
+        new, ok2 = QInputDialog.getText(
+            self, get_text('ce_replace_tag_title', self.lang),
+            get_text('ce_replace_with_prompt', self.lang).format(old.strip()))
         if not ok2:
             return
         old = old.strip()
@@ -324,7 +333,8 @@ class CaptionEditorPage(QWidget):
             self.caption_edit.blockSignals(True)
             self.caption_edit.setPlainText(self._captions.get(cap_path, ""))
             self.caption_edit.blockSignals(False)
-        self.status_lbl.setText(f"Replaced '{old}' → '{new}' in {replaced} captions")
+        self.status_lbl.setText(
+            get_text('ce_replace_tag_result', self.lang).format(old, new, replaced))
 
     # ─── Language ────────────────────────────────────────────────────────
 

@@ -786,6 +786,8 @@ class CharacterSortPage(QWidget):
         self.min_info.setToolTip(get_text('char_cluster_min_tooltip', lang))
         self.max_char_lbl.setText(get_text('char_max_characters', lang))
         self.max_char_info.setToolTip(get_text('char_max_characters_tooltip', lang))
+        self.topn_lbl.setText(get_text('char_max_per_char', lang))
+        self.topn_info.setToolTip(get_text('char_max_per_char_tooltip', lang))
 
         # Checkboxes + tooltips
         self.no_cluster_cb.setText(get_text('char_no_cluster', lang))

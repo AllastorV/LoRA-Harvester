@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTextEdit, QGroupBox, QSpinBox, QToolButton,
                              QScrollArea, QStackedWidget, QFrame, QDesktopWidget)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent, QFontMetrics
+from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent
 from typing import Optional, List, Dict
 from src.ui.translations import get_text
 from src.ui import theme
@@ -327,24 +327,39 @@ class DropZone(QLabel):
         """Handle drag leave"""
         self.setStyleSheet(theme.drop_zone_default())
     
+    _VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v'}
+
     def dropEvent(self, event: QDropEvent):
-        """Handle drop - supports multiple files"""
+        """Handle drop - supports video files, folders, and .txt list files"""
         self.setStyleSheet(theme.drop_zone_default())
-        
+
         files = [u.toLocalFile() for u in event.mimeData().urls()]
-        valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v']
-        
-        # Filter valid video files
-        video_files = [f for f in files if any(f.lower().endswith(ext) for ext in valid_extensions)]
-        
-        if video_files:
-            self.files_dropped.emit(video_files)
-            if len(video_files) == 1:
-                self.setText(f"✅ {Path(video_files[0]).name}")
-            else:
-                self.setText(f"✅ {len(video_files)} videos selected")
+
+        # Accept: video files, directories (recursive walk), and .txt list files.
+        # The actual resolution (folder scanning, .txt parsing) happens in
+        # on_files_dropped — here we just gate-keep obviously wrong drops.
+        accepted = [
+            f for f in files
+            if (Path(f).is_dir()
+                or Path(f).suffix.lower() in self._VIDEO_EXTENSIONS
+                or Path(f).suffix.lower() == '.txt')
+        ]
+
+        if accepted:
+            self.files_dropped.emit(accepted)
+            dirs  = [f for f in accepted if Path(f).is_dir()]
+            txts  = [f for f in accepted if Path(f).suffix.lower() == '.txt']
+            vids  = [f for f in accepted if Path(f).suffix.lower() in self._VIDEO_EXTENSIONS]
+            parts = []
+            if vids:
+                parts.append(f"{len(vids)} video(s)")
+            if dirs:
+                parts.append(f"{len(dirs)} folder(s)")
+            if txts:
+                parts.append(f"{len(txts)} list(s)")
+            self.setText(f"✅ {', '.join(parts)} dropped")
         else:
-            self.setText("❌ Invalid file type. Please drop video file(s).")
+            self.setText("❌ Invalid file type. Drop video file(s), folders, or .txt list.")
 
 
 class VideoSmartCropperUI(QMainWindow):
@@ -1046,6 +1061,7 @@ class VideoSmartCropperUI(QMainWindow):
                 self.processing_thread.log_message.disconnect(self.log)
                 self.processing_thread.finished.disconnect(self.on_finished)
                 self.processing_thread.error.disconnect(self.on_error)
+                self.processing_thread.frame_saved.disconnect(self._on_preview_frame)
             except (TypeError, RuntimeError):
                 pass  # Already disconnected
             # Only deleteLater if thread is not running to avoid crash
@@ -1230,11 +1246,19 @@ class VideoSmartCropperUI(QMainWindow):
     
     def on_finished(self, stats: dict):
         """Processing finished"""
-        # If stopped by user, thread was already cleaned up in stop_processing
-        if stats.get('stopped'):
-            return
         # Guard against stale signal from an old thread
         if self.processing_thread is None:
+            return
+
+        # If stopped by user, re-enable UI and clean up
+        if stats.get('stopped'):
+            self.process_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            self.skip_btn.setEnabled(False)
+            self.pause_btn.setEnabled(False)
+            self.pause_btn.setText(get_text('pause_btn', self.current_lang))
+            self.drop_zone.setEnabled(True)
+            self._cleanup_processing_thread()
             return
 
         self.progress_bar.setValue(100)

@@ -151,6 +151,7 @@ class UnifiedVideoProcessor:
             'animal_frames': 0,
             'object_frames': 0,
             'processing_time': 0,
+            'oom_dropped_frames': 0,   # frames dropped due to CUDA OOM
         }
     
     def create_output_structure(self, video_name: str) -> Path:
