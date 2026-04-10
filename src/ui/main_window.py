@@ -10,14 +10,14 @@ import os
 import subprocess
 import threading
 from pathlib import Path
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QLabel, QSlider, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QPushButton, QLabel, QSlider,
                              QComboBox, QCheckBox, QProgressBar, QFileDialog,
-                             QTextEdit, QGroupBox, QSpinBox, QToolButton,
+                             QTextEdit, QGroupBox, QSpinBox,
                              QScrollArea, QStackedWidget, QFrame, QDesktopWidget)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent
-from typing import Optional, List, Dict
+from typing import List
 from src.ui.translations import get_text
 from src.ui import theme
 from src.ui.advanced_settings import (
