@@ -147,7 +147,7 @@ class ResourceSettingsDrawer(QFrame):
         self._close_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent; color: {theme.TEXT_SECONDARY};
-                font-size: 18px; border: none; border-radius: 4px;
+                font-size: {theme.fs(18)}; border: none; border-radius: 4px;
             }}
             QPushButton:hover {{ background: {theme.BG_HOVER}; color: {theme.RED}; }}
         """)
@@ -436,7 +436,7 @@ class ResourceSettingsDrawer(QFrame):
         self._close_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent; color: {theme.TEXT_SECONDARY};
-                font-size: 18px; border: none; border-radius: 4px;
+                font-size: {theme.fs(18)}; border: none; border-radius: 4px;
             }}
             QPushButton:hover {{ background: {theme.BG_HOVER}; color: {theme.RED}; }}
         """)

@@ -195,17 +195,7 @@ class CharacterSortPage(QWidget):
         layout.setContentsMargins(30, 20, 30, 20)
         self.setLayout(layout)
 
-        # Tooltip style
-        self.setStyleSheet(f"""
-            QToolTip {{
-                background-color: {theme.BG_DARK};
-                color: {theme.TEXT_PRIMARY};
-                border: 1px solid {theme.ORANGE};
-                padding: 8px;
-                border-radius: 4px;
-                font-size: 18px;
-            }}
-        """)
+        # Tooltip style handled by global theme
 
         # Title
         self.title_lbl = QLabel(get_text('char_sort_title', self.lang))
@@ -439,7 +429,8 @@ class CharacterSortPage(QWidget):
 
         # Tick labels
         ticks_lbl = QLabel("1  2  3  4  5  6")
-        ticks_lbl.setStyleSheet(f"color: #888; font-size: 10px;")
+        ticks_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)};")
+        self._ticks_lbl = ticks_lbl
 
         row_max.addWidget(self.max_char_lbl)
         row_max.addWidget(self.max_char_info)
@@ -812,3 +803,89 @@ class CharacterSortPage(QWidget):
             self.ref_drop.get_label().setText(get_text('char_drag_ref', lang))
         if not self.output_folder:
             self.out_drop.get_label().setText(get_text('char_drag_output', lang))
+
+    # ─── Theme ────────────────────────────────────────────────────────────────
+
+    def refresh_styles(self):
+        """Re-apply all stylesheets after a theme change."""
+        # Title + subtitle
+        self.title_lbl.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
+        self.subtitle_lbl.setStyleSheet(theme.label_muted())
+        self.log_text.setStyleSheet(theme.log_area())
+
+        # Step cards (the three QFrame children built via _build_*_step)
+        for frame in self.findChildren(QFrame):
+            ss = frame.styleSheet()
+            if "border-radius: 10px" in ss:
+                frame.setStyleSheet(theme.card_frame())
+
+        # Step titles
+        self.step1_title.setStyleSheet(theme.label_section())
+        self.step2_title.setStyleSheet(theme.label_section())
+        self.step3_title.setStyleSheet(theme.label_section())
+
+        # Folder rows
+        self.input_lbl.setStyleSheet(theme.label_default())
+        self.browse_input_btn.setStyleSheet(theme.btn_browse())
+        self.ref_lbl.setStyleSheet(theme.label_default())
+        self.browse_ref_btn.setStyleSheet(theme.btn_browse())
+        self.clear_ref_btn.setStyleSheet(theme.btn_danger())
+        self.out_lbl.setStyleSheet(theme.label_default())
+        self.browse_out_btn.setStyleSheet(theme.btn_browse())
+        self.clear_out_btn.setStyleSheet(theme.btn_danger())
+
+        # Drop zones — preserve state
+        if self.input_folder:
+            self.input_drop.setStyleSheet(theme.drop_zone_frame_success())
+            self.input_drop.get_label().setStyleSheet(theme.label_success())
+        else:
+            self.input_drop.setStyleSheet(theme.drop_zone_frame_default())
+            self.input_drop.get_label().setStyleSheet(theme.label_transparent())
+
+        if self.ref_folder:
+            self.ref_drop.setStyleSheet(theme.drop_zone_frame_success())
+            self.ref_drop.get_label().setStyleSheet(theme.label_success())
+            self.ref_status_lbl.setStyleSheet(theme.label_success())
+        else:
+            self.ref_drop.setStyleSheet(theme.drop_zone_frame_default())
+            self.ref_drop.get_label().setStyleSheet(theme.label_transparent())
+            self.ref_status_lbl.setStyleSheet(theme.label_muted())
+
+        if self.output_folder:
+            self.out_drop.setStyleSheet(theme.drop_zone_frame_success())
+            self.out_drop.get_label().setStyleSheet(theme.label_success())
+            self.out_status_lbl.setStyleSheet(theme.label_success())
+        else:
+            self.out_drop.setStyleSheet(theme.drop_zone_frame_default())
+            self.out_drop.get_label().setStyleSheet(theme.label_transparent())
+            self.out_status_lbl.setStyleSheet(theme.label_muted())
+
+        self.input_count_lbl.setStyleSheet(theme.label_success())
+
+        # Settings row labels, spinboxes, combos
+        self.model_lbl.setStyleSheet(theme.label_frame())
+        self.model_combo.setStyleSheet(theme.combo())
+        self.thresh_lbl.setStyleSheet(theme.label_frame())
+        self.thresh_lbl_info.setStyleSheet(theme.info_icon_frame())
+        self.thresh_spin.setStyleSheet(theme.spinbox())
+        self.eps_lbl.setStyleSheet(theme.label_frame())
+        self.eps_info.setStyleSheet(theme.info_icon_frame())
+        self.eps_spin.setStyleSheet(theme.spinbox())
+        self.min_lbl.setStyleSheet(theme.label_frame())
+        self.min_info.setStyleSheet(theme.info_icon_frame())
+        self.min_spin.setStyleSheet(theme.spinbox())
+        self.max_char_lbl.setStyleSheet(theme.label_frame())
+        self.max_char_info.setStyleSheet(theme.info_icon_frame())
+        self.max_char_slider.setStyleSheet(theme.slider())
+        self.max_char_value_lbl.setStyleSheet(theme.label_value())
+        self._ticks_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)};"
+        )
+        self.topn_lbl.setStyleSheet(theme.label_frame())
+        self.topn_info.setStyleSheet(theme.info_icon_frame())
+        self.topn_spin.setStyleSheet(theme.spinbox())
+
+        # Step 3
+        self.start_btn.setStyleSheet(theme.btn_primary())
+        self.stop_btn.setStyleSheet(theme.btn_danger())
+        self.progress_bar.setStyleSheet(theme.progress_bar())

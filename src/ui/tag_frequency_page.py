@@ -278,3 +278,24 @@ class TagFrequencyPage(QWidget):
             get_text("tag_freq_col_count", lang),
             get_text("tag_freq_col_pct", lang),
         ])
+
+    # ─── Theme ──────────────────────────────────────────────────────────
+
+    def refresh_styles(self):
+        """Re-apply all stylesheets after a theme change."""
+        self.title_lbl.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
+        self.subtitle_lbl.setStyleSheet(theme.label_muted())
+        self.load_btn.setStyleSheet(theme.btn_primary())
+        self.apply_bl_btn.setStyleSheet(theme.btn_primary())
+        self.filter_edit.setStyleSheet(theme.line_edit())
+        self.table.setStyleSheet(
+            f"QTableWidget {{ background-color: {theme.BG_DEEP}; color: {theme.TEXT_PRIMARY}; "
+            f"border: 1px solid {theme.BORDER}; gridline-color: {theme.BORDER}; }}"
+            f"QHeaderView::section {{ background-color: {theme.BG_SURFACE}; color: {theme.ORANGE_LIGHT}; "
+            f"border: 1px solid {theme.BORDER}; padding: 4px; font-weight: bold; }}"
+        )
+        self._bl_title.setStyleSheet(f"color: {theme.ORANGE};")
+        self._bl_hint.setStyleSheet(theme.label_muted())
+        self.bl_edit.setStyleSheet(theme.log_area())
+        self._add_sel_btn.setStyleSheet(theme.btn_secondary())
+        self.status_lbl.setStyleSheet(theme.label_muted())

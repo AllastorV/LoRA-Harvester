@@ -149,7 +149,7 @@ def global_stylesheet() -> str:
             border: 1px solid {ORANGE};
             padding: 8px;
             border-radius: 4px;
-            font-size: 18px;
+            font-size: {fs(18)};
         }}
         QCheckBox {{
             color: {TEXT_PRIMARY};
@@ -198,7 +198,7 @@ def page_btn_active() -> str:
             color: white;
             border: none;
             padding: 12px 25px;
-            font-size: 14px;
+            font-size: {fs(14)};
             font-weight: bold;
             border-radius: 6px;
             margin-right: 5px;
@@ -212,7 +212,7 @@ def page_btn_inactive() -> str:
             color: {TEXT_MUTED};
             border: 2px solid {BORDER};
             padding: 12px 25px;
-            font-size: 14px;
+            font-size: {fs(14)};
             font-weight: bold;
             border-radius: 6px;
             margin-right: 5px;
@@ -234,7 +234,7 @@ def collapsible_btn() -> str:
             color: {TEXT_PRIMARY};
             border: 2px solid {BORDER};
             padding: 10px 15px;
-            font-size: 13px;
+            font-size: {fs(13)};
             font-weight: bold;
             border-radius: 6px;
             text-align: left;
@@ -256,7 +256,7 @@ def collapsible_btn() -> str:
 def group_box() -> str:
     return f"""
         QGroupBox {{
-            font-size: 14px;
+            font-size: {fs(14)};
             font-weight: bold;
             border: 2px solid {BORDER};
             border-radius: 8px;
@@ -277,7 +277,7 @@ def panel_group() -> str:
     """Sub-panel group boxes (quality, caption, tag panels)"""
     return f"""
         QGroupBox {{
-            font-size: 12px;
+            font-size: {fs(12)};
             font-weight: bold;
             border: 2px solid {BORDER};
             border-radius: 6px;
@@ -451,7 +451,7 @@ def btn_primary() -> str:
             color: white;
             border: none;
             padding: 15px;
-            font-size: 16px;
+            font-size: {fs(16)};
             border-radius: 6px;
             font-weight: bold;
         }}
@@ -475,7 +475,7 @@ def btn_danger() -> str:
             color: white;
             border: none;
             padding: 15px;
-            font-size: 16px;
+            font-size: {fs(16)};
             border-radius: 6px;
             font-weight: bold;
         }}
@@ -496,7 +496,7 @@ def btn_secondary() -> str:
             color: {ORANGE_LIGHT};
             border: 2px solid {ORANGE};
             padding: 15px;
-            font-size: 16px;
+            font-size: {fs(16)};
             border-radius: 6px;
             font-weight: bold;
         }}
@@ -514,7 +514,7 @@ def btn_browse() -> str:
             color: white;
             border: none;
             padding: 12px;
-            font-size: 14px;
+            font-size: {fs(14)};
             border-radius: 5px;
             font-weight: bold;
         }}
@@ -555,7 +555,7 @@ def log_area() -> str:
             border-radius: 6px;
             padding: 10px;
             font-family: 'Consolas', 'Cascadia Code', monospace;
-            font-size: 17px;
+            font-size: {fs(17)};
         }}
     """
 
@@ -569,7 +569,7 @@ def drop_zone_default() -> str:
             border-radius: 10px;
             background-color: {BG_PANEL};
             color: {TEXT_SECONDARY};
-            font-size: 14px;
+            font-size: {fs(14)};
             padding: 20px;
         }}
         QLabel:hover {{
@@ -587,7 +587,7 @@ def drop_zone_active() -> str:
             border-radius: 10px;
             background-color: {ORANGE_SUBTLE};
             color: {ORANGE_LIGHT};
-            font-size: 14px;
+            font-size: {fs(14)};
             padding: 20px;
         }}
     """
@@ -680,7 +680,7 @@ def tab_widget() -> str:
 
 def info_icon() -> str:
     """Style for ℹ️ info icons"""
-    return f"color: {ORANGE}; font-size: 14px;"
+    return f"color: {ORANGE}; font-size: {fs(14)};"
 
 def label_default() -> str:
     return f"color: {TEXT_PRIMARY};"
@@ -689,7 +689,7 @@ def label_accent() -> str:
     return f"color: {ORANGE_LIGHT}; font-weight: bold;"
 
 def label_muted() -> str:
-    return f"color: {TEXT_SECONDARY}; font-size: 18px; margin-bottom: 20px;"
+    return f"color: {TEXT_SECONDARY}; font-size: {fs(18)}; margin-bottom: 20px;"
 
 def label_title() -> str:
     return f"color: {ORANGE_LIGHT}; margin: 20px;"
@@ -703,13 +703,13 @@ def label_value() -> str:
 
 def label_transparent() -> str:
     """For labels inside frames (no border inheritance)"""
-    return f"color: {TEXT_SECONDARY}; font-size: 12px; border: none; background: transparent;"
+    return f"color: {TEXT_SECONDARY}; font-size: {fs(12)}; border: none; background: transparent;"
 
 def label_success() -> str:
-    return f"color: {ORANGE_LIGHT}; font-weight: bold; font-size: 13px; border: none;"
+    return f"color: {ORANGE_LIGHT}; font-weight: bold; font-size: {fs(13)}; border: none;"
 
 def icon_transparent() -> str:
-    return f"font-size: 20px; border: none; background: transparent;"
+    return f"font-size: {fs(20)}; border: none; background: transparent;"
 
 def label_frame() -> str:
     """Label inside a styled frame (needs border: none to avoid frame cascade)"""
@@ -717,11 +717,11 @@ def label_frame() -> str:
 
 def info_icon_frame() -> str:
     """Info icon inside a styled frame"""
-    return f"color: {ORANGE}; font-size: 14px; border: none; margin-right: 5px;"
+    return f"color: {ORANGE}; font-size: {fs(14)}; border: none; margin-right: 5px;"
 
 def info_icon_frame_compact() -> str:
     """Info icon inside a frame without margin"""
-    return f"color: {ORANGE}; font-size: 14px; border: none;"
+    return f"color: {ORANGE}; font-size: {fs(14)}; border: none;"
 
 def checkbox_frame() -> str:
     """Checkbox inside a styled frame"""

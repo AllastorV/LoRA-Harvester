@@ -347,3 +347,27 @@ class CaptionEditorPage(QWidget):
         self.add_tag_btn.setText(get_text('ce_add_tag', lang))
         self.remove_tag_btn.setText(get_text('ce_remove_tag', lang))
         self.replace_tag_btn.setText(get_text('ce_replace_tag', lang))
+
+    # ─── Theme ───────────────────────────────────────────────────────────
+
+    def refresh_styles(self):
+        """Re-apply all stylesheets after a theme change."""
+        self.title_lbl.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
+        self.subtitle_lbl.setStyleSheet(theme.label_muted())
+        self.load_btn.setStyleSheet(theme.btn_primary())
+        self.save_btn.setStyleSheet(theme.btn_primary())
+        self.add_tag_btn.setStyleSheet(theme.btn_secondary())
+        self.remove_tag_btn.setStyleSheet(theme.btn_secondary())
+        self.replace_tag_btn.setStyleSheet(theme.btn_secondary())
+        self.image_list.setStyleSheet(
+            f"background-color: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 6px;"
+        )
+        self.preview_lbl.setStyleSheet(
+            f"background-color: {theme.BG_DARK}; border-radius: 6px;"
+        )
+        self.filename_lbl.setStyleSheet(
+            f"color: {theme.ORANGE_LIGHT}; font-weight: bold; margin-top: 6px;"
+        )
+        self.caption_edit.setStyleSheet(theme.log_area())
+        self.status_lbl.setStyleSheet(theme.label_muted())

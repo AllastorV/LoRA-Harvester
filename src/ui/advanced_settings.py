@@ -6,11 +6,9 @@ Contains Quality Analysis, Captioning, and Tag Settings UI components
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
     QCheckBox, QSpinBox, QDoubleSpinBox, QLineEdit, QComboBox,
-    QTextEdit, QPushButton, QSlider, QTabWidget, QScrollArea,
-    QFrame, QGridLayout
+    QTextEdit,
 )
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont
 from typing import Dict
 from src.ui.translations import get_text
 from src.ui import theme
@@ -550,67 +548,3 @@ class TagSettingsPanel(QGroupBox):
         self.json_cb.setToolTip(get_text('json_tooltip', lang))
         self.prefix_label.setText(get_text('caption_prefix', lang))
         self.suffix_label.setText(get_text('caption_suffix', lang))
-
-
-class AdvancedSettingsDialog(QWidget):
-    """
-    Advanced Settings Dialog containing all v2.0 features
-    Can be embedded in main window or shown as separate dialog
-    """
-    
-    def __init__(self, lang: str = 'en', parent=None):
-        super().__init__(parent)
-        self.lang = lang
-        self.init_ui()
-    
-    def init_ui(self):
-        """Initialize UI"""
-        layout = QVBoxLayout()
-        layout.setSpacing(10)
-        
-        # Create tab widget for organized settings
-        self.tabs = QTabWidget()
-        self.tabs.setStyleSheet(theme.tab_widget())
-        
-        # Quality tab
-        quality_tab = QWidget()
-        quality_layout = QVBoxLayout(quality_tab)
-        self.quality_panel = QualitySettingsPanel(self.lang)
-        quality_layout.addWidget(self.quality_panel)
-        quality_layout.addStretch()
-        self.tabs.addTab(quality_tab, "🔍 Quality")
-        
-        # Captioning tab
-        caption_tab = QWidget()
-        caption_layout = QVBoxLayout(caption_tab)
-        self.caption_panel = CaptioningSettingsPanel(self.lang)
-        caption_layout.addWidget(self.caption_panel)
-        caption_layout.addStretch()
-        self.tabs.addTab(caption_tab, "📝 Captioning")
-        
-        # Tags tab
-        tags_tab = QWidget()
-        tags_scroll = QScrollArea()
-        tags_scroll.setWidgetResizable(True)
-        tags_scroll.setStyleSheet("QScrollArea { border: none; }")
-        self.tags_panel = TagSettingsPanel(self.lang)
-        tags_scroll.setWidget(self.tags_panel)
-        tags_layout = QVBoxLayout(tags_tab)
-        tags_layout.addWidget(tags_scroll)
-        self.tabs.addTab(tags_tab, "🏷️ Tags")
-        
-        layout.addWidget(self.tabs)
-        self.setLayout(layout)
-    
-    def get_all_settings(self) -> Dict:
-        """Get all settings from all panels"""
-        return {
-            'quality': self.quality_panel.get_settings(),
-            'captioning': self.caption_panel.get_settings(),
-            'tags': self.tags_panel.get_settings()
-        }
-    
-    def update_language(self, lang: str):
-        """Update UI language"""
-        self.lang = lang
-        # Would need to rebuild panels for full translation support

@@ -29,7 +29,7 @@ from src.ui.captioning_page import StandaloneCaptioningPage
 from src.ui.character_sort_page import CharacterSortPage
 from src.ui.caption_editor_page import CaptionEditorPage
 from src.ui.tag_frequency_page import TagFrequencyPage
-from src.ui.resource_settings import ResourceSettingsDrawer, load_settings as load_resource_settings
+from src.ui.resource_settings import ResourceSettingsDrawer
 
 
 class ProcessingThread(QThread):
@@ -656,6 +656,20 @@ class VideoSmartCropperUI(QMainWindow):
         self.ensemble_group.setStyleSheet(theme.panel_group())
         self.quality_panel.setStyleSheet(theme.panel_group())
         self.caption_panel.setStyleSheet(theme.panel_group())
+        if hasattr(self, 'tags_panel'):
+            self.tags_panel.setStyleSheet(theme.panel_group())
+
+        # Sub-pages
+        for attr in (
+            'captioning_page', 'char_sort_page',
+            'caption_editor_page', 'tag_freq_page',
+        ):
+            page = getattr(self, attr, None)
+            if page is not None and hasattr(page, 'refresh_styles'):
+                try:
+                    page.refresh_styles()
+                except Exception as e:
+                    self.log(f"[theme] refresh_styles failed for {attr}: {e}")
 
     def resizeEvent(self, event):
         """Keep the resource drawer right-aligned when the window resizes."""
@@ -793,7 +807,7 @@ class VideoSmartCropperUI(QMainWindow):
         ensemble_layout_cb = QHBoxLayout()
         self.ensemble_cb = QCheckBox(get_text('ensemble_mode', self.current_lang))
         self.ensemble_cb.setChecked(False)
-        self.ensemble_cb.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {theme.ORANGE_LIGHT};")
+        self.ensemble_cb.setStyleSheet(f"font-size: {theme.fs(12)}; font-weight: bold; color: {theme.ORANGE_LIGHT};")
         self.ensemble_help = QLabel("ℹ️")
         self.ensemble_help.setStyleSheet(theme.info_icon())
         self.ensemble_help.setToolTip(get_text('ensemble_mode_tooltip', self.current_lang))
@@ -858,7 +872,7 @@ class VideoSmartCropperUI(QMainWindow):
         skip_layout_cb = QHBoxLayout()
         self.skip_subtitle_cb = QCheckBox(get_text('skip_subtitle', self.current_lang))
         self.skip_subtitle_cb.setChecked(True)
-        self.skip_subtitle_cb.setStyleSheet(f"font-size: 12px; color: {theme.TEXT_PRIMARY};")
+        self.skip_subtitle_cb.setStyleSheet(f"font-size: {theme.fs(12)}; color: {theme.TEXT_PRIMARY};")
         self.skip_help = QLabel("ℹ️")
         self.skip_help.setStyleSheet(theme.info_icon())
         self.skip_help.setToolTip(get_text('skip_subtitle_tooltip', self.current_lang))
@@ -872,7 +886,7 @@ class VideoSmartCropperUI(QMainWindow):
         turbo_layout_cb = QHBoxLayout()
         self.turbo_cb = QCheckBox(get_text('turbo_mode', self.current_lang))
         self.turbo_cb.setChecked(True)
-        self.turbo_cb.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {theme.ORANGE_LIGHT};")
+        self.turbo_cb.setStyleSheet(f"font-size: {theme.fs(12)}; font-weight: bold; color: {theme.ORANGE_LIGHT};")
         self.turbo_help = QLabel("ℹ️")
         self.turbo_help.setStyleSheet(theme.info_icon())
         self.turbo_help.setToolTip(get_text('turbo_mode_tooltip', self.current_lang))

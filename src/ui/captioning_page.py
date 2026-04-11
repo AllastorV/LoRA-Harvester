@@ -122,16 +122,6 @@ class StandaloneCaptioningPage(QWidget):
         layout.setContentsMargins(30, 20, 30, 20)
         
         # Tooltip style handled by global theme
-        self.setStyleSheet(f"""
-            QToolTip {{
-                background-color: {theme.BG_DARK};
-                color: {theme.TEXT_PRIMARY};
-                border: 1px solid {theme.ORANGE};
-                padding: 8px;
-                border-radius: 4px;
-                font-size: 18px;
-            }}
-        """)
 
         # ========== TITLE ==========
         self.main_title = QLabel(get_text('captioning_standalone_title', self.lang))
@@ -426,12 +416,57 @@ class StandaloneCaptioningPage(QWidget):
     
     def _combo_style(self) -> str:
         return theme.combo()
-    
+
     def _edit_style(self) -> str:
         return theme.line_edit()
-    
+
     def _spinbox_style(self) -> str:
         return theme.spinbox()
+
+    def refresh_styles(self):
+        """Re-apply all stylesheets after a theme change."""
+        self.main_title.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
+        # Step frames — iterate the three card frames
+        for frame in self.findChildren(QFrame):
+            # Only the three top-level step frames have card_frame style
+            if frame is self.drop_zone:
+                continue
+            ss = frame.styleSheet()
+            if "border-radius: 10px" in ss:
+                frame.setStyleSheet(theme.card_frame())
+        self.step1_title.setStyleSheet(theme.label_section())
+        self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
+        self.drop_icon.setStyleSheet(theme.icon_transparent())
+        self.folder_label.setStyleSheet(theme.label_transparent())
+        self.browse_btn.setStyleSheet(theme.btn_browse())
+        self.image_count_label.setStyleSheet(theme.label_success())
+        self.step2_title.setStyleSheet(theme.label_section())
+        self.mode_label.setStyleSheet(theme.label_frame())
+        self.mode_info.setStyleSheet(theme.info_icon_frame())
+        self.mode_combo.setStyleSheet(self._combo_style())
+        self.trigger_label.setStyleSheet(theme.label_frame())
+        self.trigger_info.setStyleSheet(theme.info_icon_frame())
+        self.trigger_edit.setStyleSheet(self._edit_style())
+        self.max_label.setStyleSheet(theme.label_frame())
+        self.max_info.setStyleSheet(theme.info_icon_frame())
+        self.max_tags_spin.setStyleSheet(self._spinbox_style())
+        self.conf_label.setStyleSheet(theme.label_frame())
+        self.conf_info.setStyleSheet(theme.info_icon_frame())
+        self.conf_spin.setStyleSheet(self._spinbox_style())
+        self.neg_label.setStyleSheet(theme.label_frame())
+        self.neg_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.neg_edit.setStyleSheet(self._edit_style())
+        self.blip_cb.setStyleSheet(theme.checkbox_frame())
+        self.blip_info.setStyleSheet(theme.info_icon_frame())
+        self.blip_combo.setStyleSheet(self._combo_style())
+        self.wd14_cb.setStyleSheet(theme.checkbox_frame())
+        self.wd14_info.setStyleSheet(theme.info_icon_frame())
+        self.wd14_combo.setStyleSheet(self._combo_style())
+        self.step3_title.setStyleSheet(theme.label_section())
+        self.start_btn.setStyleSheet(theme.btn_primary())
+        self.stop_btn.setStyleSheet(theme.btn_danger())
+        self.progress_bar.setStyleSheet(theme.progress_bar())
+        self.log_text.setStyleSheet(theme.log_area())
     
     def log(self, message: str):
         """Add message to log"""
