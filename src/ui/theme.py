@@ -526,6 +526,123 @@ def btn_browse() -> str:
         }}
     """
 
+def btn_icon_square() -> str:
+    """Small square icon button for toolbar-style actions (e.g. settings gear)."""
+    return f"""
+        QPushButton {{
+            background-color: {BG_SURFACE};
+            color: {ORANGE_LIGHT};
+            border: 1px solid {BORDER};
+            padding: 4px;
+            min-width: {fs(28)};
+            max-width: {fs(28)};
+            min-height: {fs(28)};
+            max-height: {fs(28)};
+            font-size: {fs(14)};
+            border-radius: 4px;
+        }}
+        QPushButton:hover {{
+            background-color: {BG_HOVER};
+            border-color: {ORANGE};
+        }}
+    """
+
+
+def btn_action_start() -> str:
+    """Large prominent start/launch button (green-tinted orange, wider)."""
+    return f"""
+        QPushButton {{
+            background-color: {ORANGE};
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            font-size: {fs(16)};
+            border-radius: 8px;
+            font-weight: bold;
+            min-width: 160px;
+        }}
+        QPushButton:hover {{
+            background-color: {ORANGE_GLOW};
+        }}
+        QPushButton:pressed {{
+            background-color: {ORANGE_DARK};
+        }}
+        QPushButton:disabled {{
+            background-color: {DISABLED_BG};
+            color: {DISABLED_TEXT};
+        }}
+    """
+
+
+def btn_action_pause() -> str:
+    """Medium outline button for pause/resume (neutral, compact)."""
+    return f"""
+        QPushButton {{
+            background-color: {BG_SURFACE};
+            color: {TEXT_SECONDARY};
+            border: 1px solid {BORDER_LIGHT};
+            padding: 8px 14px;
+            font-size: {fs(12)};
+            border-radius: 4px;
+        }}
+        QPushButton:hover {{
+            background-color: {BG_HOVER};
+            color: {TEXT_PRIMARY};
+            border-color: {TEXT_SECONDARY};
+        }}
+        QPushButton:disabled {{
+            background-color: {DISABLED_BG};
+            color: {DISABLED_TEXT};
+            border-color: {DISABLED_BG};
+        }}
+    """
+
+
+def btn_action_skip() -> str:
+    """Small text-like button for skip (subtle, compact)."""
+    return f"""
+        QPushButton {{
+            background-color: transparent;
+            color: {TEXT_MUTED};
+            border: 1px dashed {BORDER};
+            padding: 8px 12px;
+            font-size: {fs(11)};
+            border-radius: 4px;
+        }}
+        QPushButton:hover {{
+            color: {ORANGE_LIGHT};
+            border-color: {ORANGE_DIM};
+            background-color: {ORANGE_SUBTLE};
+        }}
+        QPushButton:disabled {{
+            color: {DISABLED_TEXT};
+            border-color: {DISABLED_BG};
+        }}
+    """
+
+
+def btn_action_stop() -> str:
+    """Danger button for stop — red, rounded-pill shape to stand apart."""
+    return f"""
+        QPushButton {{
+            background-color: {RED};
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            font-size: {fs(13)};
+            border-radius: 14px;
+            font-weight: bold;
+        }}
+        QPushButton:hover {{
+            background-color: {RED_HOVER};
+        }}
+        QPushButton:disabled {{
+            background-color: {DISABLED_BG};
+            color: {DISABLED_TEXT};
+            border-radius: 14px;
+        }}
+    """
+
 
 # ──────────── Progress & Log ────────────
 

@@ -487,10 +487,10 @@ class VideoSmartCropperUI(QMainWindow):
         top_bar.addWidget(self.page_tag_freq_btn)
         top_bar.addStretch()
 
-        # Resource settings button (opens drawer)
-        self.res_settings_btn = QPushButton(get_text('res_menu_btn', self.current_lang))
+        # Resource settings button (opens drawer) — small square icon
+        self.res_settings_btn = QPushButton("⚙")
         self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
-        self.res_settings_btn.setStyleSheet(theme.btn_secondary())
+        self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
         self.res_settings_btn.clicked.connect(self._toggle_resource_drawer)
         top_bar.addWidget(self.res_settings_btn)
 
@@ -597,7 +597,7 @@ class VideoSmartCropperUI(QMainWindow):
             btn.setStyleSheet(self._page_btn_style(i == current_idx))
 
         # Resource settings button + drawer
-        self.res_settings_btn.setStyleSheet(theme.btn_secondary())
+        self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
         self._resource_drawer.refresh_styles()
 
         # Video page widgets
@@ -613,10 +613,10 @@ class VideoSmartCropperUI(QMainWindow):
         self.padding_spinbox.setStyleSheet(theme.spinbox())
         self.trim_start_spin.setStyleSheet(theme.spinbox())
         self.trim_end_spin.setStyleSheet(theme.spinbox())
-        self.process_btn.setStyleSheet(theme.btn_primary())
-        self.pause_btn.setStyleSheet(theme.btn_secondary())
-        self.skip_btn.setStyleSheet(theme.btn_secondary())
-        self.stop_btn.setStyleSheet(theme.btn_danger())
+        self.process_btn.setStyleSheet(theme.btn_action_start())
+        self.pause_btn.setStyleSheet(theme.btn_action_pause())
+        self.skip_btn.setStyleSheet(theme.btn_action_skip())
+        self.stop_btn.setStyleSheet(theme.btn_action_stop())
         self.open_output_btn.setStyleSheet(theme.btn_secondary())
         self.progress_bar.setStyleSheet(theme.progress_bar())
         self.log_text.setStyleSheet(theme.log_area())
@@ -958,39 +958,51 @@ class VideoSmartCropperUI(QMainWindow):
         # Process and Stop buttons
         buttons_layout = QHBoxLayout()
         
+        # ── Start button (large, prominent, orange) ──
         self.process_btn = QPushButton(get_text('start_btn', self.current_lang))
         self.process_btn.setEnabled(False)
-        self.process_btn.setStyleSheet(theme.btn_primary())
+        self.process_btn.setStyleSheet(theme.btn_action_start())
         self.process_btn.clicked.connect(self.start_processing)
 
+        # ── Pause/Resume button (medium, neutral outline) ──
         self.pause_btn = QPushButton(get_text('pause_btn', self.current_lang))
         self.pause_btn.setEnabled(False)
-        self.pause_btn.setStyleSheet(theme.btn_secondary())
+        self.pause_btn.setStyleSheet(theme.btn_action_pause())
         self.pause_btn.setToolTip(get_text('pause_btn_tooltip', self.current_lang))
         self.pause_btn.clicked.connect(self.toggle_pause)
 
+        # ── Skip button (small, subtle dashed border) ──
         self.skip_btn = QPushButton(get_text('skip_btn', self.current_lang))
         self.skip_btn.setEnabled(False)
-        self.skip_btn.setStyleSheet(theme.btn_secondary())
+        self.skip_btn.setStyleSheet(theme.btn_action_skip())
         self.skip_btn.setToolTip(get_text('skip_btn_tooltip', self.current_lang))
         self.skip_btn.clicked.connect(self.skip_current_video)
 
+        # ── Stop button (red pill shape, stands apart) ──
         self.stop_btn = QPushButton(get_text('stop_btn', self.current_lang))
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet(theme.btn_danger())
+        self.stop_btn.setStyleSheet(theme.btn_action_stop())
         self.stop_btn.clicked.connect(self.stop_processing)
 
-        # Open output folder button
+        # ── Open output folder ──
         self.open_output_btn = QPushButton(get_text('open_output_btn', self.current_lang))
         self.open_output_btn.setStyleSheet(theme.btn_secondary())
         self.open_output_btn.clicked.connect(self.open_output_folder)
 
+        # Layout: [  Start  ] [Pause] [Skip] ─── stretch ─── (Stop)
         buttons_layout.addWidget(self.process_btn)
         buttons_layout.addWidget(self.pause_btn)
         buttons_layout.addWidget(self.skip_btn)
+        buttons_layout.addStretch()
         buttons_layout.addWidget(self.stop_btn)
-        buttons_layout.addWidget(self.open_output_btn)
         layout.addLayout(buttons_layout)
+
+        # Open output button on its own row
+        output_row = QHBoxLayout()
+        output_row.addStretch()
+        output_row.addWidget(self.open_output_btn)
+        output_row.addStretch()
+        layout.addLayout(output_row)
 
         # Progress bar
         self.progress_bar = QProgressBar()
