@@ -136,16 +136,10 @@ TRANSLATIONS = {
         'caption_enabled': 'Enable Auto Captioning',
         'caption_enabled_tooltip': 'Generate captions/tags for saved frames',
         'caption_mode': 'Caption Mode:',
-        'caption_mode_tooltip': 'How to combine BLIP and WD14 outputs',
+        'caption_mode_tooltip': 'Caption output mode (WD14 tags)',
         'caption_modes': {
             'tags_only': 'Tags Only (WD14)',
-            'blip_only': 'BLIP Only',
-            'blip_first': 'BLIP + Tags',
-            'tags_first': 'Tags + BLIP',
-            'combined': 'Combined'
         },
-        'blip_enabled': 'BLIP (Natural Language)',
-        'blip_model': 'BLIP Model:',
         'wd14_enabled': 'WD14/Danbooru Tags',
         'wd14_model': 'WD14 Model:',
         
@@ -179,17 +173,14 @@ TRANSLATIONS = {
         'caption_prefix': 'Caption Prefix:',
         'caption_suffix': 'Caption Suffix:',
         'save_json': 'Save Detailed JSON',
-        'use_blip': 'BLIP Caption',
         'use_wd14': 'WD14/Danbooru Tags',
-        
+
         # Tooltips for Captioning Page
-        'mode_tooltip': 'tags_only: Only Danbooru tags\nblip_first: BLIP description + tags\ntags_first: Tags + BLIP description\ncombined: Merge both intelligently',
+        'mode_tooltip': 'tags_only: Only Danbooru tags from WD14 tagger',
         'trigger_tooltip': 'This word is added to the beginning of every caption. Used for LoRA training (e.g., "sks person", "ohwx style")',
         'max_tags_tooltip': 'Maximum number of tags to include in the caption. More tags = more detail but longer captions',
         'confidence_tooltip': 'Minimum confidence threshold for tags (0.1-0.9). Higher = fewer but more accurate tags',
         'negative_tooltip': 'Tags to exclude from captions. Separate with commas. Example: watermark, signature, text',
-        'blip_tooltip': 'BLIP generates natural language descriptions of images. Good for style and scene description',
-        'blip_model_tooltip': 'base: Faster, less detail\nlarge: Slower, more detailed descriptions',
         'wd14_tooltip': 'WD14/Danbooru generates anime-style tags. Great for character features, poses, clothing',
         'wd14_model_tooltip': 'swinv2-v3: Best accuracy, recommended\nconvnext-v3: Fast & accurate, good balance\nvit-v3: Standard ViT architecture\nmoat-v2: High precision, older version\nswinv2-v2: Legacy model, stable',
         'keep_char_tooltip': 'Keep character name tags like "hatsune_miku", "naruto". Useful for character LoRAs',
@@ -378,7 +369,7 @@ TRANSLATIONS = {
         'confidence': 'Tespit Güveni:',
         'confidence_tooltip': 'Nesne tespiti için minimum güven (%10-95). Yüksek = daha katı',
         'ensemble_mode': '🤖 Topluluk Modu Aktif',
-        'ensemble_mode_tooltip': '3 yapay zeka modeli (YOLO + DETR + Faster R-CNN) kullanarak daha yüksek doğruluk',
+        'ensemble_mode_tooltip': 'NMS son-işleme ile topluluk algılama modunu etkinleştir',
         'skip_subtitle': 'Altyazılı kareleri atla',
         'skip_subtitle_tooltip': 'Metin veya altyazı içeren kareleri otomatik atla',
         'turbo_mode': '⚡ Turbo Modu',
@@ -477,16 +468,10 @@ TRANSLATIONS = {
         'caption_enabled': 'Otomatik Etiketleme Aktif',
         'caption_enabled_tooltip': 'Kaydedilen kareler için açıklama/etiket oluştur',
         'caption_mode': 'Etiket Modu:',
-        'caption_mode_tooltip': 'BLIP ve WD14 çıktılarını nasıl birleştireceğinizi seçin',
+        'caption_mode_tooltip': 'Etiket çıktı modu (WD14 etiketleri)',
         'caption_modes': {
             'tags_only': 'Sadece Etiketler (WD14)',
-            'blip_only': 'Sadece BLIP',
-            'blip_first': 'BLIP + Etiketler',
-            'tags_first': 'Etiketler + BLIP',
-            'combined': 'Birleşik'
         },
-        'blip_enabled': 'BLIP (Doğal Dil)',
-        'blip_model': 'BLIP Modeli:',
         'wd14_enabled': 'WD14/Danbooru Etiketleri',
         'wd14_model': 'WD14 Modeli:',
         
@@ -520,17 +505,14 @@ TRANSLATIONS = {
         'caption_prefix': 'Açıklama Öneki:',
         'caption_suffix': 'Açıklama Soneki:',
         'save_json': 'Detaylı JSON Kaydet',
-        'use_blip': 'BLIP Açıklama',
         'use_wd14': 'WD14/Danbooru Etiketler',
         
         # Tooltips for Captioning Page
-        'mode_tooltip': 'tags_only: Sadece Danbooru etiketleri\nblip_first: BLIP açıklama + etiketler\ntags_first: Etiketler + BLIP açıklama\ncombined: Her ikisini akıllıca birleştir',
+        'mode_tooltip': 'tags_only: Sadece WD14 Danbooru etiketleri',
         'trigger_tooltip': 'Bu kelime her açıklamanın başına eklenir. LoRA eğitimi için kullanılır (örn: "sks person", "ohwx style")',
         'max_tags_tooltip': 'Açıklamaya dahil edilecek maksimum etiket sayısı. Fazla etiket = daha detaylı ama uzun açıklama',
         'confidence_tooltip': 'Etiketler için minimum güven eşiği (0.1-0.9). Yüksek = daha az ama daha doğru etiket',
         'negative_tooltip': 'Açıklamalardan hariç tutulacak etiketler. Virgülle ayırın. Örnek: watermark, signature, text',
-        'blip_tooltip': 'BLIP görsellerin doğal dil açıklamalarını üretir. Stil ve sahne açıklaması için iyi',
-        'blip_model_tooltip': 'base: Daha hızlı, daha az detay\\nlarge: Daha yavaş, daha detaylı açıklamalar',
         'wd14_tooltip': 'WD14/Danbooru anime tarzı etiketler üretir. Karakter özellikleri, pozlar, kıyafetler için harika',
         'wd14_model_tooltip': 'swinv2-v3: En iyi doğruluk, önerilen\nconvnext-v3: Hızlı ve doğru, iyi denge\nvit-v3: Standart ViT mimarisi\nmoat-v2: Yüksek hassasiyet, eski versiyon\nswinv2-v2: Eski model, kararlı',
         'keep_char_tooltip': '"hatsune_miku", "naruto" gibi karakter isim etiketlerini koru. Karakter LoRA\'ları için faydalı',

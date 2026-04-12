@@ -1,6 +1,6 @@
 """
 Caption Studio Page — unified captioning + editing with Danbooru autocomplete.
-Merges StandaloneCaptioningPage (Generate tab) and CaptionEditorPage (Edit tab).
+Provides Generate (WD14 tagging) and Edit (with Danbooru autocomplete) tabs.
 """
 
 import os
@@ -172,7 +172,7 @@ class TagCompleterTextEdit(QTextEdit):
 
 
 # ════════════════════════════════════════════════════════════════
-#  Captioning background thread (ported from captioning_page.py)
+#  Captioning background thread
 # ════════════════════════════════════════════════════════════════
 
 class CaptioningThread(QThread):
@@ -245,7 +245,7 @@ class CaptioningThread(QThread):
 
 
 # ════════════════════════════════════════════════════════════════
-#  Generate Tab (ported from StandaloneCaptioningPage, BLIP removed)
+#  Generate Tab (WD14 tagging)
 # ════════════════════════════════════════════════════════════════
 
 class _GenerateTab(QWidget):
@@ -318,7 +318,7 @@ class _GenerateTab(QWidget):
         step1_layout.addWidget(self.image_count_label)
         layout.addWidget(step1_frame)
 
-        # ── Step 2: Settings (WD14 only, no BLIP) ──────────────
+        # ── Step 2: Settings (WD14) ─────────────────────────────
         step2_frame = QFrame()
         step2_frame.setStyleSheet(theme.card_frame())
         step2_layout = QVBoxLayout(step2_frame)
@@ -404,7 +404,7 @@ class _GenerateTab(QWidget):
         self.neg_edit.setStyleSheet(theme.line_edit())
         step2_layout.addWidget(self.neg_edit)
 
-        # WD14 model selection (BLIP removed)
+        # WD14 model selection
         model_row = QHBoxLayout()
         self.wd14_cb = QCheckBox(get_text('use_wd14', self.lang))
         self.wd14_cb.setChecked(True)
@@ -582,7 +582,6 @@ class _GenerateTab(QWidget):
             self.captioner = AdvancedCaptioner(
                 tag_settings=tag_settings,
                 wd14_model=settings['wd14_model'],
-                enable_blip=False,
                 enable_wd14=settings['use_wd14'],
             )
             self.log("✅ Captioner initialized")

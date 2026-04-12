@@ -25,7 +25,7 @@ class UnifiedVideoProcessor:
     - GPU optimization
     - Progress tracking
     - V2.0: Quality analysis and filtering
-    - V2.0: Auto captioning (BLIP + WD14)
+    - V2.0: Auto captioning (WD14)
     """
     
     def __init__(self,
@@ -54,7 +54,7 @@ class UnifiedVideoProcessor:
             batch_size: Number of frames to process in parallel (default 8 for modern GPUs)
             quality_analyzer: V2.0 QualityAnalyzer instance (optional)
             captioner: V2.0 AdvancedCaptioner instance (optional)
-            caption_mode: Caption mode to use (tags_only, blip_only, blip_first, tags_first, combined)
+            caption_mode: Caption mode to use (tags_only)
         """
         # Handle single video or multiple videos
         if isinstance(video_paths, str):
@@ -823,7 +823,7 @@ class UnifiedVideoProcessor:
                 preview = (caption[:60] + "...") if len(caption) > 60 else caption
                 self._log(f"📝 First caption: {preview}")
             # Warn if caption has no auto-tags (only trigger word)
-            if hasattr(result, 'tag_count') and result.tag_count == 0 and self.caption_mode != "blip_only":
+            if hasattr(result, 'tag_count') and result.tag_count == 0:
                 if self.stats.get('_zero_tag_warned', 0) == 0:
                     self._log("⚠️ WD14 produced 0 tags — captions will only contain trigger word")
                     self.stats['_zero_tag_warned'] = 1

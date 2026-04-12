@@ -817,8 +817,8 @@ class VideoSmartCropperUI(QMainWindow):
         self.voting_help.setCursor(Qt.WhatsThisCursor)
         self.voting_spinbox = QSpinBox()
         self.voting_spinbox.setMinimum(1)
-        self.voting_spinbox.setMaximum(3)
-        self.voting_spinbox.setValue(2)
+        self.voting_spinbox.setMaximum(1)
+        self.voting_spinbox.setValue(1)
         self.voting_spinbox.setStyleSheet(theme.spinbox())
         voting_layout.addWidget(self.voting_label)
         voting_layout.addWidget(self.voting_help)
@@ -1424,7 +1424,7 @@ class VideoSmartCropperUI(QMainWindow):
         # Stop captioning thread (from caption studio page)
         if hasattr(self, 'caption_studio_page'):
             studio = self.caption_studio_page
-            gen_tab = getattr(studio, 'gen_tab', None)
+            gen_tab = getattr(studio, 'generate_tab', None)
             if gen_tab:
                 ct = getattr(gen_tab, 'captioning_thread', None)
                 if ct and ct.isRunning():
@@ -1454,7 +1454,8 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_tag_freq_btn.setText(get_text('page_tag_frequency', self.current_lang))
 
         # Resource settings button + drawer
-        self.res_settings_btn.setText(get_text('res_menu_btn', self.current_lang))
+        # Keep icon-only text; full label goes in tooltip
+        self.res_settings_btn.setText("⚙")
         self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
         if hasattr(self, '_resource_drawer'):
             self._resource_drawer.update_language(self.current_lang)

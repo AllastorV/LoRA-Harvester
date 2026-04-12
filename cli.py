@@ -98,13 +98,13 @@ Examples:
                        choices=['yolov8n.pt', 'yolov8s.pt', 'yolov8m.pt', 'yolov8l.pt'],
                        help='YOLO model size (default: yolov8n.pt)')
     parser.add_argument('--ensemble', action='store_true',
-                       help='Enable ensemble mode (YOLO + DETR + Faster R-CNN)')
-    parser.add_argument('--ensemble-models', nargs='+', 
-                       choices=['yolo', 'detr', 'fasterrcnn'],
-                       default=['yolo', 'detr', 'fasterrcnn'],
+                       help='Enable ensemble detection mode with NMS post-processing')
+    parser.add_argument('--ensemble-models', nargs='+',
+                       choices=['yolo'],
+                       default=['yolo'],
                        help='Models to use in ensemble mode')
-    parser.add_argument('--voting-threshold', type=int, default=2,
-                       help='Minimum model agreements for ensemble (default: 2)')
+    parser.add_argument('--voting-threshold', type=int, default=1,
+                       help='Minimum model agreements for ensemble (default: 1)')
     
     # ==================== PERFORMANCE ====================
     parser.add_argument('--turbo', action='store_true', default=True,
@@ -137,20 +137,15 @@ Examples:
                             help='Scene change detection threshold (default: 25.0)')
     
     # ==================== CAPTIONING (NEW) ====================
-    caption_group = parser.add_argument_group('Auto Captioning (BLIP + WD14/Danbooru)')
+    caption_group = parser.add_argument_group('Auto Captioning (WD14/Danbooru)')
     caption_group.add_argument('--caption', action='store_true',
                               help='Enable auto-captioning')
     caption_group.add_argument('--caption-mode', default='tags_only',
-                              choices=['tags_only', 'blip_only', 'blip_first', 'tags_first', 'combined'],
+                              choices=['tags_only'],
                               help='Caption mode (default: tags_only)')
-    caption_group.add_argument('--blip-model', default='blip-base',
-                              choices=['blip-base', 'blip-large'],
-                              help='BLIP model (default: blip-base)')
     caption_group.add_argument('--wd14-model', default='wd-v1-4-vit-tagger-v2',
                               choices=['wd-v1-4-vit-tagger-v2', 'wd-v1-4-convnext-tagger-v2', 'wd-v1-4-swinv2-tagger-v2'],
                               help='WD14 model (default: wd-v1-4-vit-tagger-v2)')
-    caption_group.add_argument('--no-blip', action='store_true',
-                              help='Disable BLIP captioning')
     caption_group.add_argument('--no-wd14', action='store_true',
                               help='Disable WD14 tagging')
     
@@ -272,7 +267,6 @@ Examples:
     if args.caption:
         print(f"\n📝 Auto Captioning: ENABLED")
         print(f"   Mode: {args.caption_mode}")
-        print(f"   BLIP: {'✓' if not args.no_blip else '✗'} ({args.blip_model})")
         print(f"   WD14: {'✓' if not args.no_wd14 else '✗'} ({args.wd14_model})")
         if args.trigger_word:
             print(f"   Trigger: '{args.trigger_word}'")
@@ -355,11 +349,9 @@ Examples:
                 )
             
             captioner = AdvancedCaptioner(
-                blip_model=args.blip_model,
                 wd14_model=args.wd14_model,
                 tag_settings=tag_settings,
-                enable_blip=not args.no_blip,
-                enable_wd14=not args.no_wd14
+                enable_wd14=not args.no_wd14,
             )
         
         print("✅ Models loaded successfully!")

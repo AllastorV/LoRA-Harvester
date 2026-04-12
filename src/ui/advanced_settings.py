@@ -131,7 +131,7 @@ class QualitySettingsPanel(QGroupBox):
 
 
 class CaptioningSettingsPanel(QGroupBox):
-    """Captioning Settings Panel - BLIP + WD14"""
+    """Captioning Settings Panel - WD14 Tagger"""
     
     settings_changed = pyqtSignal()
     
@@ -170,30 +170,13 @@ class CaptioningSettingsPanel(QGroupBox):
         self.mode_info.setToolTip(get_text('caption_mode_tooltip', self.lang))
         self.mode_info.setCursor(Qt.WhatsThisCursor)
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems([
-            'tags_only', 'blip_only', 'blip_first', 'tags_first', 'combined'
-        ])
+        self.mode_combo.addItems(['tags_only'])
         self.mode_combo.setStyleSheet(self._combo_style())
         mode_layout.addWidget(self.mode_label)
         mode_layout.addWidget(self.mode_info)
         mode_layout.addWidget(self.mode_combo)
         mode_layout.addStretch()
         settings_layout.addLayout(mode_layout)
-
-        # BLIP settings
-        blip_layout = QHBoxLayout()
-        self.blip_cb = QCheckBox(get_text('blip_enabled', self.lang))
-        self.blip_cb.setChecked(True)
-        self.blip_cb.setStyleSheet(theme.label_default())
-        self.blip_cb.setToolTip(get_text('blip_tooltip', self.lang))
-        self.blip_combo = QComboBox()
-        self.blip_combo.addItems(['blip-base', 'blip-large'])
-        self.blip_combo.setStyleSheet(self._combo_style())
-        self.blip_combo.setToolTip(get_text('blip_model_tooltip', self.lang))
-        blip_layout.addWidget(self.blip_cb)
-        blip_layout.addWidget(self.blip_combo)
-        blip_layout.addStretch()
-        settings_layout.addLayout(blip_layout)
 
         # WD14 settings
         wd14_layout = QHBoxLayout()
@@ -230,10 +213,8 @@ class CaptioningSettingsPanel(QGroupBox):
         return {
             'enabled': self.enable_cb.isChecked(),
             'mode': self.mode_combo.currentText(),
-            'blip_enabled': self.blip_cb.isChecked(),
-            'blip_model': self.blip_combo.currentText(),
             'wd14_enabled': self.wd14_cb.isChecked(),
-            'wd14_model': self.wd14_combo.currentText()
+            'wd14_model': self.wd14_combo.currentText(),
         }
     
     def update_language(self, lang: str):
@@ -244,9 +225,6 @@ class CaptioningSettingsPanel(QGroupBox):
         self.enable_cb.setToolTip(get_text('caption_enabled_tooltip', lang))
         self.mode_label.setText(get_text('caption_mode', lang))
         self.mode_info.setToolTip(get_text('caption_mode_tooltip', lang))
-        self.blip_cb.setText(get_text('blip_enabled', lang))
-        self.blip_cb.setToolTip(get_text('blip_tooltip', lang))
-        self.blip_combo.setToolTip(get_text('blip_model_tooltip', lang))
         self.wd14_cb.setText(get_text('wd14_enabled', lang))
         self.wd14_cb.setToolTip(get_text('wd14_tooltip', lang))
         self.wd14_combo.setToolTip(get_text('wd14_model_tooltip', lang))

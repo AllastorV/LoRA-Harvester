@@ -1,7 +1,7 @@
 """
 Advanced Captioning Module for LoRA-Harvester
 WD14/Danbooru tagging with comprehensive tag management and filtering.
-BLIP has been removed; Florence-2 integration is planned.
+For natural-language captions, see Florence2Captioner.
 """
 
 # Ensure CUDA DLLs are discoverable for onnxruntime-gpu on Windows
@@ -399,22 +399,15 @@ class WD14Tagger:
 class AdvancedCaptioner:
     """
     WD14 captioner with advanced tag management.
-    BLIP has been removed — use Florence-2 via Florence2Captioner for
-    natural-language captions (planned).
+    For natural-language captions, use Florence2Captioner.
     """
 
     def __init__(self,
                  wd14_model: str = "wd-v1-4-vit-tagger-v2",
                  tag_settings: TagSettings = None,
-                 enable_wd14: bool = True,
-                 # Legacy kwargs accepted but ignored so callers don't crash.
-                 blip_model: str = "",
-                 enable_blip: bool = False):
+                 enable_wd14: bool = True):
         self.tag_settings = tag_settings or TagSettings()
         self.enable_wd14 = enable_wd14
-        # Keep attribute for backward compat; always None.
-        self.blip = None
-        self.enable_blip = False
 
         self.wd14 = WD14Tagger(wd14_model) if enable_wd14 else None
 
@@ -603,8 +596,7 @@ class AdvancedCaptioner:
     
     def format_caption(self,
                        tags: List[str] = None,
-                       mode: str = "tags_only",
-                       blip_caption: str = "") -> str:
+                       mode: str = "tags_only") -> str:
         """
         Assemble the final caption string from WD14 tags.
 
