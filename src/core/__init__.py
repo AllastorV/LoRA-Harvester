@@ -17,7 +17,7 @@ from src.core.unified_processor import UnifiedVideoProcessor
 from src.core.quality_analyzer import QualityAnalyzer, SceneChangeDetector
 from src.core.enhanced_processor import EnhancedVideoProcessor, AsyncFrameSaver
 from src.core.auto_captioner import AutoCaptioner, TagGenerator
-from src.core.advanced_captioner import AdvancedCaptioner, TagSettings, BLIPCaptioner, WD14Tagger
+from src.core.advanced_captioner import AdvancedCaptioner, TagSettings, WD14Tagger
 
 __all__ = [
     # Core
@@ -37,6 +37,5 @@ __all__ = [
     # Advanced Captioning (v2.0)
     'AdvancedCaptioner',
     'TagSettings',
-    'BLIPCaptioner',
     'WD14Tagger',
 ]
