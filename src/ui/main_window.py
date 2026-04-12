@@ -1,8 +1,8 @@
 """
 Modern UI Module for LoRA-Harvester v2.0
 AI-Powered Dataset Collection Tool with PyQt5 interface
-Now with Quality Analysis, BLIP + WD14 Captioning, and Advanced Tag Settings
-Featuring Page-based navigation: Video Processing + Standalone Captioning
+WD14 Captioning, Quality Analysis, and Advanced Tag Settings
+Page-based navigation: Video Processing, Caption Studio, Character Sort, Tag Frequency
 """
 
 import sys
@@ -25,9 +25,8 @@ from src.ui.advanced_settings import (
     CaptioningSettingsPanel, 
     TagSettingsPanel
 )
-from src.ui.captioning_page import StandaloneCaptioningPage
+from src.ui.caption_studio_page import CaptionStudioPage
 from src.ui.character_sort_page import CharacterSortPage
-from src.ui.caption_editor_page import CaptionEditorPage
 from src.ui.tag_frequency_page import TagFrequencyPage
 from src.ui.resource_settings import ResourceSettingsDrawer
 
@@ -134,9 +133,7 @@ class ProcessingThread(QThread):
                     )
                     cs = cfg['caption_settings']
                     captioner = AdvancedCaptioner(
-                        enable_blip=cs['blip_enabled'],
                         enable_wd14=cs['wd14_enabled'],
-                        blip_model=cs['blip_model'],
                         wd14_model=cs['wd14_model'],
                         tag_settings=tag_cfg,
                     )
@@ -165,24 +162,13 @@ class ProcessingThread(QThread):
                     if not self._is_running:
                         return
 
-                    if captioner.blip and captioner.enable_blip:
-                        try:
-                            self.log_message.emit("Loading BLIP model...")
-                            captioner.blip._load_model()
-                            self.log_message.emit("BLIP model loaded")
-                        except Exception as e:
-                            self.log_message.emit(f"BLIP FAILED: {e} - captioning disabled")
-                            captioner.enable_blip = False
-
                     # Log final captioning status
                     wd14_ok = captioner.wd14 and captioner.enable_wd14
-                    blip_ok = captioner.blip and captioner.enable_blip
                     self.log_message.emit(
-                        f"📝 Captioning: mode={caption_mode} WD14={'ON' if wd14_ok else 'OFF'} BLIP={'ON' if blip_ok else 'OFF'}"
+                        f"📝 Captioning: mode={caption_mode} WD14={'ON' if wd14_ok else 'OFF'}"
                     )
-                    # If no model is active, warn user
-                    if not wd14_ok and not blip_ok:
-                        self.log_message.emit("⚠️ Both captioning models disabled - no tags will be generated!")
+                    if not wd14_ok:
+                        self.log_message.emit("⚠️ WD14 disabled - no tags will be generated!")
                         captioner = None
             else:
                 self.log_message.emit("📝 Auto-captioning: disabled (enable in Captioning settings)")
@@ -483,26 +469,21 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_video_btn.setStyleSheet(self._page_btn_style(True))
         self.page_video_btn.clicked.connect(lambda: self.switch_page(0))
 
-        self.page_caption_btn = QPushButton(get_text('page_captioning', self.current_lang))
-        self.page_caption_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_caption_btn.clicked.connect(lambda: self.switch_page(1))
+        self.page_caption_studio_btn = QPushButton(get_text('page_caption_studio', self.current_lang))
+        self.page_caption_studio_btn.setStyleSheet(self._page_btn_style(False))
+        self.page_caption_studio_btn.clicked.connect(lambda: self.switch_page(1))
 
         self.page_char_sort_btn = QPushButton(get_text('page_character_sort', self.current_lang))
         self.page_char_sort_btn.setStyleSheet(self._page_btn_style(False))
         self.page_char_sort_btn.clicked.connect(lambda: self.switch_page(2))
 
-        self.page_caption_editor_btn = QPushButton(get_text('page_caption_editor', self.current_lang))
-        self.page_caption_editor_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_caption_editor_btn.clicked.connect(lambda: self.switch_page(3))
-
         self.page_tag_freq_btn = QPushButton(get_text('page_tag_frequency', self.current_lang))
         self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_tag_freq_btn.clicked.connect(lambda: self.switch_page(4))
+        self.page_tag_freq_btn.clicked.connect(lambda: self.switch_page(3))
 
         top_bar.addWidget(self.page_video_btn)
-        top_bar.addWidget(self.page_caption_btn)
+        top_bar.addWidget(self.page_caption_studio_btn)
         top_bar.addWidget(self.page_char_sort_btn)
-        top_bar.addWidget(self.page_caption_editor_btn)
         top_bar.addWidget(self.page_tag_freq_btn)
         top_bar.addStretch()
 
@@ -538,13 +519,13 @@ class VideoSmartCropperUI(QMainWindow):
         video_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(video_scroll)
         
-        # Page 2: Standalone Captioning (wrapped in scroll area)
-        self.captioning_page = StandaloneCaptioningPage(self.current_lang)
-        caption_scroll = QScrollArea()
-        caption_scroll.setWidgetResizable(True)
-        caption_scroll.setWidget(self.captioning_page)
-        caption_scroll.setFrameShape(QFrame.NoFrame)
-        self.page_stack.addWidget(caption_scroll)
+        # Page 2: Caption Studio (Generate + Edit merged)
+        self.caption_studio_page = CaptionStudioPage(self.current_lang)
+        studio_scroll = QScrollArea()
+        studio_scroll.setWidgetResizable(True)
+        studio_scroll.setWidget(self.caption_studio_page)
+        studio_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_stack.addWidget(studio_scroll)
 
         # Page 3: Character Sort
         self.char_sort_page = CharacterSortPage(self.current_lang)
@@ -554,15 +535,7 @@ class VideoSmartCropperUI(QMainWindow):
         char_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(char_scroll)
 
-        # Page 4: Caption Editor
-        self.caption_editor_page = CaptionEditorPage(self.current_lang)
-        ce_scroll = QScrollArea()
-        ce_scroll.setWidgetResizable(True)
-        ce_scroll.setWidget(self.caption_editor_page)
-        ce_scroll.setFrameShape(QFrame.NoFrame)
-        self.page_stack.addWidget(ce_scroll)
-
-        # Page 5: Tag Frequency Analyzer
+        # Page 4: Tag Frequency Analyzer
         self.tag_freq_page = TagFrequencyPage(self.current_lang)
         tf_scroll = QScrollArea()
         tf_scroll.setWidgetResizable(True)
@@ -618,9 +591,8 @@ class VideoSmartCropperUI(QMainWindow):
         # Page navigation buttons
         current_idx = self.page_stack.currentIndex()
         for i, btn in enumerate([
-            self.page_video_btn, self.page_caption_btn,
-            self.page_char_sort_btn, self.page_caption_editor_btn,
-            self.page_tag_freq_btn,
+            self.page_video_btn, self.page_caption_studio_btn,
+            self.page_char_sort_btn, self.page_tag_freq_btn,
         ]):
             btn.setStyleSheet(self._page_btn_style(i == current_idx))
 
@@ -661,8 +633,8 @@ class VideoSmartCropperUI(QMainWindow):
 
         # Sub-pages
         for attr in (
-            'captioning_page', 'char_sort_page',
-            'caption_editor_page', 'tag_freq_page',
+            'caption_studio_page', 'char_sort_page',
+            'tag_freq_page',
         ):
             page = getattr(self, attr, None)
             if page is not None and hasattr(page, 'refresh_styles'):
@@ -698,10 +670,9 @@ class VideoSmartCropperUI(QMainWindow):
         """Switch between pages"""
         self.page_stack.setCurrentIndex(index)
         self.page_video_btn.setStyleSheet(self._page_btn_style(index == 0))
-        self.page_caption_btn.setStyleSheet(self._page_btn_style(index == 1))
+        self.page_caption_studio_btn.setStyleSheet(self._page_btn_style(index == 1))
         self.page_char_sort_btn.setStyleSheet(self._page_btn_style(index == 2))
-        self.page_caption_editor_btn.setStyleSheet(self._page_btn_style(index == 3))
-        self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(index == 4))
+        self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(index == 3))
     
     def setup_video_page(self):
         """Setup video processing page"""
@@ -829,17 +800,10 @@ class VideoSmartCropperUI(QMainWindow):
         self.models_label.setStyleSheet(theme.label_default())
         self.yolo_cb = QCheckBox("YOLOv8")
         self.yolo_cb.setChecked(True)
+        self.yolo_cb.setEnabled(False)  # Only model available
         self.yolo_cb.setStyleSheet(theme.label_default())
-        self.detr_cb = QCheckBox("DETR (Transformer)")
-        self.detr_cb.setChecked(True)
-        self.detr_cb.setStyleSheet(theme.label_default())
-        self.fasterrcnn_cb = QCheckBox("Faster R-CNN")
-        self.fasterrcnn_cb.setChecked(True)
-        self.fasterrcnn_cb.setStyleSheet(theme.label_default())
         models_layout.addWidget(self.models_label)
         models_layout.addWidget(self.yolo_cb)
-        models_layout.addWidget(self.detr_cb)
-        models_layout.addWidget(self.fasterrcnn_cb)
         models_layout.addStretch()
         ensemble_layout.addLayout(models_layout)
         
@@ -1265,21 +1229,9 @@ class VideoSmartCropperUI(QMainWindow):
         tag_settings = self.tags_panel.get_settings()
 
         # Ensemble model selection
-        models_to_use = []
-        voting_threshold = 2
+        models_to_use = ['yolo']
+        voting_threshold = 1
         if use_ensemble:
-            if self.yolo_cb.isChecked():
-                models_to_use.append('yolo')
-            if self.detr_cb.isChecked():
-                models_to_use.append('detr')
-            if self.fasterrcnn_cb.isChecked():
-                models_to_use.append('fasterrcnn')
-
-            if not models_to_use:
-                self.log(get_text('log_error_model', self.current_lang))
-                self.process_btn.setEnabled(True)
-                self.drop_zone.setEnabled(True)
-                return
             voting_threshold = self.voting_spinbox.value()
 
         # Log settings
@@ -1457,16 +1409,17 @@ class VideoSmartCropperUI(QMainWindow):
             self.processing_thread.stop()
             self.processing_thread.safe_wait(5000)
 
-        # Stop captioning thread (from captioning page)
-        if hasattr(self, 'captioning_page'):
-            cp = self.captioning_page
-            if hasattr(cp, 'captioning_thread') and cp.captioning_thread:
-                if cp.captioning_thread.isRunning():
-                    cp.captioning_thread.stop()
-                    cp.captioning_thread.wait(5000)
-            # Cleanup captioner models
-            if hasattr(cp, '_cleanup_captioner'):
-                cp._cleanup_captioner()
+        # Stop captioning thread (from caption studio page)
+        if hasattr(self, 'caption_studio_page'):
+            studio = self.caption_studio_page
+            gen_tab = getattr(studio, 'gen_tab', None)
+            if gen_tab:
+                ct = getattr(gen_tab, 'captioning_thread', None)
+                if ct and ct.isRunning():
+                    ct.stop()
+                    ct.wait(5000)
+                if hasattr(gen_tab, '_cleanup_captioner'):
+                    gen_tab._cleanup_captioner()
 
         event.accept()
         # Force process exit so no threads linger
@@ -1484,9 +1437,8 @@ class VideoSmartCropperUI(QMainWindow):
         
         # Page navigation buttons
         self.page_video_btn.setText(get_text('page_video_processing', self.current_lang))
-        self.page_caption_btn.setText(get_text('page_captioning', self.current_lang))
+        self.page_caption_studio_btn.setText(get_text('page_caption_studio', self.current_lang))
         self.page_char_sort_btn.setText(get_text('page_character_sort', self.current_lang))
-        self.page_caption_editor_btn.setText(get_text('page_caption_editor', self.current_lang))
         self.page_tag_freq_btn.setText(get_text('page_tag_frequency', self.current_lang))
 
         # Resource settings button + drawer
@@ -1495,17 +1447,13 @@ class VideoSmartCropperUI(QMainWindow):
         if hasattr(self, '_resource_drawer'):
             self._resource_drawer.update_language(self.current_lang)
 
-        # Update captioning page language
-        if hasattr(self, 'captioning_page'):
-            self.captioning_page.update_language(self.current_lang)
+        # Update caption studio page language
+        if hasattr(self, 'caption_studio_page'):
+            self.caption_studio_page.update_language(self.current_lang)
 
         # Update character sort page language
         if hasattr(self, 'char_sort_page'):
             self.char_sort_page.update_language(self.current_lang)
-
-        # Update caption editor page language
-        if hasattr(self, 'caption_editor_page'):
-            self.caption_editor_page.update_language(self.current_lang)
 
         # Update tag frequency page language
         if hasattr(self, 'tag_freq_page'):

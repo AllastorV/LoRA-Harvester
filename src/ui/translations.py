@@ -37,7 +37,7 @@ TRANSLATIONS = {
         'confidence': 'Detection Confidence:',
         'confidence_tooltip': 'Minimum confidence for object detection (10-95%). Higher = stricter',
         'ensemble_mode': '🤖 Enable Ensemble Mode',
-        'ensemble_mode_tooltip': 'Uses 3 AI models (YOLO + DETR + Faster R-CNN) for higher accuracy',
+        'ensemble_mode_tooltip': 'Enable ensemble detection mode with NMS post-processing',
         'skip_subtitle': 'Skip frames with subtitles/text',
         'skip_subtitle_tooltip': 'Automatically skip frames containing text or subtitles',
         'turbo_mode': '⚡ Turbo Mode',
@@ -207,9 +207,8 @@ TRANSLATIONS = {
         
         # Page Navigation (NEW v2.0)
         'page_video_processing': '🎬 Video Processing',
-        'page_captioning': '🏷️ Image Captioning',
+        'page_caption_studio': '🏷️✏️ Caption Studio',
         'page_character_sort': '🎭 Character Sort',
-        'page_caption_editor': '✏️ Caption Editor',
 
         # Character Sort Page (NEW v2.1)
         'char_sort_title': '🎭 Character Recognition & Sorting',
@@ -310,6 +309,12 @@ TRANSLATIONS = {
         'step1_select_folder': '📁 Step 1: Select Folder',
         'step2_settings': '⚙️ Step 2: Settings',
         'step3_start': '🚀 Step 3: Start',
+
+        # Caption Studio
+        'caption_studio_title': '🏷️✏️ Caption Studio',
+        'caption_studio_subtitle': 'Generate and edit captions in one place — with Danbooru autocomplete',
+        'caption_studio_tab_generate': 'Generate',
+        'caption_studio_tab_edit': 'Edit',
 
         # Tag Frequency Analyzer
         'page_tag_frequency': '🏷️ Tag Frequency',
@@ -543,9 +548,8 @@ TRANSLATIONS = {
         
         # Page Navigation (NEW v2.0)
         'page_video_processing': '🎬 Video İşleme',
-        'page_captioning': '🏷️ Görsel Etiketleme',
+        'page_caption_studio': '🏷️✏️ Altyazı Stüdyosu',
         'page_character_sort': '🎭 Karakter Sırala',
-        'page_caption_editor': '✏️ Altyazı Düzenleyici',
 
         # Character Sort Page (NEW v2.1)
         'char_sort_title': '🎭 Karakter Tanıma & Sıralama',
@@ -646,6 +650,12 @@ TRANSLATIONS = {
         'step1_select_folder': '📁 Adım 1: Klasör Seç',
         'step2_settings': '⚙️ Adım 2: Ayarlar',
         'step3_start': '🚀 Adım 3: Başlat',
+
+        # Caption Studio
+        'caption_studio_title': '🏷️✏️ Altyazı Stüdyosu',
+        'caption_studio_subtitle': 'Altyazıları tek sayfada oluştur ve düzenle — Danbooru otomatik tamamlama ile',
+        'caption_studio_tab_generate': 'Oluştur',
+        'caption_studio_tab_edit': 'Düzenle',
 
         # Tag Frequency Analyzer
         'page_tag_frequency': '🏷️ Etiket Sıklığı',
