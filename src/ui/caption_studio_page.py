@@ -176,48 +176,75 @@ class TagCompleterTextEdit(QTextEdit):
 # ════════════════════════════════════════════════════════════════
 
 class CaptioningThread(QThread):
-    """Background thread for captioning."""
+    """Background thread for captioning (WD14 / Florence-2 / combined)."""
     progress = pyqtSignal(int, int, str)
     log_message = pyqtSignal(str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, captioner, image_folder: str, settings: Dict):
+    def __init__(self, captioner, image_folder: str, settings: Dict,
+                 florence2=None):
         super().__init__()
         self.captioner = captioner
+        self.florence2 = florence2
         self.image_folder = image_folder
         self.settings = settings
         self._running = True
         self._last_progress_pct = -1
 
     def run(self):
+        mode = self.settings.get('mode', 'tags_only')
+        use_wd14 = mode in ('tags_only', 'combined')
+        use_f2 = mode in ('florence2', 'combined')
+
         try:
-            if self.captioner.wd14 and self.captioner.enable_wd14:
+            # ── Load WD14 if needed ────────────────────────────
+            if use_wd14 and self.captioner:
+                if self.captioner.wd14 and self.captioner.enable_wd14:
+                    try:
+                        self.log_message.emit("Loading WD14 model...")
+                        self.captioner.wd14._load_model()
+                        n_tags = len(self.captioner.wd14.tags) if self.captioner.wd14.tags else 0
+                        self.log_message.emit(f"✅ WD14 model loaded ({n_tags} tags)")
+                        if n_tags == 0:
+                            self.log_message.emit("⚠️ WD14 tag list is empty — auto-tags will NOT be generated!")
+                    except Exception as e:
+                        self.log_message.emit(f"❌ WD14 FAILED: {e}")
+                        self.log_message.emit("⚠️ Auto-tagging disabled — captions will only contain trigger word!")
+                        self.captioner.enable_wd14 = False
+                elif self.captioner.enable_wd14:
+                    self.log_message.emit("⚠️ WD14 tagger not initialized — check model selection")
+
+            # ── Load Florence-2 if needed ──────────────────────
+            if use_f2 and self.florence2:
                 try:
-                    self.log_message.emit("Loading WD14 model...")
-                    self.captioner.wd14._load_model()
-                    n_tags = len(self.captioner.wd14.tags) if self.captioner.wd14.tags else 0
-                    self.log_message.emit(f"✅ WD14 model loaded ({n_tags} tags)")
-                    if n_tags == 0:
-                        self.log_message.emit("⚠️ WD14 tag list is empty — auto-tags will NOT be generated!")
+                    self.log_message.emit("Loading Florence-2 model...")
+                    self.florence2._load_model()
+                    self.log_message.emit("✅ Florence-2 model loaded")
                 except Exception as e:
-                    self.log_message.emit(f"❌ WD14 FAILED: {e}")
-                    self.log_message.emit("⚠️ Auto-tagging disabled — captions will only contain trigger word!")
-                    self.captioner.enable_wd14 = False
-            elif self.captioner.enable_wd14:
-                self.log_message.emit("⚠️ WD14 tagger not initialized — check model selection")
+                    self.log_message.emit(f"❌ Florence-2 FAILED: {e}")
+                    if mode == 'florence2':
+                        self.error.emit(f"Florence-2 load failed: {e}")
+                        return
+                    self.florence2 = None
 
             if not self._running:
                 return
 
-            stats = self.captioner.caption_directory(
-                self.image_folder,
-                mode=self.settings.get('mode', 'tags_only'),
-                overwrite=self.settings.get('overwrite', False),
-                save_json=self.settings.get('save_json', False),
-                progress_callback=self._progress_callback,
-                recursive=self.settings.get('recursive', False),
-            )
+            # ── tags_only → delegate to AdvancedCaptioner ──────
+            if mode == 'tags_only':
+                stats = self.captioner.caption_directory(
+                    self.image_folder,
+                    mode=mode,
+                    overwrite=self.settings.get('overwrite', False),
+                    save_json=self.settings.get('save_json', False),
+                    progress_callback=self._progress_callback,
+                    recursive=self.settings.get('recursive', False),
+                )
+            else:
+                # florence2 or combined — process manually
+                stats = self._run_with_florence2()
+
             if self._running:
                 self.finished.emit(stats)
         except Exception as e:
@@ -229,6 +256,108 @@ class CaptioningThread(QThread):
                     self.captioner.cleanup()
             except Exception:
                 pass
+            try:
+                if self.florence2 and hasattr(self.florence2, 'cleanup'):
+                    self.florence2.cleanup()
+            except Exception:
+                pass
+
+    def _run_with_florence2(self) -> Dict:
+        """Process images with Florence-2 (or combined WD14+Florence-2)."""
+        import cv2
+        from pathlib import Path as _Path
+
+        mode = self.settings.get('mode', 'florence2')
+        f2_task = self.settings.get('florence2_task', '<DETAILED_CAPTION>')
+        overwrite = self.settings.get('overwrite', False)
+        save_json = self.settings.get('save_json', False)
+        recursive = self.settings.get('recursive', False)
+
+        trigger = (self.settings.get('trigger_word') or '').strip()
+        suffix = (self.settings.get('caption_suffix') or '').strip()
+        sep = ', '
+
+        dir_path = _Path(self.image_folder)
+        extensions = ['*.jpg', '*.jpeg', '*.png', '*.webp', '*.bmp']
+        all_images = []
+        glob_fn = dir_path.rglob if recursive else dir_path.glob
+        for ext in extensions:
+            all_images.extend(glob_fn(ext))
+            all_images.extend(glob_fn(ext.upper()))
+
+        stats = {'total': len(all_images), 'captioned': 0,
+                 'skipped': 0, 'errors': 0, 'zero_tags': 0}
+
+        images_to_process = []
+        for img_path in all_images:
+            cap_path = img_path.with_suffix('.txt')
+            if cap_path.exists() and not overwrite:
+                stats['skipped'] += 1
+            else:
+                images_to_process.append(img_path)
+
+        total = len(images_to_process)
+        for i, img_path in enumerate(images_to_process):
+            if not self._running:
+                break
+            if not self._progress_callback(i, total, img_path.name):
+                break
+
+            try:
+                image = cv2.imread(str(img_path))
+                if image is None:
+                    stats['errors'] += 1
+                    continue
+
+                parts = []
+
+                # Florence-2 caption
+                if self.florence2 and mode in ('florence2', 'combined'):
+                    try:
+                        nlp_caption = self.florence2.generate(image, task=f2_task)
+                        if nlp_caption:
+                            parts.append(nlp_caption)
+                    except Exception as e:
+                        self.log_message.emit(f"⚠️ Florence-2 error on {img_path.name}: {e}")
+
+                # WD14 tags
+                if mode == 'combined' and self.captioner and self.captioner.enable_wd14:
+                    try:
+                        raw_tags = self.captioner.wd14.predict(
+                            image, self.settings.get('min_confidence', 0.35))
+                        processed = self.captioner.process_tags(raw_tags)
+                        if processed:
+                            parts.append(sep.join(processed))
+                        elif not parts:
+                            stats['zero_tags'] += 1
+                    except Exception as e:
+                        self.log_message.emit(f"⚠️ WD14 error on {img_path.name}: {e}")
+
+                body = sep.join(parts) if parts else ''
+
+                # Assemble: trigger + body + suffix
+                caption = body
+                if trigger:
+                    caption = f"{trigger}{sep}{caption}" if caption else trigger
+                if suffix:
+                    caption = f"{caption}{sep}{suffix}" if caption else suffix
+
+                cap_path = img_path.with_suffix('.txt')
+                cap_path.write_text(caption.strip(), encoding='utf-8')
+
+                if save_json:
+                    import json
+                    json_path = img_path.with_suffix('.json')
+                    json_path.write_text(json.dumps(
+                        {'caption': caption.strip(), 'mode': mode},
+                        indent=2, ensure_ascii=False), encoding='utf-8')
+
+                stats['captioned'] += 1
+            except Exception as e:
+                self.log_message.emit(f"❌ Error on {img_path.name}: {e}")
+                stats['errors'] += 1
+
+        return stats
 
     def _progress_callback(self, current: int, total: int, filename: str):
         if not self._running:
@@ -330,7 +459,54 @@ class _GenerateTab(QWidget):
         self.step2_title.setStyleSheet(theme.label_section())
         step2_layout.addWidget(self.step2_title)
 
-        # Quality preset (auto-selects model + confidence + max_tags)
+        # Captioning mode selector
+        mode_row = QHBoxLayout()
+        self.mode_label = QLabel(get_text('caption_mode_label', self.lang))
+        self.mode_label.setStyleSheet(theme.label_frame())
+        self.mode_info = QLabel("ℹ️")
+        self.mode_info.setToolTip(get_text('caption_mode_tooltip', self.lang))
+        self.mode_info.setStyleSheet(theme.info_icon_frame())
+        self.mode_info.setCursor(Qt.WhatsThisCursor)
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem(get_text('caption_mode_tags', self.lang), 'tags_only')
+        self.mode_combo.addItem(get_text('caption_mode_nlp', self.lang), 'florence2')
+        self.mode_combo.addItem(get_text('caption_mode_combined', self.lang), 'combined')
+        self.mode_combo.setStyleSheet(theme.combo())
+        self.mode_combo.setMinimumWidth(250)
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        mode_row.addWidget(self.mode_label)
+        mode_row.addWidget(self.mode_info)
+        mode_row.addWidget(self.mode_combo)
+        mode_row.addStretch()
+        step2_layout.addLayout(mode_row)
+
+        # Florence-2 model selector (visible only when mode includes Florence-2)
+        f2_row = QHBoxLayout()
+        self.f2_label = QLabel(get_text('florence2_model_label', self.lang))
+        self.f2_label.setStyleSheet(theme.label_frame())
+        self.f2_combo = QComboBox()
+        self.f2_combo.addItem('Florence-2 Base (Fast)', 'florence-2-base')
+        self.f2_combo.addItem('Florence-2 Large (Accurate)', 'florence-2-large')
+        self.f2_combo.setStyleSheet(theme.combo())
+        self.f2_combo.setMinimumWidth(250)
+        self.f2_task_combo = QComboBox()
+        self.f2_task_combo.addItem(get_text('florence2_task_detailed', self.lang), '<DETAILED_CAPTION>')
+        self.f2_task_combo.addItem(get_text('florence2_task_more', self.lang), '<MORE_DETAILED_CAPTION>')
+        self.f2_task_combo.addItem(get_text('florence2_task_short', self.lang), '<CAPTION>')
+        self.f2_task_combo.setStyleSheet(theme.combo())
+        self._f2_settings_widget = QFrame()
+        _f2l = QHBoxLayout(self._f2_settings_widget)
+        _f2l.setContentsMargins(0, 0, 0, 0)
+        _f2l.addWidget(self.f2_label)
+        _f2l.addWidget(self.f2_combo)
+        _f2l.addSpacing(10)
+        _f2l.addWidget(self.f2_task_combo)
+        _f2l.addStretch()
+        self._f2_settings_widget.setVisible(False)
+        f2_row.addWidget(self._f2_settings_widget)
+        step2_layout.addLayout(f2_row)
+
+        # Quality preset (auto-selects WD14 model + confidence)
         preset_row = QHBoxLayout()
         self.preset_label = QLabel(get_text('preset_label', self.lang))
         self.preset_label.setStyleSheet(theme.label_frame())
@@ -593,6 +769,31 @@ class _GenerateTab(QWidget):
             count += len(list(glob(f'*{ext}')))
         return count
 
+    # ── Mode handling ──────────────────────────────────────────
+
+    def _on_mode_changed(self, index: int):
+        """Show/hide WD14 and Florence-2 settings depending on captioning mode."""
+        mode = self.mode_combo.itemData(index)
+        show_wd14 = mode in ('tags_only', 'combined')
+        show_f2 = mode in ('florence2', 'combined')
+        self.preset_combo.setVisible(show_wd14)
+        self.preset_label.setVisible(show_wd14)
+        self.preset_info.setVisible(show_wd14)
+        self.max_label.setVisible(show_wd14)
+        self.max_info.setVisible(show_wd14)
+        self.max_tags_spin.setVisible(show_wd14)
+        self.conf_label.setVisible(show_wd14)
+        self.conf_info.setVisible(show_wd14)
+        self.conf_spin.setVisible(show_wd14)
+        self.neg_label.setVisible(show_wd14)
+        self.neg_info.setVisible(show_wd14)
+        self.neg_edit.setVisible(show_wd14)
+        self._model_row_widget.setVisible(
+            show_wd14 and self.preset_combo.itemData(
+                self.preset_combo.currentIndex()) == 'custom')
+        self.keep_char_cb.setVisible(show_wd14)
+        self._f2_settings_widget.setVisible(show_f2)
+
     # ── Preset handling ─────────────────────────────────────────
 
     # Preset → (wd14_model, min_confidence)
@@ -623,7 +824,7 @@ class _GenerateTab(QWidget):
 
     def get_settings(self) -> Dict:
         return {
-            'mode': 'tags_only',
+            'mode': self.mode_combo.currentData() or 'tags_only',
             'trigger_word': self.trigger_edit.text().strip(),
             'caption_suffix': self.suffix_edit.text().strip(),
             'max_tags': self.max_tags_spin.value(),
@@ -635,6 +836,8 @@ class _GenerateTab(QWidget):
             'recursive': self.recursive_cb.isChecked(),
             'use_wd14': self.wd14_cb.isChecked(),
             'wd14_model': self.wd14_combo.currentText(),
+            'florence2_model': self.f2_combo.currentData() or 'florence-2-base',
+            'florence2_task': self.f2_task_combo.currentData() or '<DETAILED_CAPTION>',
         }
 
     # ── Captioning control ──────────────────────────────────────
@@ -645,8 +848,16 @@ class _GenerateTab(QWidget):
         self.log(f"\n{'=' * 40}")
         self.log("🚀 " + get_text('log_captioning', self.lang))
         settings = self.get_settings()
+        mode = settings['mode']
         if settings['trigger_word']:
             self.log(f"   Trigger: {settings['trigger_word']}")
+        if settings.get('caption_suffix'):
+            self.log(f"   Suffix: {settings['caption_suffix']}")
+        self.log(f"   Mode: {mode}")
+
+        use_wd14 = mode in ('tags_only', 'combined') and settings['use_wd14']
+        use_florence2 = mode in ('florence2', 'combined')
+
         try:
             from src.core.advanced_captioner import AdvancedCaptioner, TagSettings
             tag_settings = TagSettings(
@@ -660,21 +871,32 @@ class _GenerateTab(QWidget):
             self.captioner = AdvancedCaptioner(
                 tag_settings=tag_settings,
                 wd14_model=settings['wd14_model'],
-                enable_wd14=settings['use_wd14'],
+                enable_wd14=use_wd14,
             )
-            self.log("✅ Captioner initialized")
-            if settings.get('caption_suffix'):
-                self.log(f"   Suffix: {settings['caption_suffix']}")
+            self.log("✅ WD14 Captioner initialized" if use_wd14 else "ℹ️ WD14 disabled for this mode")
         except Exception as e:
             self.log(f"❌ Error: {e}")
             return
+
+        self.florence2 = None
+        if use_florence2:
+            try:
+                from src.core.florence2_captioner import Florence2Captioner
+                self.florence2 = Florence2Captioner(
+                    model_type=settings.get('florence2_model', 'florence-2-base'))
+                self.log("✅ Florence-2 initialized")
+            except Exception as e:
+                self.log(f"❌ Florence-2 error: {e}")
+                if mode == 'florence2':
+                    return
 
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.browse_btn.setEnabled(False)
 
         self.captioning_thread = CaptioningThread(
-            self.captioner, self.selected_folder, settings)
+            self.captioner, self.selected_folder, settings,
+            florence2=self.florence2)
         self.captioning_thread.progress.connect(self._on_progress)
         self.captioning_thread.log_message.connect(self.log)
         self.captioning_thread.finished.connect(self._on_finished)
@@ -728,6 +950,12 @@ class _GenerateTab(QWidget):
             except Exception:
                 pass
             self.captioner = None
+        if hasattr(self, 'florence2') and self.florence2:
+            try:
+                self.florence2.cleanup()
+            except Exception:
+                pass
+            self.florence2 = None
 
     # ── Language / Theme ────────────────────────────────────────
 
@@ -773,6 +1001,24 @@ class _GenerateTab(QWidget):
         self.json_cb.setToolTip(get_text('json_tooltip', lang))
         self.recursive_cb.setToolTip(get_text('recursive_tooltip', lang))
         self.overwrite_cb.setToolTip(get_text('overwrite_tooltip', lang))
+        # Florence-2 / mode widgets
+        self.mode_label.setText(get_text('caption_mode_label', lang))
+        self.mode_info.setToolTip(get_text('caption_mode_tooltip', lang))
+        mode_idx = self.mode_combo.currentIndex()
+        self.mode_combo.blockSignals(True)
+        self.mode_combo.setItemText(0, get_text('caption_mode_tags', lang))
+        self.mode_combo.setItemText(1, get_text('caption_mode_nlp', lang))
+        self.mode_combo.setItemText(2, get_text('caption_mode_combined', lang))
+        self.mode_combo.setCurrentIndex(mode_idx)
+        self.mode_combo.blockSignals(False)
+        self.f2_label.setText(get_text('florence2_model_label', lang))
+        f2_task_idx = self.f2_task_combo.currentIndex()
+        self.f2_task_combo.blockSignals(True)
+        self.f2_task_combo.setItemText(0, get_text('florence2_task_detailed', lang))
+        self.f2_task_combo.setItemText(1, get_text('florence2_task_more', lang))
+        self.f2_task_combo.setItemText(2, get_text('florence2_task_short', lang))
+        self.f2_task_combo.setCurrentIndex(f2_task_idx)
+        self.f2_task_combo.blockSignals(False)
 
     def refresh_styles(self):
         for frame in self.findChildren(QFrame):
@@ -815,6 +1061,14 @@ class _GenerateTab(QWidget):
         self.wd14_cb.setStyleSheet(theme.checkbox_frame())
         self.wd14_info.setStyleSheet(theme.info_icon_frame())
         self.wd14_combo.setStyleSheet(theme.combo())
+        # Florence-2 / mode widgets
+        self.mode_label.setStyleSheet(theme.label_frame())
+        self.mode_info.setStyleSheet(theme.info_icon_frame())
+        self.mode_combo.setStyleSheet(theme.combo())
+        self.f2_label.setStyleSheet(theme.label_frame())
+        self.f2_combo.setStyleSheet(theme.combo())
+        self.f2_task_combo.setStyleSheet(theme.combo())
+        self._f2_settings_widget.setStyleSheet("background-color: transparent;")
         self.step3_title.setStyleSheet(theme.label_section())
         self.start_btn.setStyleSheet(theme.btn_primary())
         self.stop_btn.setStyleSheet(theme.btn_danger())

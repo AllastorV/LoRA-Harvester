@@ -329,6 +329,22 @@ TRANSLATIONS = {
             'Example: "masterpiece, best quality" — useful for enforcing quality tokens.'
         ),
 
+        # Caption Studio — Captioning Mode (Florence-2)
+        'caption_mode_label': 'Captioning Mode:',
+        'caption_mode_tooltip': (
+            'Select how captions are generated:\n\n'
+            'Danbooru Tags — WD14 tagger produces comma-separated tags (anime/illustration)\n'
+            'Florence-2 NLP — Natural language description via Florence-2 (realistic/photos)\n'
+            'Combined — Florence-2 description followed by WD14 tags'
+        ),
+        'caption_mode_tags': '🏷️ Danbooru Tags (WD14)',
+        'caption_mode_nlp': '📝 Florence-2 NLP',
+        'caption_mode_combined': '🏷️📝 Combined (NLP + Tags)',
+        'florence2_model_label': 'Florence-2 Model:',
+        'florence2_task_short': 'Short Caption',
+        'florence2_task_detailed': 'Detailed Caption',
+        'florence2_task_more': 'Very Detailed Caption',
+
         # Tag Frequency Analyzer
         'page_tag_frequency': '🏷️ Tag Frequency',
         'tag_freq_title': '🏷️ Tag Frequency Analyzer',
@@ -682,6 +698,22 @@ TRANSLATIONS = {
             'Her açıklamanın SONUNA eklenen etiketler (tetikleyici kelime gibi ama sonda).\n'
             'Örnek: "masterpiece, best quality" — kalite tokenlarını zorlamak için idealdir.'
         ),
+
+        # Caption Studio — Etiketleme Modu (Florence-2)
+        'caption_mode_label': 'Etiketleme Modu:',
+        'caption_mode_tooltip': (
+            'Altyazıların nasıl oluşturulacağını seçin:\n\n'
+            'Danbooru Etiketleri — WD14 etiketleyici virgülle ayrılmış etiketler üretir (anime/illüstrasyon)\n'
+            'Florence-2 NLP — Florence-2 ile doğal dil açıklaması (gerçekçi/fotoğraf)\n'
+            'Birleşik — Florence-2 açıklaması + WD14 etiketleri birlikte'
+        ),
+        'caption_mode_tags': '🏷️ Danbooru Etiketleri (WD14)',
+        'caption_mode_nlp': '📝 Florence-2 NLP',
+        'caption_mode_combined': '🏷️📝 Birleşik (NLP + Etiketler)',
+        'florence2_model_label': 'Florence-2 Modeli:',
+        'florence2_task_short': 'Kısa Açıklama',
+        'florence2_task_detailed': 'Detaylı Açıklama',
+        'florence2_task_more': 'Çok Detaylı Açıklama',
 
         # Tag Frequency Analyzer
         'page_tag_frequency': '🏷️ Etiket Sıklığı',
