@@ -1,6 +1,6 @@
 """
 character_sort.py — Standalone Character Recognition & Sorting Tool
-Part of LoRA-Harvester v2.0
+Part of LoRA-Harvester v3.0
 
 Sorts images by character using InsightFace face recognition.
 

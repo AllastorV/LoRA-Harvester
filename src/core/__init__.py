@@ -1,6 +1,6 @@
 """
 Core module initialization
-LoRA-Harvester - AI Powered Dataset Collection v2.2
+LoRA-Harvester - AI Powered Dataset Collection v3.0
 """
 
 __version__ = "2.2.0"

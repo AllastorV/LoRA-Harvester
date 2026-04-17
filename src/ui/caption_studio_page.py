@@ -330,7 +330,29 @@ class _GenerateTab(QWidget):
         self.step2_title.setStyleSheet(theme.label_section())
         step2_layout.addWidget(self.step2_title)
 
-        # Trigger word
+        # Quality preset (auto-selects model + confidence + max_tags)
+        preset_row = QHBoxLayout()
+        self.preset_label = QLabel(get_text('preset_label', self.lang))
+        self.preset_label.setStyleSheet(theme.label_frame())
+        self.preset_info = QLabel("ℹ️")
+        self.preset_info.setToolTip(get_text('preset_tooltip', self.lang))
+        self.preset_info.setStyleSheet(theme.info_icon_frame())
+        self.preset_info.setCursor(Qt.WhatsThisCursor)
+        self.preset_combo = QComboBox()
+        self.preset_combo.addItem(get_text('preset_high_accuracy', self.lang), 'high_accuracy')
+        self.preset_combo.addItem(get_text('preset_balanced', self.lang), 'balanced')
+        self.preset_combo.addItem(get_text('preset_high_speed', self.lang), 'high_speed')
+        self.preset_combo.addItem(get_text('preset_custom', self.lang), 'custom')
+        self.preset_combo.setStyleSheet(theme.combo())
+        self.preset_combo.setMinimumWidth(200)
+        self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
+        preset_row.addWidget(self.preset_label)
+        preset_row.addWidget(self.preset_info)
+        preset_row.addWidget(self.preset_combo)
+        preset_row.addStretch()
+        step2_layout.addLayout(preset_row)
+
+        # Trigger word (prepended)
         row1 = QHBoxLayout()
         self.trigger_label = QLabel(get_text('trigger_word', self.lang))
         self.trigger_label.setStyleSheet(theme.label_frame())
@@ -347,6 +369,24 @@ class _GenerateTab(QWidget):
         row1.addWidget(self.trigger_edit)
         row1.addStretch()
         step2_layout.addLayout(row1)
+
+        # Suffix tags (appended at end of caption)
+        suffix_row = QHBoxLayout()
+        self.suffix_label = QLabel(get_text('caption_suffix_label', self.lang))
+        self.suffix_label.setStyleSheet(theme.label_frame())
+        self.suffix_info = QLabel("ℹ️")
+        self.suffix_info.setToolTip(get_text('caption_suffix_tooltip', self.lang))
+        self.suffix_info.setStyleSheet(theme.info_icon_frame())
+        self.suffix_info.setCursor(Qt.WhatsThisCursor)
+        self.suffix_edit = QLineEdit()
+        self.suffix_edit.setPlaceholderText("masterpiece, best quality...")
+        self.suffix_edit.setStyleSheet(theme.line_edit())
+        self.suffix_edit.setMinimumWidth(150)
+        suffix_row.addWidget(self.suffix_label)
+        suffix_row.addWidget(self.suffix_info)
+        suffix_row.addWidget(self.suffix_edit)
+        suffix_row.addStretch()
+        step2_layout.addLayout(suffix_row)
 
         # Max tags & Confidence
         row2 = QHBoxLayout()
@@ -404,7 +444,7 @@ class _GenerateTab(QWidget):
         self.neg_edit.setStyleSheet(theme.line_edit())
         step2_layout.addWidget(self.neg_edit)
 
-        # WD14 model selection
+        # WD14 model selection (hidden unless preset = Custom)
         model_row = QHBoxLayout()
         self.wd14_cb = QCheckBox(get_text('use_wd14', self.lang))
         self.wd14_cb.setChecked(True)
@@ -424,10 +464,14 @@ class _GenerateTab(QWidget):
         self.wd14_combo.setStyleSheet(theme.combo())
         self.wd14_combo.setMinimumWidth(280)
         self.wd14_combo.setToolTip(get_text('wd14_model_tooltip', self.lang))
-        model_row.addWidget(self.wd14_cb)
-        model_row.addWidget(self.wd14_info)
-        model_row.addWidget(self.wd14_combo)
-        model_row.addStretch()
+        self._model_row_widget = QFrame()
+        _mrl = QHBoxLayout(self._model_row_widget)
+        _mrl.setContentsMargins(0, 0, 0, 0)
+        _mrl.addWidget(self.wd14_cb)
+        _mrl.addWidget(self.wd14_info)
+        _mrl.addWidget(self.wd14_combo)
+        _mrl.addStretch()
+        model_row.addWidget(self._model_row_widget)
         step2_layout.addLayout(model_row)
 
         # Checkboxes
@@ -482,6 +526,10 @@ class _GenerateTab(QWidget):
 
         layout.addStretch()
         self.setLayout(layout)
+
+        # Apply default preset (Balanced) so model/confidence/max_tags are synced
+        self.preset_combo.setCurrentIndex(1)
+        self._on_preset_changed(1)
 
     # ── Helpers ─────────────────────────────────────────────────
 
@@ -545,10 +593,38 @@ class _GenerateTab(QWidget):
             count += len(list(glob(f'*{ext}')))
         return count
 
+    # ── Preset handling ─────────────────────────────────────────
+
+    # Preset → (wd14_model, min_confidence, max_tags)
+    _PRESETS = {
+        'high_accuracy': ('SmilingWolf/wd-swinv2-tagger-v3', 0.30, 40),
+        'balanced':      ('SmilingWolf/wd-convnext-tagger-v3', 0.35, 30),
+        'high_speed':    ('SmilingWolf/wd-vit-tagger-v3', 0.40, 20),
+    }
+
+    def _on_preset_changed(self, index: int):
+        """Apply preset values to model/confidence/max_tags.
+        'custom' unlocks the manual model combo."""
+        key = self.preset_combo.itemData(index)
+        if key == 'custom':
+            self._model_row_widget.setVisible(True)
+            return
+        preset = self._PRESETS.get(key)
+        if not preset:
+            return
+        model, conf, mtags = preset
+        idx = self.wd14_combo.findText(model)
+        if idx >= 0:
+            self.wd14_combo.setCurrentIndex(idx)
+        self.conf_spin.setValue(conf)
+        self.max_tags_spin.setValue(mtags)
+        self._model_row_widget.setVisible(False)
+
     def get_settings(self) -> Dict:
         return {
             'mode': 'tags_only',
             'trigger_word': self.trigger_edit.text().strip(),
+            'caption_suffix': self.suffix_edit.text().strip(),
             'max_tags': self.max_tags_spin.value(),
             'min_confidence': self.conf_spin.value(),
             'negative_tags': [t.strip() for t in self.neg_edit.text().split(',') if t.strip()],
@@ -574,6 +650,7 @@ class _GenerateTab(QWidget):
             from src.core.advanced_captioner import AdvancedCaptioner, TagSettings
             tag_settings = TagSettings(
                 trigger_word=settings['trigger_word'] or "",
+                caption_suffix=settings.get('caption_suffix', '') or "",
                 max_tags=settings['max_tags'],
                 min_confidence=settings['min_confidence'],
                 negative_tags=settings['negative_tags'],
@@ -585,6 +662,8 @@ class _GenerateTab(QWidget):
                 enable_wd14=settings['use_wd14'],
             )
             self.log("✅ Captioner initialized")
+            if settings.get('caption_suffix'):
+                self.log(f"   Suffix: {settings['caption_suffix']}")
         except Exception as e:
             self.log(f"❌ Error: {e}")
             return
@@ -668,7 +747,20 @@ class _GenerateTab(QWidget):
         self.stop_btn.setText(get_text('stop_btn', lang))
         if not self.selected_folder:
             self.folder_label.setText(get_text('drag_drop_folder', lang))
+        self.preset_label.setText(get_text('preset_label', lang))
+        self.preset_info.setToolTip(get_text('preset_tooltip', lang))
+        # Preserve selection index while refreshing item labels
+        cur_idx = self.preset_combo.currentIndex()
+        self.preset_combo.blockSignals(True)
+        self.preset_combo.setItemText(0, get_text('preset_high_accuracy', lang))
+        self.preset_combo.setItemText(1, get_text('preset_balanced', lang))
+        self.preset_combo.setItemText(2, get_text('preset_high_speed', lang))
+        self.preset_combo.setItemText(3, get_text('preset_custom', lang))
+        self.preset_combo.setCurrentIndex(cur_idx)
+        self.preset_combo.blockSignals(False)
         self.trigger_label.setText(get_text('trigger_word', lang))
+        self.suffix_label.setText(get_text('caption_suffix_label', lang))
+        self.suffix_info.setToolTip(get_text('caption_suffix_tooltip', lang))
         self.max_label.setText(get_text('max_tags', lang))
         self.conf_label.setText(get_text('min_confidence', lang))
         self.neg_label.setText(get_text('negative_tags', lang))
@@ -706,9 +798,15 @@ class _GenerateTab(QWidget):
         self.browse_btn.setStyleSheet(theme.btn_browse())
         self.image_count_label.setStyleSheet(theme.label_success())
         self.step2_title.setStyleSheet(theme.label_section())
+        self.preset_label.setStyleSheet(theme.label_frame())
+        self.preset_info.setStyleSheet(theme.info_icon_frame())
+        self.preset_combo.setStyleSheet(theme.combo())
         self.trigger_label.setStyleSheet(theme.label_frame())
         self.trigger_info.setStyleSheet(theme.info_icon_frame())
         self.trigger_edit.setStyleSheet(theme.line_edit())
+        self.suffix_label.setStyleSheet(theme.label_frame())
+        self.suffix_info.setStyleSheet(theme.info_icon_frame())
+        self.suffix_edit.setStyleSheet(theme.line_edit())
         self.max_label.setStyleSheet(theme.label_frame())
         self.max_info.setStyleSheet(theme.info_icon_frame())
         self.max_tags_spin.setStyleSheet(theme.spinbox())

@@ -1,5 +1,5 @@
 """
-Character Sort Page for LoRA-Harvester v2.1
+Character Sort Page for LoRA-Harvester v3.0
 Identifies characters by face and organises frames into per-character folders.
 Works on any existing image folder — fully independent from video processing.
 """

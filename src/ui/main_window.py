@@ -1,5 +1,5 @@
 """
-Modern UI Module for LoRA-Harvester v2.0
+Modern UI Module for LoRA-Harvester v3.0
 AI-Powered Dataset Collection Tool with PyQt5 interface
 WD14 Captioning, Quality Analysis, and Advanced Tag Settings
 Page-based navigation: Video Processing, Caption Studio, Character Sort, Tag Frequency
@@ -1186,14 +1186,20 @@ class VideoSmartCropperUI(QMainWindow):
                 self.log(get_text('log_resumed', self.current_lang))
 
     def stop_processing(self):
-        """Stop video processing"""
+        """Stop video processing. Immediately re-enables the Start button so
+        the user can restart with the same file without reselecting."""
         if self.processing_thread and self.processing_thread.isRunning():
             self.log(get_text('log_stopping', self.current_lang))
             self.processing_thread.stop()
             self.stop_btn.setEnabled(False)
             self.skip_btn.setEnabled(False)
             self.pause_btn.setEnabled(False)
-            # Don't block UI — the thread's finished signal will trigger cleanup
+            self.pause_btn.setText(get_text('pause_btn', self.current_lang))
+            self.drop_zone.setEnabled(True)
+            # Re-enable Start immediately if we still have video paths so the
+            # user can retry the same files without reselecting.
+            if self.video_paths:
+                self.process_btn.setEnabled(True)
 
     def skip_current_video(self):
         """Skip the currently processing video and move on to the next one."""
@@ -1208,10 +1214,21 @@ class VideoSmartCropperUI(QMainWindow):
             self.skip_btn.setEnabled(False)
     
     def start_processing(self):
-        """Start video processing with v2.0 features"""
+        """Start video processing. Always begins from scratch — cancelling
+        a previous run and pressing Start again restarts the full pipeline."""
         if not self.video_paths:
             self.log(get_text('log_no_file', self.current_lang))
             return
+
+        # If a previous thread is still alive (graceful stop pending), wait
+        # briefly so we don't start two processing pipelines at once.
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.processing_thread.stop()
+            self.processing_thread.safe_wait(3000)
+        self._cleanup_processing_thread()
+
+        # Reset progress state for a fresh run
+        self.progress_bar.setValue(0)
 
         # Disable UI during processing
         self.process_btn.setEnabled(False)
@@ -1274,9 +1291,6 @@ class VideoSmartCropperUI(QMainWindow):
             # Resource settings from the drawer
             'resource_settings': dict(self._resource_cfg),
         }
-
-        # Clean up any leftover thread before starting a new one
-        self._cleanup_processing_thread()
 
         # Start processing thread (models load in background)
         self.processing_thread = ProcessingThread(config)

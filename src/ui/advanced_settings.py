@@ -1,5 +1,5 @@
 """
-Advanced Settings Panel for LoRA-Harvester v2.0
+Advanced Settings Panel for LoRA-Harvester v3.0
 Contains Quality Analysis, Captioning, and Tag Settings UI components
 """
 

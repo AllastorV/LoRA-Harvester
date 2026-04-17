@@ -1,4 +1,4 @@
-# LoRA-Harvester Configuration v2.0
+# LoRA-Harvester Configuration v3.0
 # AI-Powered Dataset Collection Tool
 
 # Detection Settings
@@ -62,7 +62,7 @@ scene_detection:
   min_scene_frames: 10      # Minimum frames between detections
 
 # ============================================================
-# CAPTIONING SETTINGS (NEW v2.0) - BLIP + WD14/Danbooru
+# CAPTIONING SETTINGS - WD14/Danbooru + Florence-2
 # ============================================================
 captioning:
   enabled: false            # Enable auto-captioning
@@ -70,21 +70,21 @@ captioning:
   overwrite_existing: false   # Overwrite existing .txt files
   save_json: false           # Also save detailed .json
 
-  # Caption Mode
-  # Options: "tags_only", "blip_only", "blip_first", "tags_first", "combined"
+  # Caption Mode — only tags_only is supported by the current pipeline.
   mode: "tags_only"
-
-  # BLIP Settings (Natural Language Captions)
-  blip:
-    enabled: true
-    model: "blip-base"      # Options: blip-base, blip-large
-    max_length: 75          # Maximum caption length
-    min_length: 5           # Minimum caption length
 
   # WD14/Danbooru Tagger Settings (Anime/Booru Tags)
   wd14:
     enabled: true
-    model: "wd-v1-4-vit-tagger-v2"  # Options: wd-v1-4-vit-tagger-v2, wd-v1-4-convnext-tagger-v2, wd-v1-4-swinv2-tagger-v2
+    # Quality preset selected in the UI auto-picks the model below.
+    # Manually: 'swinv2-v3' = high accuracy, 'convnext-v3' = balanced, 'vit-v3' = fast.
+    model: "SmilingWolf/wd-convnext-tagger-v3"
+
+  # Florence-2 Natural-Language Captioner (optional)
+  florence2:
+    enabled: false
+    model: "microsoft/Florence-2-base"   # "-base" (fast) or "-large" (accurate)
+    task: "<MORE_DETAILED_CAPTION>"
     
   # Tag Settings
   tags:

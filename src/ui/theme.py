@@ -1,5 +1,5 @@
 """
-Unified Theme for LoRA-Harvester v2.0
+Unified Theme for LoRA-Harvester v3.0
 Color Palette: Black, Gray, Orange (Dark) / White, Gray, Orange (Light)
 All UI components reference this module for consistent styling.
 Supports runtime theme switching via set_theme().

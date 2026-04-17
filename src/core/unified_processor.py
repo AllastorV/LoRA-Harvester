@@ -1,5 +1,5 @@
 """
-Unified Video Processor v2.0
+Unified Video Processor v3.0
 Combines all features: normal, ensemble, optimized, turbo, and batch processing
 Now with Quality Analysis and Auto Captioning support
 """
@@ -115,7 +115,7 @@ class UnifiedVideoProcessor:
             print("🚀 FP16 mode enabled (faster inference)")
         
         print("="*60)
-        print("🌾 UNIFIED VIDEO PROCESSOR v2.0")
+        print("🌾 UNIFIED VIDEO PROCESSOR v3.0")
         print("="*60)
         print(f"📹 Videos to process: {len(self.video_paths)}")
         print(f"🤖 Mode: {'Ensemble' if self.is_ensemble else 'Single Model'}")

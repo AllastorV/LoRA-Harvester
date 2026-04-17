@@ -307,6 +307,28 @@ TRANSLATIONS = {
         'caption_studio_tab_generate': 'Generate',
         'caption_studio_tab_edit': 'Edit',
 
+        # Caption Studio — Quality Presets
+        'preset_label': 'Tagging Quality:',
+        'preset_tooltip': (
+            'Quality preset automatically selects the best WD14 model, confidence '
+            'threshold, and max-tag count for your goal.\n\n'
+            'High Accuracy — SwinV2-v3, conf 0.30, up to 40 tags (slowest, most detail)\n'
+            'Balanced — ConvNeXt-v3, conf 0.35, up to 30 tags (recommended default)\n'
+            'High Speed — ViT-v3, conf 0.40, up to 20 tags (fastest, key tags only)\n'
+            'Custom — pick your own model and values'
+        ),
+        'preset_high_accuracy': '🎯 High Accuracy',
+        'preset_balanced': '⚖️ Balanced (Recommended)',
+        'preset_high_speed': '⚡ High Speed',
+        'preset_custom': '🛠️ Custom',
+
+        # Caption Studio — Suffix tags
+        'caption_suffix_label': 'Suffix Tags:',
+        'caption_suffix_tooltip': (
+            'Tags appended to the END of every caption (like a trigger word, but at the end).\n'
+            'Example: "masterpiece, best quality" — useful for enforcing quality tokens.'
+        ),
+
         # Tag Frequency Analyzer
         'page_tag_frequency': '🏷️ Tag Frequency',
         'tag_freq_title': '🏷️ Tag Frequency Analyzer',
@@ -638,6 +660,28 @@ TRANSLATIONS = {
         'caption_studio_subtitle': 'Altyazıları tek sayfada oluştur ve düzenle — Danbooru otomatik tamamlama ile',
         'caption_studio_tab_generate': 'Oluştur',
         'caption_studio_tab_edit': 'Düzenle',
+
+        # Caption Studio — Kalite Önayarları
+        'preset_label': 'Etiketleme Kalitesi:',
+        'preset_tooltip': (
+            'Kalite önayarı; hedefinize göre en uygun WD14 modelini, güven eşiğini '
+            've maksimum etiket sayısını otomatik seçer.\n\n'
+            'Yüksek Doğruluk — SwinV2-v3, güven 0.30, 40 etikete kadar (en yavaş, en ayrıntılı)\n'
+            'Dengeli — ConvNeXt-v3, güven 0.35, 30 etikete kadar (önerilen varsayılan)\n'
+            'Yüksek Hız — ViT-v3, güven 0.40, 20 etikete kadar (en hızlı, yalnız önemli etiketler)\n'
+            'Özel — modeli ve değerleri kendin seç'
+        ),
+        'preset_high_accuracy': '🎯 Yüksek Doğruluk',
+        'preset_balanced': '⚖️ Dengeli (Önerilen)',
+        'preset_high_speed': '⚡ Yüksek Hız',
+        'preset_custom': '🛠️ Özel',
+
+        # Caption Studio — Sonek etiketleri
+        'caption_suffix_label': 'Sonek Etiketler:',
+        'caption_suffix_tooltip': (
+            'Her açıklamanın SONUNA eklenen etiketler (tetikleyici kelime gibi ama sonda).\n'
+            'Örnek: "masterpiece, best quality" — kalite tokenlarını zorlamak için idealdir.'
+        ),
 
         # Tag Frequency Analyzer
         'page_tag_frequency': '🏷️ Etiket Sıklığı',

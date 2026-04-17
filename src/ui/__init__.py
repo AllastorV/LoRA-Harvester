@@ -1,5 +1,5 @@
 """
-UI module initialization v2.0
+UI module initialization v3.0
 """
 
 __version__ = "2.0.0"

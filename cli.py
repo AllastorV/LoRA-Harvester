@@ -1,5 +1,5 @@
 """
-Command Line Interface for LoRA-Harvester v2.0
+Command Line Interface for LoRA-Harvester v3.0
 AI-Powered Dataset Collection Tool for LoRA Training
 Supports: Batch processing, Quality analysis, Auto-captioning, Resume
 """
@@ -40,7 +40,7 @@ def parse_negative_tags(tags_str: str) -> list:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="🌾 LoRA-Harvester v2.0 - AI Powered Dataset Collection CLI",
+        description="🌾 LoRA-Harvester v3.0 - AI Powered Dataset Collection CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -232,7 +232,7 @@ Examples:
     
     # Print configuration
     print("="*60)
-    print("🌾 LORA-HARVESTER v2.0 - CLI Mode")
+    print("🌾 LORA-HARVESTER v3.0 - CLI Mode")
     print("="*60)
     
     if len(video_files) == 1:
