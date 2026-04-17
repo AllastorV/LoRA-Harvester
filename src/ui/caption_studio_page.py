@@ -388,6 +388,7 @@ class _GenerateTab(QWidget):
         self.lang = lang
         self.selected_folder = None
         self.captioner = None
+        self.florence2 = None
         self.captioning_thread = None
         self._init_ui()
 
@@ -902,6 +903,7 @@ class _GenerateTab(QWidget):
         self.captioning_thread.finished.connect(self._on_finished)
         self.captioning_thread.error.connect(self._on_error)
         self.captioning_thread.finished.connect(self._safe_delete_thread)
+        self.captioning_thread.error.connect(self._safe_delete_thread)
         self.captioning_thread.start()
 
     def stop_captioning(self):

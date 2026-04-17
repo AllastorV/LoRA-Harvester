@@ -3,7 +3,7 @@ Core module initialization
 LoRA-Harvester - AI Powered Dataset Collection v3.0
 """
 
-__version__ = "2.2.0"
+__version__ = "3.0.0"
 
 # Core modules
 from src.core.detector import ObjectDetector
