@@ -246,24 +246,24 @@ TRANSLATIONS = {
         'res_menu_tooltip': 'Adjust GPU, CPU, memory and performance settings',
         'res_title': 'Resource Settings',
         'res_subtitle': 'Tune system resources and performance options for your hardware.',
-        'res_section_gpu': '🖥️ GPU',
+        'res_section_gpu': 'GPU',
         'res_gpu_enabled': 'Use GPU (CUDA)',
         'res_fp16': 'FP16 / Mixed Precision',
         'res_gpu_mem_limit': 'VRAM Limit',
-        'res_section_batch': '📦 Batch / Throughput',
+        'res_section_batch': 'Batch / Throughput',
         'res_batch_size': 'Batch Size',
         'res_prefetch_frames': 'Prefetch Frames',
-        'res_section_cpu': '⚙️ CPU / Threads',
+        'res_section_cpu': 'CPU / Threads',
         'res_cpu_threads': 'CPU Threads',
         'res_decode_workers': 'Decode Workers',
-        'res_section_memory': '🧠 Memory',
+        'res_section_memory': 'Memory',
         'res_ram_limit': 'RAM Limit',
-        'res_section_misc': '🔧 Misc Performance',
+        'res_section_misc': 'Misc Performance',
         'res_async_save': 'Async File Save',
         'res_auto_gc': 'Auto Garbage Collection',
         'res_jpeg_quality': 'JPEG Quality',
         'res_reset': 'Reset Defaults',
-        'res_apply': 'Apply & Save',
+        'res_apply': 'Apply Save',
         # Resource Settings Tooltips
         'res_gpu_enabled_tooltip': 'Enable CUDA GPU acceleration for AI model inference. Requires an NVIDIA GPU with CUDA support.',
         'res_fp16_tooltip': 'Use half-precision floating point for faster inference and lower VRAM usage. Recommended for most GPUs.',
@@ -276,7 +276,7 @@ TRANSLATIONS = {
         'res_async_save_tooltip': 'Save files asynchronously in the background. Faster processing but slightly more memory usage.',
         'res_auto_gc_tooltip': 'Automatically free unused memory during processing. Reduces peak memory at a small speed cost.',
         'res_jpeg_quality_tooltip': 'JPEG compression quality for saved frames (50–100). Higher = better quality but larger files.',
-        'res_light_mode_tooltip': 'Switch between dark and light interface theme. Changes apply after clicking "Apply & Save".',
+        'res_light_mode_tooltip': 'Switch between dark and light interface theme. Changes apply after clicking "Apply Save".',
         'res_font_scale_tooltip': 'Scale all text in the interface (80%–140%). Useful for high-DPI displays or accessibility.',
 
         # Standalone Captioning Page (NEW v2.0)
@@ -367,9 +367,10 @@ TRANSLATIONS = {
         'tag_freq_add_selected_tooltip': 'Add the currently selected tags from the table to the blacklist editor.',
 
         # Resource Settings - Theme / UI
-        'res_section_theme': '🎨 Theme / UI',
+        'res_section_theme': 'Theme / UI',
         'res_light_mode': 'Light Mode',
         'res_font_scale': 'Font Scale',
+        'res_section_lang': 'Language',
     },
 
     'tr': {
@@ -614,24 +615,24 @@ TRANSLATIONS = {
         'res_menu_tooltip': 'GPU, CPU, bellek ve performans ayarlarını düzenle',
         'res_title': 'Kaynak Ayarları',
         'res_subtitle': 'Donanımınız için sistem kaynakları ve performans seçeneklerini ayarlayın.',
-        'res_section_gpu': '🖥️ GPU',
+        'res_section_gpu': 'GPU',
         'res_gpu_enabled': 'GPU Kullan (CUDA)',
         'res_fp16': 'FP16 / Karma Hassasiyet',
         'res_gpu_mem_limit': 'VRAM Limiti',
-        'res_section_batch': '📦 Batch / Verimlilik',
+        'res_section_batch': 'Batch / Verimlilik',
         'res_batch_size': 'Batch Boyutu',
         'res_prefetch_frames': 'Ön Yükleme Kare',
-        'res_section_cpu': '⚙️ CPU / Thread',
+        'res_section_cpu': 'CPU / Thread',
         'res_cpu_threads': 'CPU Thread',
         'res_decode_workers': 'Decode Worker',
-        'res_section_memory': '🧠 Bellek',
+        'res_section_memory': 'Bellek',
         'res_ram_limit': 'RAM Limiti',
-        'res_section_misc': '🔧 Diğer Performans',
+        'res_section_misc': 'Diğer Performans',
         'res_async_save': 'Asenkron Dosya Kaydetme',
         'res_auto_gc': 'Otomatik Çöp Toplama',
         'res_jpeg_quality': 'JPEG Kalitesi',
         'res_reset': 'Varsayılana Sıfırla',
-        'res_apply': 'Uygula ve Kaydet',
+        'res_apply': 'Uygula Kaydet',
         # Resource Settings Tooltips
         'res_gpu_enabled_tooltip': 'AI model çıkarımı için CUDA GPU hızlandırmayı etkinleştir. CUDA destekli NVIDIA GPU gerektirir.',
         'res_fp16_tooltip': 'Daha hızlı çıkarım ve düşük VRAM kullanımı için yarı hassasiyet kullan. Çoğu GPU için önerilir.',
@@ -644,7 +645,7 @@ TRANSLATIONS = {
         'res_async_save_tooltip': 'Dosyaları arka planda asenkron kaydet. Daha hızlı işleme ama biraz daha fazla bellek.',
         'res_auto_gc_tooltip': 'İşleme sırasında kullanılmayan belleği otomatik serbest bırak. Küçük bir hız maliyetiyle bellek kullanımını azaltır.',
         'res_jpeg_quality_tooltip': 'Kaydedilen kareler için JPEG sıkıştırma kalitesi (50–100). Yüksek = daha iyi kalite ama daha büyük dosya.',
-        'res_light_mode_tooltip': 'Koyu ve açık arayüz teması arasında geçiş yap. "Uygula ve Kaydet"e tıkladıktan sonra uygulanır.',
+        'res_light_mode_tooltip': 'Koyu ve açık arayüz teması arasında geçiş yap. "Uygula Kaydet"e tıkladıktan sonra uygulanır.',
         'res_font_scale_tooltip': 'Arayüzdeki tüm metinleri ölçekle (%80–%140). Yüksek DPI ekranlar veya erişilebilirlik için kullanışlı.',
 
         # Standalone Captioning Page (NEW v2.0)
@@ -735,9 +736,10 @@ TRANSLATIONS = {
         'tag_freq_add_selected_tooltip': 'Tablodan seçili etiketleri kara liste düzenleyicisine ekle.',
 
         # Resource Settings - Theme / UI
-        'res_section_theme': '🎨 Tema / Arayüz',
+        'res_section_theme': 'Tema / Arayüz',
         'res_light_mode': 'Açık Mod',
         'res_font_scale': 'Yazı Tipi Ölçeği',
+        'res_section_lang': 'Dil',
     }
 }
 

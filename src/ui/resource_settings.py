@@ -225,6 +225,11 @@ class ResourceSettingsDrawer(QFrame):
             "res_font_scale", 80, 140, 5, "%",
         )
 
+        # ── Language ─────────────────────────────────────────────
+        self._add_section("res_section_lang")
+        self._lang_placeholder = QHBoxLayout()
+        self._lay.addLayout(self._lang_placeholder)
+
         self._lay.addStretch()
         scroll.setWidget(inner)
         root.addWidget(scroll, stretch=1)
@@ -357,6 +362,11 @@ class ResourceSettingsDrawer(QFrame):
     def _reset_defaults(self):
         self._settings = _defaults()
         self._load_values()
+
+    def embed_lang_combo(self, combo):
+        """Host an external language combo inside the drawer."""
+        self._lang_placeholder.addWidget(combo)
+        self._lang_placeholder.addStretch()
 
     # ─── Slide animation ─────────────────────────────────────────────────
 

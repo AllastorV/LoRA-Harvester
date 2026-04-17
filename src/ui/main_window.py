@@ -513,24 +513,20 @@ class VideoSmartCropperUI(QMainWindow):
         top_bar.addWidget(self.page_tag_freq_btn)
         top_bar.addStretch()
 
-        # Resource settings button (opens drawer) — small square icon
+        # Settings button (opens resource drawer) — placed at far right
         self.res_settings_btn = QPushButton("⚙")
         self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
         self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
         self.res_settings_btn.clicked.connect(self._toggle_resource_drawer)
         top_bar.addWidget(self.res_settings_btn)
+        main_layout.addLayout(top_bar)
 
-        # Language selector
-        lang_label = QLabel("🌐")
-        lang_label.setFont(QFont('Arial', 14))
+        # Language combo (created here, will be placed inside the resource drawer)
         self.lang_combo = QComboBox()
-        self.lang_combo.addItems(['🇬🇧 English', '🇹🇷 Türkçe'])
-        self.lang_combo.setCurrentIndex(0)  # English default
+        self.lang_combo.addItems(['English', 'Türkçe'])
+        self.lang_combo.setCurrentIndex(0)
         self.lang_combo.setStyleSheet(theme.combo())
         self.lang_combo.currentIndexChanged.connect(self.change_language)
-        top_bar.addWidget(lang_label)
-        top_bar.addWidget(self.lang_combo)
-        main_layout.addLayout(top_bar)
         
         # ========== STACKED WIDGET FOR PAGES ==========
         self.page_stack = QStackedWidget()
@@ -577,6 +573,7 @@ class VideoSmartCropperUI(QMainWindow):
             lang=self.current_lang, parent=central_widget,
         )
         self._resource_drawer.settings_changed.connect(self._on_resource_settings_changed)
+        self._resource_drawer.embed_lang_combo(self.lang_combo)
         # Pre-load current resource settings for the processor.
         self._resource_cfg = self._resource_drawer.get_settings()
 
@@ -762,7 +759,40 @@ class VideoSmartCropperUI(QMainWindow):
         interval_layout.addWidget(self.interval_slider)
         interval_layout.addWidget(self.interval_value_label)
         settings_layout.addLayout(interval_layout)
-        
+
+        # ── Batch-wide video trim (right below frame interval) ──
+        trim_layout = QHBoxLayout()
+        self.trim_label = QLabel(get_text('trim_label', self.current_lang))
+        self.trim_label.setStyleSheet(theme.label_default())
+        self.trim_help = QLabel("ℹ️")
+        self.trim_help.setStyleSheet(theme.info_icon())
+        self.trim_help.setToolTip(get_text('trim_tooltip', self.current_lang))
+        self.trim_help.setCursor(Qt.WhatsThisCursor)
+        self.trim_start_spin = QSpinBox()
+        self.trim_start_spin.setMinimum(0)
+        self.trim_start_spin.setMaximum(600)
+        self.trim_start_spin.setValue(0)
+        self.trim_start_spin.setSuffix("s")
+        self.trim_start_spin.setStyleSheet(theme.spinbox())
+        self.trim_start_lbl = QLabel(get_text('trim_start', self.current_lang))
+        self.trim_start_lbl.setStyleSheet(theme.label_default())
+        self.trim_end_spin = QSpinBox()
+        self.trim_end_spin.setMinimum(0)
+        self.trim_end_spin.setMaximum(600)
+        self.trim_end_spin.setValue(0)
+        self.trim_end_spin.setSuffix("s")
+        self.trim_end_spin.setStyleSheet(theme.spinbox())
+        self.trim_end_lbl = QLabel(get_text('trim_end', self.current_lang))
+        self.trim_end_lbl.setStyleSheet(theme.label_default())
+        trim_layout.addWidget(self.trim_label)
+        trim_layout.addWidget(self.trim_help)
+        trim_layout.addWidget(self.trim_start_lbl)
+        trim_layout.addWidget(self.trim_start_spin)
+        trim_layout.addWidget(self.trim_end_lbl)
+        trim_layout.addWidget(self.trim_end_spin)
+        trim_layout.addStretch()
+        settings_layout.addLayout(trim_layout)
+
         # Aspect ratio selector
         ratio_layout = QHBoxLayout()
         self.ratio_label = QLabel(get_text('output_format', self.current_lang))
@@ -945,39 +975,6 @@ class VideoSmartCropperUI(QMainWindow):
         padding_layout.addWidget(self.padding_spinbox)
         padding_layout.addStretch()
         settings_layout.addLayout(padding_layout)
-
-        # ── Batch-wide video trim ────────────────────────────────────
-        trim_layout = QHBoxLayout()
-        self.trim_label = QLabel(get_text('trim_label', self.current_lang))
-        self.trim_label.setStyleSheet(theme.label_default())
-        self.trim_help = QLabel("ℹ️")
-        self.trim_help.setStyleSheet(theme.info_icon())
-        self.trim_help.setToolTip(get_text('trim_tooltip', self.current_lang))
-        self.trim_help.setCursor(Qt.WhatsThisCursor)
-        self.trim_start_spin = QSpinBox()
-        self.trim_start_spin.setMinimum(0)
-        self.trim_start_spin.setMaximum(600)
-        self.trim_start_spin.setValue(0)
-        self.trim_start_spin.setSuffix("s")
-        self.trim_start_spin.setStyleSheet(theme.spinbox())
-        self.trim_start_lbl = QLabel(get_text('trim_start', self.current_lang))
-        self.trim_start_lbl.setStyleSheet(theme.label_default())
-        self.trim_end_spin = QSpinBox()
-        self.trim_end_spin.setMinimum(0)
-        self.trim_end_spin.setMaximum(600)
-        self.trim_end_spin.setValue(0)
-        self.trim_end_spin.setSuffix("s")
-        self.trim_end_spin.setStyleSheet(theme.spinbox())
-        self.trim_end_lbl = QLabel(get_text('trim_end', self.current_lang))
-        self.trim_end_lbl.setStyleSheet(theme.label_default())
-        trim_layout.addWidget(self.trim_label)
-        trim_layout.addWidget(self.trim_help)
-        trim_layout.addWidget(self.trim_start_lbl)
-        trim_layout.addWidget(self.trim_start_spin)
-        trim_layout.addWidget(self.trim_end_lbl)
-        trim_layout.addWidget(self.trim_end_spin)
-        trim_layout.addStretch()
-        settings_layout.addLayout(trim_layout)
 
         layout.addWidget(self.settings_group)
         
