@@ -595,16 +595,18 @@ class _GenerateTab(QWidget):
 
     # ── Preset handling ─────────────────────────────────────────
 
-    # Preset → (wd14_model, min_confidence, max_tags)
+    # Preset → (wd14_model, min_confidence)
+    # max_tags is always user-controlled — presets never override it.
     _PRESETS = {
-        'high_accuracy': ('SmilingWolf/wd-swinv2-tagger-v3', 0.30, 40),
-        'balanced':      ('SmilingWolf/wd-convnext-tagger-v3', 0.35, 30),
-        'high_speed':    ('SmilingWolf/wd-vit-tagger-v3', 0.40, 20),
+        'high_accuracy': ('SmilingWolf/wd-swinv2-tagger-v3', 0.30),
+        'balanced':      ('SmilingWolf/wd-convnext-tagger-v3', 0.35),
+        'high_speed':    ('SmilingWolf/wd-vit-tagger-v3', 0.40),
     }
 
     def _on_preset_changed(self, index: int):
-        """Apply preset values to model/confidence/max_tags.
-        'custom' unlocks the manual model combo."""
+        """Apply preset values to model/confidence.
+        'custom' unlocks the manual model combo.
+        max_tags is never touched — the user controls it freely."""
         key = self.preset_combo.itemData(index)
         if key == 'custom':
             self._model_row_widget.setVisible(True)
@@ -612,12 +614,11 @@ class _GenerateTab(QWidget):
         preset = self._PRESETS.get(key)
         if not preset:
             return
-        model, conf, mtags = preset
+        model, conf = preset
         idx = self.wd14_combo.findText(model)
         if idx >= 0:
             self.wd14_combo.setCurrentIndex(idx)
         self.conf_spin.setValue(conf)
-        self.max_tags_spin.setValue(mtags)
         self._model_row_widget.setVisible(False)
 
     def get_settings(self) -> Dict:
