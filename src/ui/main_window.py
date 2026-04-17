@@ -1348,18 +1348,19 @@ class VideoSmartCropperUI(QMainWindow):
     
     def on_finished(self, stats: dict):
         """Processing finished"""
-        # Guard against stale signal from an old thread
+        # Guard against stale signal from an old / already-cleaned-up thread.
+        # After stop_processing() re-enables the Start button the user may have
+        # already pressed Start again, reassigning self.processing_thread.
+        # sender() lets us verify the signal came from the current thread.
         if self.processing_thread is None:
             return
+        sender = self.sender()
+        if sender is not None and sender is not self.processing_thread:
+            return
 
-        # If stopped by user, re-enable UI and clean up
+        # If stopped by user, just clean up — buttons were already re-enabled
+        # in stop_processing().
         if stats.get('stopped'):
-            self.process_btn.setEnabled(True)
-            self.stop_btn.setEnabled(False)
-            self.skip_btn.setEnabled(False)
-            self.pause_btn.setEnabled(False)
-            self.pause_btn.setText(get_text('pause_btn', self.current_lang))
-            self.drop_zone.setEnabled(True)
             self._cleanup_processing_thread()
             return
 
@@ -1444,8 +1445,7 @@ class VideoSmartCropperUI(QMainWindow):
                 if ct and ct.isRunning():
                     ct.stop()
                     ct.wait(5000)
-                if hasattr(gen_tab, '_cleanup_captioner'):
-                    gen_tab._cleanup_captioner()
+                gen_tab._safe_delete_thread()
 
         event.accept()
         # Force process exit so no threads linger

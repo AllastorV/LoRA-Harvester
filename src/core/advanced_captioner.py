@@ -620,14 +620,14 @@ class AdvancedCaptioner:
             else:
                 body = tw
 
-        # Wrap with prefix / suffix (natural language → space-separated)
+        # Wrap with prefix / suffix using tag separator so commas stay consistent
         caption = body
         if settings.caption_prefix:
             pfx = settings.caption_prefix.strip()
-            caption = f"{pfx} {caption}" if caption else pfx
+            caption = f"{pfx}{sep}{caption}" if caption else pfx
         if settings.caption_suffix:
             sfx = settings.caption_suffix.strip()
-            caption = f"{caption} {sfx}" if caption else sfx
+            caption = f"{caption}{sep}{sfx}" if caption else sfx
 
         return caption.strip()
     

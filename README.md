@@ -163,23 +163,23 @@ python scripts/character_sort.py /images/input --references /refs --max-characte
 
 ```yaml
 quality:
-  blur_threshold: 100.0       # Min sharpness score. Higher = stricter
-  noise_threshold: 12.0       # Max grain level. Lower = stricter
-  brightness_min: 40          # Darkest allowed frame (0–255)
-  brightness_max: 220         # Brightest allowed frame (0–255)
-  duplicate_threshold: 0.92   # Similarity cutoff (0–1). Higher = keep more
-
-overlay:
-  sensitivity: "normal"       # "low" / "normal" / "high"
-  margin_px: 15               # Clearance pixels around detected overlay
+  blur_threshold: 80.0        # Min sharpness (Laplacian variance). Higher = stricter
+  brightness_min: 35          # Darkest allowed frame (0–255)
+  brightness_max: 225         # Brightest allowed frame (0–255)
+  duplicate_threshold: 0.90   # Similarity cutoff (0–1). Higher = keep more
+  min_contrast: 20            # Minimum contrast level
 
 captioning:
   wd14:
-    min_confidence: 0.35      # Min tag confidence (0–1)
-    max_tags: 30              # Max tags per caption
+    model: "SmilingWolf/wd-convnext-tagger-v3"   # Auto-selected by quality preset in GUI
   florence2:
     model: "microsoft/Florence-2-base"   # "-base" (fast) or "-large" (accurate)
     task: "<MORE_DETAILED_CAPTION>"
+  tags:
+    min_confidence: 0.35      # Min tag confidence (0–1)
+    max_tags: 30              # Max tags per caption
+    trigger_word: ""          # Prepended to every caption
+    caption_suffix: ""        # Appended at end (e.g. "masterpiece, best quality")
 ```
 
 #### Character Sorter
@@ -229,8 +229,8 @@ _sorted/
 | Too many false detections | Raise `--confidence`, use `--ensemble` |
 | Captions only contain trigger word | WD14 model failed to load — run `pip install onnxruntime` (or `onnxruntime-gpu`) and ensure you have internet access on first launch so the model can download |
 | Captions not generating | Run `pip install onnxruntime` |
-| Watermarks in output | Enable quality filter; set `overlay.sensitivity: "high"` in config.yaml |
-| Grainy or dark frames | Enable `--quality`; lower `noise_threshold` in config.yaml |
+| Watermarks in output | Enable quality filter |
+| Grainy or dark frames | Enable `--quality`; raise `quality.blur_threshold` in config.yaml |
 | InsightFace missing | Run `pip install insightface scikit-learn onnxruntime` |
 
 ---
@@ -455,8 +455,8 @@ python scripts/character_sort.py /gorseller/giris --references /referanslar --ma
 | Cok fazla yanlis tespit | `--confidence` yukselт, `--ensemble` kullan |
 | Sadece tetikleyici kelime yaziliyor | WD14 modeli yuklenmemis — `pip install onnxruntime` (veya `onnxruntime-gpu`) calistir ve ilk baslatmada internet baglantisi oldugundan emin ol |
 | Caption olusmuyor | `pip install onnxruntime` calistir |
-| Ciktida filigran var | Kalite filtresini ac; `config.yaml`'da `overlay.sensitivity: "high"` yap |
-| Karlı/karanlik kareler | `--quality` ac; `config.yaml`'da `noise_threshold` degerini dusur |
+| Ciktida filigran var | Kalite filtresini ac |
+| Karlı/karanlik kareler | `--quality` ac; `config.yaml`'da `quality.blur_threshold` degerini yukselt |
 | InsightFace eksik | `pip install insightface scikit-learn onnxruntime` calistir |
 
 ---

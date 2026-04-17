@@ -686,6 +686,8 @@ class _GenerateTab(QWidget):
             self.captioning_thread.stop()
             self.log("Stopping...")
             self.stop_btn.setEnabled(False)
+            self.start_btn.setEnabled(True)
+            self.browse_btn.setEnabled(True)
 
     def _on_progress(self, current: int, total: int, filename: str):
         pct = int((current / total) * 100) if total > 0 else 0
@@ -704,7 +706,6 @@ class _GenerateTab(QWidget):
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.browse_btn.setEnabled(True)
-        self._cleanup_captioner()
         if self.selected_folder:
             self.captioning_finished.emit(self.selected_folder)
 
@@ -713,27 +714,19 @@ class _GenerateTab(QWidget):
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.browse_btn.setEnabled(True)
-        self._cleanup_captioner()
 
     def _safe_delete_thread(self):
+        """Single cleanup path — called via finished signal after _on_finished."""
         if self.captioning_thread:
             self.captioning_thread.wait(3000)
             self.captioning_thread.deleteLater()
             self.captioning_thread = None
-        self.captioner = None
-
-    def _cleanup_captioner(self):
-        if self.captioning_thread and self.captioning_thread.isRunning():
-            self.captioning_thread.stop()
-            self.captioning_thread.wait(5000)
-        if hasattr(self, 'captioner') and self.captioner:
-            if hasattr(self.captioner, 'cleanup'):
-                try:
-                    self.captioner.cleanup()
-                except Exception:
-                    pass
+        if self.captioner:
+            try:
+                self.captioner.cleanup()
+            except Exception:
+                pass
             self.captioner = None
-        self.browse_btn.setEnabled(True)
 
     # ── Language / Theme ────────────────────────────────────────
 
@@ -816,6 +809,8 @@ class _GenerateTab(QWidget):
         self.neg_label.setStyleSheet(theme.label_frame())
         self.neg_info.setStyleSheet(theme.info_icon_frame_compact())
         self.neg_edit.setStyleSheet(theme.line_edit())
+        self._model_row_widget.setStyleSheet(
+            f"background-color: transparent;")
         self.wd14_cb.setStyleSheet(theme.checkbox_frame())
         self.wd14_info.setStyleSheet(theme.info_icon_frame())
         self.wd14_combo.setStyleSheet(theme.combo())
