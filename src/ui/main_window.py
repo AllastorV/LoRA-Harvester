@@ -112,15 +112,21 @@ class ProcessingThread(QThread):
 
             # Captioner
             captioner = None
-            caption_mode = cfg['caption_settings'].get('mode', 'tags_only')
-            if cfg['caption_settings']['enabled']:
+            florence2 = None
+            cs = cfg['caption_settings']
+            caption_mode = cs.get('mode', 'tags_only')
+            use_wd14 = caption_mode in ('tags_only', 'combined')
+            use_florence2 = caption_mode in ('florence2', 'combined')
+            if cs['enabled']:
                 try:
                     from src.core.advanced_captioner import AdvancedCaptioner, TagSettings
                     ts = cfg['tag_settings']
+                    # Prefer preset confidence from captioning panel, fall back to tag panel
+                    min_conf = cs.get('min_confidence') or ts['min_confidence']
                     tag_cfg = TagSettings(
                         trigger_word=ts['trigger_word'] or "",
                         max_tags=ts['max_tags'],
-                        min_confidence=ts['min_confidence'],
+                        min_confidence=min_conf,
                         negative_tags=ts['negative_tags'],
                         priority_tags=ts['priority_tags'],
                         keep_character_tags=ts['keep_character_tags'],
@@ -131,15 +137,24 @@ class ProcessingThread(QThread):
                         caption_prefix=ts['caption_prefix'] or "",
                         caption_suffix=ts['caption_suffix'] or "",
                     )
-                    cs = cfg['caption_settings']
                     captioner = AdvancedCaptioner(
-                        enable_wd14=cs['wd14_enabled'],
+                        enable_wd14=cs['wd14_enabled'] and use_wd14,
                         wd14_model=cs['wd14_model'],
                         tag_settings=tag_cfg,
                     )
                 except Exception as e:
                     self.log_message.emit(f"Captioner init error: {e}")
                     captioner = None
+
+                if use_florence2:
+                    try:
+                        from src.core.florence2_captioner import Florence2Captioner
+                        florence2 = Florence2Captioner(
+                            model_type=cs.get('florence2_model', 'florence-2-base'))
+                        self.log_message.emit("✅ Florence-2 initialized")
+                    except Exception as e:
+                        self.log_message.emit(f"❌ Florence-2 init error: {e}")
+                        florence2 = None
 
                 # Pre-load models (errors disable the failed model)
                 if captioner:
@@ -164,12 +179,18 @@ class ProcessingThread(QThread):
 
                     # Log final captioning status
                     wd14_ok = captioner.wd14 and captioner.enable_wd14
+                    f2_ok = florence2 is not None
                     self.log_message.emit(
-                        f"📝 Captioning: mode={caption_mode} WD14={'ON' if wd14_ok else 'OFF'}"
+                        f"📝 Captioning: mode={caption_mode} "
+                        f"WD14={'ON' if wd14_ok else 'OFF'} "
+                        f"Florence2={'ON' if f2_ok else 'OFF'}"
                     )
-                    if not wd14_ok:
+                    if caption_mode == 'tags_only' and not wd14_ok:
                         self.log_message.emit("⚠️ WD14 disabled - no tags will be generated!")
                         captioner = None
+                    elif caption_mode == 'florence2' and not f2_ok:
+                        self.log_message.emit("⚠️ Florence-2 disabled - falling back to tags only")
+                        caption_mode = 'tags_only'
             else:
                 self.log_message.emit("📝 Auto-captioning: disabled (enable in Captioning settings)")
 
@@ -190,6 +211,8 @@ class ProcessingThread(QThread):
                 quality_analyzer=quality_analyzer,
                 captioner=captioner,
                 caption_mode=caption_mode,
+                florence2=florence2,
+                florence2_task=cs.get('florence2_task', '<DETAILED_CAPTION>'),
                 log_callback=lambda msg: self.log_message.emit(msg),
                 jpeg_quality=res.get('jpeg_quality', 95),
             )
@@ -241,6 +264,9 @@ class ProcessingThread(QThread):
                 if hasattr(self.processor, 'captioner') and self.processor.captioner:
                     if hasattr(self.processor.captioner, 'cleanup'):
                         self.processor.captioner.cleanup()
+                if hasattr(self.processor, 'florence2') and self.processor.florence2:
+                    if hasattr(self.processor.florence2, 'cleanup'):
+                        self.processor.florence2.cleanup()
                 self.processor = None
             import torch
             if torch.cuda.is_available():

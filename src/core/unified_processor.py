@@ -39,6 +39,8 @@ class UnifiedVideoProcessor:
                  quality_analyzer: Any = None,
                  captioner: Any = None,
                  caption_mode: str = "tags_only",
+                 florence2: Any = None,
+                 florence2_task: str = "<DETAILED_CAPTION>",
                  log_callback: Optional[Callable] = None,
                  jpeg_quality: int = 95):
         """
@@ -80,6 +82,8 @@ class UnifiedVideoProcessor:
         self.quality_analyzer = quality_analyzer
         self.captioner = captioner
         self.caption_mode = caption_mode
+        self.florence2 = florence2
+        self.florence2_task = florence2_task
         self.log_callback = log_callback
         self.jpeg_quality = max(1, min(100, jpeg_quality))
         
@@ -126,8 +130,8 @@ class UnifiedVideoProcessor:
         # V2.0 features
         if self.quality_analyzer:
             print(f"🔍 Quality Analysis: Enabled")
-        if self.captioner:
-            print(f"📝 Auto Captioning: Enabled")
+        if self.captioner or self.florence2:
+            print(f"📝 Auto Captioning: Enabled (mode={self.caption_mode})")
         print("="*60)
     
     def _log(self, msg: str):
@@ -810,11 +814,56 @@ class UnifiedVideoProcessor:
             saved_path:   Path where the frame JPEG was saved.
             frame_number: Original frame index (for logging).
         """
-        if not self.captioner or not saved_path:
+        if not saved_path:
+            return
+        if not self.captioner and not self.florence2:
             return
         try:
-            result = self.captioner.caption_image(cropped, mode=self.caption_mode)
-            caption = result.final_caption if hasattr(result, 'final_caption') else str(result)
+            mode = self.caption_mode
+            use_wd14 = mode in ('tags_only', 'combined') and self.captioner is not None
+            use_f2 = mode in ('florence2', 'combined') and self.florence2 is not None
+
+            sep = ', '
+            parts: list = []
+
+            # Florence-2 NLP caption first (so tags come after in combined mode)
+            if use_f2:
+                try:
+                    nlp = self.florence2.generate(cropped, task=self.florence2_task)
+                    if nlp:
+                        parts.append(nlp)
+                except Exception as e:
+                    self._log(f"⚠️ Florence-2 error frame {frame_number}: {e}")
+
+            tag_count = 0
+            if use_wd14:
+                wd14_result = self.captioner.caption_image(cropped, mode='tags_only')
+                tag_count = getattr(wd14_result, 'tag_count', 0)
+                if mode == 'tags_only':
+                    # Use the fully-formatted WD14 caption (includes trigger/suffix)
+                    caption = wd14_result.final_caption
+                else:
+                    # combined: only take the raw tag body (no trigger/suffix yet)
+                    tag_body = sep.join(getattr(wd14_result, 'filtered_tags', []) or [])
+                    if tag_body:
+                        parts.append(tag_body)
+                    caption = None  # assembled below
+            else:
+                caption = None
+
+            if caption is None:
+                # florence2 or combined — assemble trigger + parts + suffix
+                body = sep.join(parts) if parts else ''
+                ts = getattr(self.captioner, 'tag_settings', None) if self.captioner else None
+                trigger = (ts.trigger_word.strip() if ts and ts.trigger_word else '')
+                suffix = (ts.caption_suffix.strip() if ts and ts.caption_suffix else '')
+                caption = body
+                if trigger:
+                    caption = f"{trigger}{sep}{caption}" if caption else trigger
+                if suffix:
+                    caption = f"{caption}{sep}{suffix}" if caption else suffix
+                caption = caption.strip()
+
             caption_path = saved_path.with_suffix('.txt')
             with open(caption_path, 'w', encoding='utf-8') as f:
                 f.write(caption)
@@ -822,8 +871,8 @@ class UnifiedVideoProcessor:
             if self.stats['captioned_frames'] == 1:
                 preview = (caption[:60] + "...") if len(caption) > 60 else caption
                 self._log(f"📝 First caption: {preview}")
-            # Warn if caption has no auto-tags (only trigger word)
-            if hasattr(result, 'tag_count') and result.tag_count == 0:
+            # Warn if WD14 produced 0 tags and we relied on it
+            if use_wd14 and tag_count == 0 and not use_f2:
                 if self.stats.get('_zero_tag_warned', 0) == 0:
                     self._log("⚠️ WD14 produced 0 tags — captions will only contain trigger word")
                     self.stats['_zero_tag_warned'] = 1
