@@ -6,6 +6,8 @@ Includes a live System Monitor widget (CPU, RAM, GPU, VRAM).
 
 import json
 import multiprocessing
+import subprocess
+import sys
 from pathlib import Path
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
@@ -19,6 +21,11 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import QFont, QColor
 from src.ui.translations import get_text
 from src.ui import theme
+
+# Windows: suppress the black console window that flashes on every subprocess.run().
+_NO_WINDOW_KW = {}
+if sys.platform == "win32":
+    _NO_WINDOW_KW["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
 
 # Persistent settings path (next to the executable / repo root)
@@ -281,11 +288,11 @@ class SystemMonitorWidget(QFrame):
                 vram_pct = (used_vram / total_vram * 100) if total_vram > 0 else 0
 
                 try:
-                    import subprocess
                     result = subprocess.run(
                         ["nvidia-smi", "--query-gpu=utilization.gpu",
                          "--format=csv,noheader,nounits"],
                         capture_output=True, text=True, timeout=3,
+                        **_NO_WINDOW_KW,
                     )
                     gpu_util = float(result.stdout.strip().split("\n")[0])
                 except Exception:
@@ -322,6 +329,197 @@ class SystemMonitorWidget(QFrame):
         self._gpu_bar.set_label(get_text("sys_gpu", lang))
         self._vram_bar.set_label(get_text("sys_vram", lang))
         self._gpu_na_label.setText(get_text("sys_gpu_not_available", lang))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Compact Horizontal Monitor Bar (for the topbar)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class _MonitorPill(QFrame):
+    """A single inline pill: ● label value."""
+
+    def __init__(self, label: str, color: str, parent=None):
+        super().__init__(parent)
+        self._color = color
+        self.setStyleSheet("background: transparent; border: none;")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(5)
+
+        self._dot = QLabel("●")
+        self._dot.setStyleSheet(
+            f"color: {color}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent;"
+        )
+        self._label = QLabel(label)
+        self._label.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; "
+            f"font-weight: 600; border: none; background: transparent;"
+        )
+        self._value = QLabel("—")
+        self._value.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; "
+            f"font-family: {theme.FONT_MONO}; font-weight: 600; "
+            f"border: none; background: transparent;"
+        )
+        lay.addWidget(self._dot)
+        lay.addWidget(self._label)
+        lay.addWidget(self._value)
+
+    def set_value(self, text: str):
+        self._value.setText(text)
+
+    def set_label(self, text: str):
+        self._label.setText(text)
+
+    def refresh_styles(self):
+        self._dot.setStyleSheet(
+            f"color: {self._color}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent;"
+        )
+        self._label.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; "
+            f"font-weight: 600; border: none; background: transparent;"
+        )
+        self._value.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; "
+            f"font-family: {theme.FONT_MONO}; font-weight: 600; "
+            f"border: none; background: transparent;"
+        )
+
+
+class SystemMonitorBar(QFrame):
+    """Horizontal compact monitor for the topbar.
+    Layout: [● CPU 23%] · [● RAM 6.2/16 GB] · [● GPU 78%] · [● VRAM 4.1/24 GB]
+    """
+
+    def __init__(self, lang: str = "en", parent=None):
+        super().__init__(parent)
+        self.lang = lang
+        self._gpu_available = False
+        self._apply_frame_style()
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(10, 4, 10, 4)
+        lay.setSpacing(10)
+
+        self._cpu_pill = _MonitorPill(get_text("sys_cpu", lang), theme.ORANGE, self)
+        self._ram_pill = _MonitorPill(get_text("sys_ram", lang), "#5B9BD5", self)
+        self._gpu_pill = _MonitorPill(get_text("sys_gpu", lang), theme.GREEN, self)
+        self._vram_pill = _MonitorPill(get_text("sys_vram", lang), theme.YELLOW, self)
+
+        self._sep1 = self._make_sep()
+        self._sep2 = self._make_sep()
+        self._sep3 = self._make_sep()
+
+        lay.addWidget(self._cpu_pill)
+        lay.addWidget(self._sep1)
+        lay.addWidget(self._ram_pill)
+        lay.addWidget(self._sep2)
+        lay.addWidget(self._gpu_pill)
+        lay.addWidget(self._sep3)
+        lay.addWidget(self._vram_pill)
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._poll)
+        self._timer.setInterval(2000)
+
+        self._detect_gpu()
+        self._poll()
+
+    def _make_sep(self) -> QLabel:
+        sep = QLabel("·")
+        sep.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; "
+            f"border: none; background: transparent;"
+        )
+        return sep
+
+    def _apply_frame_style(self):
+        self.setStyleSheet(f"""
+            SystemMonitorBar {{
+                background-color: {theme.BG_CARD};
+                border: 1px solid {theme.BORDER};
+                border-radius: {theme.R_SM};
+            }}
+        """)
+
+    def _detect_gpu(self):
+        try:
+            import torch
+            self._gpu_available = torch.cuda.is_available()
+        except Exception:
+            self._gpu_available = False
+        if not self._gpu_available:
+            self._gpu_pill.hide()
+            self._vram_pill.hide()
+            self._sep2.hide()
+            self._sep3.hide()
+
+    def start(self):
+        if not self._timer.isActive():
+            self._poll()
+            self._timer.start()
+
+    def stop(self):
+        self._timer.stop()
+
+    def _poll(self):
+        try:
+            import psutil
+            if not hasattr(self, '_psutil_primed'):
+                psutil.cpu_percent()
+                self._psutil_primed = True
+            cpu_pct = psutil.cpu_percent(interval=None)
+            mem = psutil.virtual_memory()
+            ram_used = mem.used / (1024 ** 3)
+            ram_total = mem.total / (1024 ** 3)
+            self._cpu_pill.set_value(f"{cpu_pct:.0f}%")
+            self._ram_pill.set_value(f"{ram_used:.1f}/{ram_total:.0f} GB")
+        except ImportError:
+            self._cpu_pill.set_value("N/A")
+            self._ram_pill.set_value("N/A")
+
+        if self._gpu_available:
+            try:
+                import torch
+                gpu_props = torch.cuda.get_device_properties(0)
+                total_vram = gpu_props.total_memory / (1024 ** 3)
+                used_vram = torch.cuda.memory_allocated(0) / (1024 ** 3)
+
+                try:
+                    result = subprocess.run(
+                        ["nvidia-smi", "--query-gpu=utilization.gpu",
+                         "--format=csv,noheader,nounits"],
+                        capture_output=True, text=True, timeout=3,
+                        **_NO_WINDOW_KW,
+                    )
+                    gpu_util = float(result.stdout.strip().split("\n")[0])
+                except Exception:
+                    gpu_util = 0
+
+                self._gpu_pill.set_value(f"{gpu_util:.0f}%")
+                self._vram_pill.set_value(f"{used_vram:.1f}/{total_vram:.0f} GB")
+            except Exception:
+                self._gpu_pill.set_value("N/A")
+                self._vram_pill.set_value("N/A")
+
+    def refresh_styles(self):
+        self._apply_frame_style()
+        for pill in (self._cpu_pill, self._ram_pill, self._gpu_pill, self._vram_pill):
+            pill.refresh_styles()
+        for sep in (self._sep1, self._sep2, self._sep3):
+            sep.setStyleSheet(
+                f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; "
+                f"border: none; background: transparent;"
+            )
+
+    def update_language(self, lang: str):
+        self.lang = lang
+        self._cpu_pill.set_label(get_text("sys_cpu", lang))
+        self._ram_pill.set_label(get_text("sys_ram", lang))
+        self._gpu_pill.set_label(get_text("sys_gpu", lang))
+        self._vram_pill.set_label(get_text("sys_vram", lang))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -397,10 +595,6 @@ class ResourceSettingsDrawer(QFrame):
         self._subtitle.setStyleSheet(theme.label_muted())
         self._subtitle.setWordWrap(True)
         root.addWidget(self._subtitle)
-
-        # System Monitor (live CPU/RAM/GPU/VRAM gauges)
-        self._sys_monitor = SystemMonitorWidget(self.lang, self)
-        root.addWidget(self._sys_monitor)
 
         # Scrollable content
         scroll = QScrollArea()
@@ -629,7 +823,6 @@ class ResourceSettingsDrawer(QFrame):
         self._anim.setEndValue(end)
         self._anim.start()
         self._is_open = True
-        self._sys_monitor.start()
 
     def close_drawer(self):
         if not self._is_open:
@@ -661,7 +854,6 @@ class ResourceSettingsDrawer(QFrame):
             pass
         self.hide()
         self._is_open = False
-        self._sys_monitor.stop()
         self.closed.emit()
 
     def toggle(self):
@@ -703,7 +895,6 @@ class ResourceSettingsDrawer(QFrame):
             cb.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; padding: 3px 0;")
         for lbl, _key in self._slider_keys:
             lbl.setStyleSheet(theme.label_default())
-        self._sys_monitor.refresh_styles()
 
     # ─── Language update ─────────────────────────────────────────────────
 
@@ -711,7 +902,6 @@ class ResourceSettingsDrawer(QFrame):
         self.lang = lang
         self._title.setText(get_text("res_title", lang))
         self._subtitle.setText(get_text("res_subtitle", lang))
-        self._sys_monitor.update_language(lang)
         self._reset_btn.setText(get_text("res_reset", lang))
         self._apply_btn.setText(get_text("res_apply", lang))
         for lbl, key in self._section_labels:

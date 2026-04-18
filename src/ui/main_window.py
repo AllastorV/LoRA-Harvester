@@ -542,12 +542,6 @@ class VideoSmartCropperUI(QMainWindow):
 
         sidebar_lay.addStretch()
 
-        # System Monitor (always visible, bottom of sidebar)
-        from src.ui.resource_settings import SystemMonitorWidget
-        self._sidebar_monitor = SystemMonitorWidget(self.current_lang, self._sidebar)
-        sidebar_lay.addWidget(self._sidebar_monitor)
-        self._sidebar_monitor.start()
-
         root_layout.addWidget(self._sidebar)
 
         # ═══════════ RIGHT AREA (topbar + content) ═══════════
@@ -557,11 +551,18 @@ class VideoSmartCropperUI(QMainWindow):
 
         # ── TOPBAR (60px) ──
         self._topbar = QFrame()
-        self._topbar.setFixedHeight(52)
+        self._topbar.setFixedHeight(60)
         self._topbar.setStyleSheet(theme.topbar_frame())
         topbar_lay = QHBoxLayout(self._topbar)
         topbar_lay.setContentsMargins(16, 0, 16, 0)
         topbar_lay.setSpacing(12)
+
+        # System monitor (live CPU/RAM/GPU/VRAM pills)
+        from src.ui.resource_settings import SystemMonitorBar
+        self._topbar_monitor = SystemMonitorBar(self.current_lang, self._topbar)
+        topbar_lay.addWidget(self._topbar_monitor)
+
+        topbar_lay.addStretch()
 
         # GPU status badge
         self._gpu_badge = QLabel()
@@ -572,7 +573,6 @@ class VideoSmartCropperUI(QMainWindow):
             f"font-family: {theme.FONT_MONO}; font-weight: 600;"
         )
         self._update_gpu_badge()
-        topbar_lay.addStretch()
         topbar_lay.addWidget(self._gpu_badge)
 
         # Settings button (opens resource drawer)
@@ -584,6 +584,7 @@ class VideoSmartCropperUI(QMainWindow):
         topbar_lay.addWidget(self.res_settings_btn)
 
         right_area.addWidget(self._topbar)
+        self._topbar_monitor.start()
 
         # ── PAGE STACK ──
         self.page_stack = QStackedWidget()
@@ -699,11 +700,12 @@ class VideoSmartCropperUI(QMainWindow):
         current_idx = self.page_stack.currentIndex()
         for i, btn in enumerate(self._nav_buttons):
             btn.setStyleSheet(self._page_btn_style(i == current_idx))
-        self._sidebar_monitor.refresh_styles()
 
         # Topbar
         self._topbar.setStyleSheet(theme.topbar_frame())
         self._update_gpu_badge()
+        if hasattr(self, '_topbar_monitor'):
+            self._topbar_monitor.refresh_styles()
         self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
         self._resource_drawer.refresh_styles()
 
@@ -1578,8 +1580,8 @@ class VideoSmartCropperUI(QMainWindow):
         self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
         if hasattr(self, '_resource_drawer'):
             self._resource_drawer.update_language(self.current_lang)
-        if hasattr(self, '_sidebar_monitor'):
-            self._sidebar_monitor.update_language(self.current_lang)
+        if hasattr(self, '_topbar_monitor'):
+            self._topbar_monitor.update_language(self.current_lang)
 
         # Update caption studio page language
         if hasattr(self, 'caption_studio_page'):

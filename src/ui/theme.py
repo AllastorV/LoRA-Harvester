@@ -125,8 +125,10 @@ def get_mode() -> str:
 def get_font_scale() -> float:
     return _font_scale
 
+_FONT_BASELINE = 1.30
+
 def fs(base: int) -> str:
-    return f"{max(8, int(base * _font_scale))}px"
+    return f"{max(9, int(base * _FONT_BASELINE * _font_scale))}px"
 
 set_theme(_current_mode, _font_scale)
 
