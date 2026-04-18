@@ -465,12 +465,42 @@ def spinbox() -> str:
             font-weight: 500;
             font-family: {FONT_MONO};
             font-size: {fs(12)};
+            selection-background-color: {ORANGE};
+            selection-color: white;
         }}
         QSpinBox:hover, QDoubleSpinBox:hover {{
             border-color: {BORDER_LIGHT};
         }}
         QSpinBox:focus, QDoubleSpinBox:focus {{
             border-color: {ORANGE};
+        }}
+        QSpinBox::up-button, QDoubleSpinBox::up-button {{
+            subcontrol-origin: border;
+            subcontrol-position: top right;
+            width: 16px;
+            background-color: {BG_SURFACE};
+            border-left: 1px solid {BORDER};
+            border-top-right-radius: {R_SM};
+        }}
+        QSpinBox::down-button, QDoubleSpinBox::down-button {{
+            subcontrol-origin: border;
+            subcontrol-position: bottom right;
+            width: 16px;
+            background-color: {BG_SURFACE};
+            border-left: 1px solid {BORDER};
+            border-bottom-right-radius: {R_SM};
+        }}
+        QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+        QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+            background-color: {BG_HOVER};
+        }}
+        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+            width: 8px; height: 8px;
+            image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjRiMGE4IiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMTggMTUgMTIgOSA2IDE1Ij48L3BvbHlsaW5lPjwvc3ZnPg==);
+        }}
+        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+            width: 8px; height: 8px;
+            image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjRiMGE4IiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iNiA5IDEyIDE1IDE4IDkiPjwvcG9seWxpbmU+PC9zdmc+);
         }}
     """
 

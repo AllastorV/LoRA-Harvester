@@ -438,9 +438,8 @@ class SystemMonitorBar(QFrame):
     def _apply_frame_style(self):
         self.setStyleSheet(f"""
             SystemMonitorBar {{
-                background-color: {theme.BG_CARD};
-                border: 1px solid {theme.BORDER};
-                border-radius: {theme.R_SM};
+                background-color: transparent;
+                border: none;
             }}
         """)
 
@@ -606,8 +605,13 @@ class ResourceSettingsDrawer(QFrame):
         self._lay.setSpacing(4)
         self._lay.setContentsMargins(0, 8, 0, 0)
 
+        # ── Language (moved to top) ──────────────────────────────
+        self._add_section("res_section_lang", color="#5B9BD5")
+        self._lang_placeholder = QHBoxLayout()
+        self._lay.addLayout(self._lang_placeholder)
+
         # ── GPU Section ──────────────────────────────────────────
-        self._add_section("res_section_gpu")
+        self._add_section("res_section_gpu", color=theme.ORANGE)
 
         self.gpu_cb = self._add_checkbox("res_gpu_enabled", "gpu_enabled")
         self.fp16_cb = self._add_checkbox("res_fp16", "fp16_enabled")
@@ -617,7 +621,7 @@ class ResourceSettingsDrawer(QFrame):
         )
 
         # ── Batch / Throughput Section ───────────────────────────
-        self._add_section("res_section_batch")
+        self._add_section("res_section_batch", color="#a78bfa")
 
         self.batch_slider, self.batch_val = self._add_slider(
             "res_batch_size", 1, 32, 1,
@@ -627,7 +631,7 @@ class ResourceSettingsDrawer(QFrame):
         )
 
         # ── CPU / Threading Section ──────────────────────────────
-        self._add_section("res_section_cpu")
+        self._add_section("res_section_cpu", color="#56c6d0")
 
         self.threads_slider, self.threads_val = self._add_slider(
             "res_cpu_threads", 1, _CPU_COUNT, 1,
@@ -637,14 +641,14 @@ class ResourceSettingsDrawer(QFrame):
         )
 
         # ── Memory Section ───────────────────────────────────────
-        self._add_section("res_section_memory")
+        self._add_section("res_section_memory", color=theme.YELLOW)
 
         self.ram_slider, self.ram_val = self._add_slider(
             "res_ram_limit", 512, 32768, 256, "MB",
         )
 
         # ── Misc Performance ─────────────────────────────────────
-        self._add_section("res_section_misc")
+        self._add_section("res_section_misc", color=theme.GREEN)
 
         self.async_cb = self._add_checkbox("res_async_save", "async_save")
         self.gc_cb = self._add_checkbox("res_auto_gc", "auto_gc")
@@ -653,17 +657,12 @@ class ResourceSettingsDrawer(QFrame):
         )
 
         # ── Theme / UI ──────────────────────────────────────────
-        self._add_section("res_section_theme")
+        self._add_section("res_section_theme", color="#ec4899")
 
         self.theme_cb = self._add_checkbox("res_light_mode", "theme_mode")
         self.font_slider, self.font_val = self._add_slider(
             "res_font_scale", 80, 140, 5, "%",
         )
-
-        # ── Language ─────────────────────────────────────────────
-        self._add_section("res_section_lang")
-        self._lang_placeholder = QHBoxLayout()
-        self._lay.addLayout(self._lang_placeholder)
 
         self._lay.addStretch()
         scroll.setWidget(inner)
@@ -686,17 +685,20 @@ class ResourceSettingsDrawer(QFrame):
 
     # ─── Builder helpers ─────────────────────────────────────────────────
 
-    def _add_section(self, key: str):
+    def _add_section(self, key: str, color: str = None):
+        color = color or theme.ORANGE
         lbl = QLabel(get_text(key, self.lang))
-        lbl.setFont(QFont("Arial", 11, QFont.Bold))
         lbl.setStyleSheet(
-            f"color: {theme.ORANGE}; margin-top: 10px; margin-bottom: 2px;"
+            f"color: {color}; font-size: {theme.fs(11)}; font-weight: 700; "
+            f"letter-spacing: 0.06em; text-transform: uppercase; "
+            f"margin-top: 12px; margin-bottom: 2px; padding-bottom: 4px; "
+            f"border-bottom: 1px solid {color};"
         )
         self._lay.addWidget(lbl)
-        # Store for language update
+        # Store for language update + theme refresh
         if not hasattr(self, "_section_labels"):
             self._section_labels = []
-        self._section_labels.append((lbl, key))
+        self._section_labels.append((lbl, key, color))
 
     def _add_checkbox(self, text_key: str, setting_key: str) -> QCheckBox:
         cb = QCheckBox(get_text(text_key, self.lang))
@@ -887,9 +889,12 @@ class ResourceSettingsDrawer(QFrame):
         """)
         self._reset_btn.setStyleSheet(theme.btn_secondary())
         self._apply_btn.setStyleSheet(theme.btn_primary())
-        for lbl, _key in self._section_labels:
+        for lbl, _key, color in self._section_labels:
             lbl.setStyleSheet(
-                f"color: {theme.ORANGE}; margin-top: 10px; margin-bottom: 2px;"
+                f"color: {color}; font-size: {theme.fs(11)}; font-weight: 700; "
+                f"letter-spacing: 0.06em; text-transform: uppercase; "
+                f"margin-top: 12px; margin-bottom: 2px; padding-bottom: 4px; "
+                f"border-bottom: 1px solid {color};"
             )
         for cb, _key in self._cb_keys:
             cb.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; padding: 3px 0;")
@@ -904,7 +909,7 @@ class ResourceSettingsDrawer(QFrame):
         self._subtitle.setText(get_text("res_subtitle", lang))
         self._reset_btn.setText(get_text("res_reset", lang))
         self._apply_btn.setText(get_text("res_apply", lang))
-        for lbl, key in self._section_labels:
+        for lbl, key, _color in self._section_labels:
             lbl.setText(get_text(key, lang))
         for cb, key in self._cb_keys:
             cb.setText(get_text(key, lang))
