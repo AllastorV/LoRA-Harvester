@@ -567,9 +567,8 @@ class VideoSmartCropperUI(QMainWindow):
         # GPU status badge
         self._gpu_badge = QLabel()
         self._gpu_badge.setStyleSheet(
-            f"background-color: {theme.BG_CARD}; color: {theme.TEXT_SECONDARY}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: 12px; "
-            f"padding: 4px 12px; font-size: {theme.fs(11)}; "
+            f"background: transparent; color: {theme.TEXT_SECONDARY}; "
+            f"border: none; padding: 0 4px; font-size: {theme.fs(11)}; "
             f"font-family: {theme.FONT_MONO}; font-weight: 600;"
         )
         self._update_gpu_badge()
@@ -646,10 +645,8 @@ class VideoSmartCropperUI(QMainWindow):
                 short = name.replace("NVIDIA ", "").replace("GeForce ", "")
                 self._gpu_badge.setText(f"● {short}")
                 self._gpu_badge.setStyleSheet(
-                    f"background-color: {theme.BG_CARD}; "
-                    f"color: {theme.GREEN}; "
-                    f"border: 1px solid {theme.BORDER}; border-radius: 12px; "
-                    f"padding: 4px 12px; font-size: {theme.fs(11)}; "
+                    f"background: transparent; color: {theme.GREEN}; "
+                    f"border: none; padding: 0 4px; font-size: {theme.fs(11)}; "
                     f"font-family: {theme.FONT_MONO}; font-weight: 600;"
                 )
                 return
@@ -657,10 +654,8 @@ class VideoSmartCropperUI(QMainWindow):
             pass
         self._gpu_badge.setText("● CPU")
         self._gpu_badge.setStyleSheet(
-            f"background-color: {theme.BG_CARD}; "
-            f"color: {theme.TEXT_MUTED}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: 12px; "
-            f"padding: 4px 12px; font-size: {theme.fs(11)}; "
+            f"background: transparent; color: {theme.TEXT_MUTED}; "
+            f"border: none; padding: 0 4px; font-size: {theme.fs(11)}; "
             f"font-family: {theme.FONT_MONO}; font-weight: 600;"
         )
 
