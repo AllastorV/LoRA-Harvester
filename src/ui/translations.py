@@ -371,6 +371,15 @@ TRANSLATIONS = {
         'res_light_mode': 'Light Mode',
         'res_font_scale': 'Font Scale',
         'res_section_lang': 'Language',
+
+        # System Usage Monitor
+        'sys_monitor_title': 'System Monitor',
+        'sys_cpu': 'CPU',
+        'sys_ram': 'RAM',
+        'sys_gpu': 'GPU',
+        'sys_vram': 'VRAM',
+        'sys_gpu_not_available': 'No CUDA GPU',
+        'sys_used_of': '{used} / {total}',
     },
 
     'tr': {
@@ -740,6 +749,15 @@ TRANSLATIONS = {
         'res_light_mode': 'Açık Mod',
         'res_font_scale': 'Yazı Tipi Ölçeği',
         'res_section_lang': 'Dil',
+
+        # System Usage Monitor
+        'sys_monitor_title': 'Sistem Monitörü',
+        'sys_cpu': 'CPU',
+        'sys_ram': 'RAM',
+        'sys_gpu': 'GPU',
+        'sys_vram': 'VRAM',
+        'sys_gpu_not_available': 'CUDA GPU yok',
+        'sys_used_of': '{used} / {total}',
     }
 }
 
