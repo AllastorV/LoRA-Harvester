@@ -1,8 +1,7 @@
 """
-Modern UI Module for LoRA-Harvester v3.0
+Modern UI Module for LoRA-Harvester v4.0
 AI-Powered Dataset Collection Tool with PyQt5 interface
-WD14 Captioning, Quality Analysis, and Advanced Tag Settings
-Page-based navigation: Video Processing, Caption Studio, Character Sort, Tag Frequency
+Sidebar-based navigation with live system monitor.
 """
 
 import sys
@@ -14,15 +13,17 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QSlider,
                              QComboBox, QCheckBox, QProgressBar, QFileDialog,
                              QTextEdit, QGroupBox, QSpinBox,
-                             QScrollArea, QStackedWidget, QFrame, QDesktopWidget)
+                             QScrollArea, QStackedWidget, QFrame, QDesktopWidget,
+                             QSizePolicy, QLineEdit)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent
 from typing import List
 from src.ui.translations import get_text
 from src.ui import theme
+from src.ui.animations import animate_page_switch, fade_in, smooth_expand
 from src.ui.advanced_settings import (
-    QualitySettingsPanel, 
-    CaptioningSettingsPanel, 
+    QualitySettingsPanel,
+    CaptioningSettingsPanel,
     TagSettingsPanel
 )
 from src.ui.caption_studio_page import CaptionStudioPage
@@ -457,91 +458,144 @@ class VideoSmartCropperUI(QMainWindow):
             pass
     
     def init_ui(self):
-        """Initialize UI components"""
+        """Initialize UI components — sidebar + topbar + main content."""
         self.setWindowTitle(get_text('app_title', self.current_lang))
-        # Set window icon from assets (taskbar + title bar)
         _icon_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', 'assets'))
         for _icon_name in ('icon.ico', 'icon.png'):
             _icon_path = os.path.join(_icon_dir, _icon_name)
             if os.path.exists(_icon_path):
                 self.setWindowIcon(QIcon(_icon_path))
                 break
-        # Dark title bar on Windows
         if sys.platform == 'win32':
             self._enable_dark_title_bar(int(self.winId()))
-        
-        # Screen-relative sizing
+
         screen = QDesktopWidget().availableGeometry()
-        win_w = min(1000, int(screen.width() * 0.65))
-        win_h = min(850, int(screen.height() * 0.85))
+        win_w = min(1200, int(screen.width() * 0.75))
+        win_h = min(900, int(screen.height() * 0.88))
         self.resize(win_w, win_h)
-        # Centre on screen
         self.move((screen.width() - win_w) // 2,
                   (screen.height() - win_h) // 2)
-        
-        # Central widget
+
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
-        # Main layout
-        main_layout = QVBoxLayout()
-        central_widget.setLayout(main_layout)
-        
-        # ========== TOP BAR: Language + Page Navigation ==========
-        top_bar = QHBoxLayout()
-        
-        # Page navigation buttons
-        self.page_video_btn = QPushButton(get_text('page_video_processing', self.current_lang))
-        self.page_video_btn.setStyleSheet(self._page_btn_style(True))
-        self.page_video_btn.clicked.connect(lambda: self.switch_page(0))
+        root_layout = QHBoxLayout()
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        central_widget.setLayout(root_layout)
 
-        self.page_caption_studio_btn = QPushButton(get_text('page_caption_studio', self.current_lang))
-        self.page_caption_studio_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_caption_studio_btn.clicked.connect(lambda: self.switch_page(1))
+        # ═══════════ LEFT SIDEBAR (240px) ═══════════
+        self._sidebar = QFrame()
+        self._sidebar.setFixedWidth(240)
+        self._sidebar.setStyleSheet(theme.sidebar_frame())
+        sidebar_lay = QVBoxLayout(self._sidebar)
+        sidebar_lay.setContentsMargins(12, 14, 12, 12)
+        sidebar_lay.setSpacing(4)
 
-        self.page_char_sort_btn = QPushButton(get_text('page_character_sort', self.current_lang))
-        self.page_char_sort_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_char_sort_btn.clicked.connect(lambda: self.switch_page(2))
+        # Brand
+        self._brand_label = QLabel("LoRA-Harvester")
+        self._brand_label.setStyleSheet(theme.sidebar_brand())
+        sidebar_lay.addWidget(self._brand_label)
+        self._brand_sub = QLabel("v4.0 · Dataset Studio")
+        self._brand_sub.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent; margin-bottom: 14px;"
+        )
+        sidebar_lay.addWidget(self._brand_sub)
 
-        self.page_tag_freq_btn = QPushButton(get_text('page_tag_frequency', self.current_lang))
+        # Section: WORKSPACE
+        ws_label = QLabel("WORKSPACE")
+        ws_label.setStyleSheet(theme.sidebar_section_label())
+        sidebar_lay.addWidget(ws_label)
+        sidebar_lay.addSpacing(4)
+        self._sidebar_section_labels = [ws_label]
+
+        self.page_video_btn = QPushButton("  🎬  Video Harvester")
+        self.page_caption_studio_btn = QPushButton("  🏷  Etiketleme")
+        self.page_char_sort_btn = QPushButton("  👥  Karakterler")
+
+        self._nav_buttons = [
+            self.page_video_btn,
+            self.page_caption_studio_btn,
+            self.page_char_sort_btn,
+        ]
+        for i, btn in enumerate(self._nav_buttons):
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(self._page_btn_style(i == 0))
+            btn.clicked.connect(lambda checked, idx=i: self.switch_page(idx))
+            sidebar_lay.addWidget(btn)
+
+        sidebar_lay.addSpacing(10)
+
+        # Section: KÜTÜPHANE
+        lib_label = QLabel("KÜTÜPHANE")
+        lib_label.setStyleSheet(theme.sidebar_section_label())
+        sidebar_lay.addWidget(lib_label)
+        sidebar_lay.addSpacing(4)
+        self._sidebar_section_labels.append(lib_label)
+
+        self.page_tag_freq_btn = QPushButton("  📊  Etiket Sözlüğü")
+        self.page_tag_freq_btn.setCursor(Qt.PointingHandCursor)
         self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(False))
         self.page_tag_freq_btn.clicked.connect(lambda: self.switch_page(3))
+        sidebar_lay.addWidget(self.page_tag_freq_btn)
+        self._nav_buttons.append(self.page_tag_freq_btn)
 
-        top_bar.addWidget(self.page_video_btn)
-        top_bar.addWidget(self.page_caption_studio_btn)
-        top_bar.addWidget(self.page_char_sort_btn)
-        top_bar.addWidget(self.page_tag_freq_btn)
-        top_bar.addStretch()
+        sidebar_lay.addStretch()
 
-        # Settings button (opens resource drawer) — placed at far right
+        # System Monitor (always visible, bottom of sidebar)
+        from src.ui.resource_settings import SystemMonitorWidget
+        self._sidebar_monitor = SystemMonitorWidget(self.current_lang, self._sidebar)
+        sidebar_lay.addWidget(self._sidebar_monitor)
+        self._sidebar_monitor.start()
+
+        root_layout.addWidget(self._sidebar)
+
+        # ═══════════ RIGHT AREA (topbar + content) ═══════════
+        right_area = QVBoxLayout()
+        right_area.setContentsMargins(0, 0, 0, 0)
+        right_area.setSpacing(0)
+
+        # ── TOPBAR (60px) ──
+        self._topbar = QFrame()
+        self._topbar.setFixedHeight(52)
+        self._topbar.setStyleSheet(theme.topbar_frame())
+        topbar_lay = QHBoxLayout(self._topbar)
+        topbar_lay.setContentsMargins(16, 0, 16, 0)
+        topbar_lay.setSpacing(12)
+
+        # GPU status badge
+        self._gpu_badge = QLabel()
+        self._gpu_badge.setStyleSheet(
+            f"background-color: {theme.BG_CARD}; color: {theme.TEXT_SECONDARY}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 12px; "
+            f"padding: 4px 12px; font-size: {theme.fs(11)}; "
+            f"font-family: {theme.FONT_MONO}; font-weight: 600;"
+        )
+        self._update_gpu_badge()
+        topbar_lay.addStretch()
+        topbar_lay.addWidget(self._gpu_badge)
+
+        # Settings button (opens resource drawer)
         self.res_settings_btn = QPushButton("⚙")
         self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
         self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
+        self.res_settings_btn.setCursor(Qt.PointingHandCursor)
         self.res_settings_btn.clicked.connect(self._toggle_resource_drawer)
-        top_bar.addWidget(self.res_settings_btn)
-        main_layout.addLayout(top_bar)
+        topbar_lay.addWidget(self.res_settings_btn)
 
-        # Language combo (created here, will be placed inside the resource drawer)
-        self.lang_combo = QComboBox()
-        self.lang_combo.addItems(['English', 'Türkçe'])
-        self.lang_combo.setCurrentIndex(0)
-        self.lang_combo.setStyleSheet(theme.combo())
-        self.lang_combo.currentIndexChanged.connect(self.change_language)
-        
-        # ========== STACKED WIDGET FOR PAGES ==========
+        right_area.addWidget(self._topbar)
+
+        # ── PAGE STACK ──
         self.page_stack = QStackedWidget()
-        
-        # Page 1: Video Processing (wrapped in scroll area)
+
         self.video_page = QWidget()
         self.setup_video_page()
-        
         video_scroll = QScrollArea()
         video_scroll.setWidgetResizable(True)
         video_scroll.setWidget(self.video_page)
         video_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(video_scroll)
-        
-        # Page 2: Caption Studio (Generate + Edit merged)
+
         self.caption_studio_page = CaptionStudioPage(self.current_lang)
         studio_scroll = QScrollArea()
         studio_scroll.setWidgetResizable(True)
@@ -549,7 +603,6 @@ class VideoSmartCropperUI(QMainWindow):
         studio_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(studio_scroll)
 
-        # Page 3: Character Sort
         self.char_sort_page = CharacterSortPage(self.current_lang)
         char_scroll = QScrollArea()
         char_scroll.setWidgetResizable(True)
@@ -557,7 +610,6 @@ class VideoSmartCropperUI(QMainWindow):
         char_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(char_scroll)
 
-        # Page 4: Tag Frequency Analyzer
         self.tag_freq_page = TagFrequencyPage(self.current_lang)
         tf_scroll = QScrollArea()
         tf_scroll.setWidgetResizable(True)
@@ -565,34 +617,59 @@ class VideoSmartCropperUI(QMainWindow):
         tf_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(tf_scroll)
 
-        main_layout.addWidget(self.page_stack)
+        right_area.addWidget(self.page_stack, stretch=1)
+        right_container = QWidget()
+        right_container.setLayout(right_area)
+        root_layout.addWidget(right_container, stretch=1)
 
-        # ========== RESOURCE SETTINGS DRAWER ==========
-        # The drawer is a child of the central widget so it floats on top.
+        # ═══════════ RESOURCE SETTINGS DRAWER ═══════════
         self._resource_drawer = ResourceSettingsDrawer(
             lang=self.current_lang, parent=central_widget,
         )
         self._resource_drawer.settings_changed.connect(self._on_resource_settings_changed)
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems(['English', 'Türkçe'])
+        self.lang_combo.setCurrentIndex(0)
+        self.lang_combo.setStyleSheet(theme.combo())
+        self.lang_combo.currentIndexChanged.connect(self.change_language)
         self._resource_drawer.embed_lang_combo(self.lang_combo)
-        # Pre-load current resource settings for the processor.
         self._resource_cfg = self._resource_drawer.get_settings()
 
-        # Apply unified dark theme (black/gray/orange)
         self.setStyleSheet(theme.global_stylesheet())
     
+    def _update_gpu_badge(self):
+        try:
+            import torch
+            if torch.cuda.is_available():
+                name = torch.cuda.get_device_properties(0).name
+                short = name.replace("NVIDIA ", "").replace("GeForce ", "")
+                self._gpu_badge.setText(f"● {short}")
+                self._gpu_badge.setStyleSheet(
+                    f"background-color: {theme.BG_CARD}; "
+                    f"color: {theme.GREEN}; "
+                    f"border: 1px solid {theme.BORDER}; border-radius: 12px; "
+                    f"padding: 4px 12px; font-size: {theme.fs(11)}; "
+                    f"font-family: {theme.FONT_MONO}; font-weight: 600;"
+                )
+                return
+        except Exception:
+            pass
+        self._gpu_badge.setText("● CPU")
+        self._gpu_badge.setStyleSheet(
+            f"background-color: {theme.BG_CARD}; "
+            f"color: {theme.TEXT_MUTED}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 12px; "
+            f"padding: 4px 12px; font-size: {theme.fs(11)}; "
+            f"font-family: {theme.FONT_MONO}; font-weight: 600;"
+        )
+
     def _page_btn_style(self, active: bool) -> str:
-        """Style for page navigation buttons"""
-        if active:
-            return theme.page_btn_active()
-        else:
-            return theme.page_btn_inactive()
-    
+        return theme.page_btn_active() if active else theme.page_btn_inactive()
+
     def _collapsible_btn_style(self, color: str = None) -> str:
-        """Style for collapsible panel buttons (unified orange)"""
         return theme.collapsible_btn()
-    
+
     def _toggle_resource_drawer(self):
-        """Open / close the resource settings drawer."""
         self._resource_drawer.toggle()
 
     def _on_resource_settings_changed(self, data: dict):
@@ -607,19 +684,26 @@ class VideoSmartCropperUI(QMainWindow):
         self.log(get_text('res_apply', self.current_lang))
 
     def _refresh_all_styles(self):
-        """Re-apply all stylesheets after a theme change so every widget
-        picks up the new palette colours."""
+        """Re-apply all stylesheets after a theme change."""
         self.setStyleSheet(theme.global_stylesheet())
 
-        # Page navigation buttons
+        # Sidebar
+        self._sidebar.setStyleSheet(theme.sidebar_frame())
+        self._brand_label.setStyleSheet(theme.sidebar_brand())
+        self._brand_sub.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent; margin-bottom: 14px;"
+        )
+        for lbl in self._sidebar_section_labels:
+            lbl.setStyleSheet(theme.sidebar_section_label())
         current_idx = self.page_stack.currentIndex()
-        for i, btn in enumerate([
-            self.page_video_btn, self.page_caption_studio_btn,
-            self.page_char_sort_btn, self.page_tag_freq_btn,
-        ]):
+        for i, btn in enumerate(self._nav_buttons):
             btn.setStyleSheet(self._page_btn_style(i == current_idx))
+        self._sidebar_monitor.refresh_styles()
 
-        # Resource settings button + drawer
+        # Topbar
+        self._topbar.setStyleSheet(theme.topbar_frame())
+        self._update_gpu_badge()
         self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
         self._resource_drawer.refresh_styles()
 
@@ -678,24 +762,20 @@ class VideoSmartCropperUI(QMainWindow):
                 )
 
     def _toggle_panel(self, panel_name: str):
-        """Toggle visibility of collapsible panels"""
         panels = {
             'quality': (self.quality_btn, self.quality_panel),
             'caption': (self.caption_btn, self.caption_panel),
             'tags': (self.tags_btn, self.tags_panel)
         }
-        
         btn, panel = panels[panel_name]
         is_checked = btn.isChecked()
-        panel.setVisible(is_checked)
+        smooth_expand(panel, expand=is_checked, duration=220)
     
     def switch_page(self, index: int):
-        """Switch between pages"""
-        self.page_stack.setCurrentIndex(index)
-        self.page_video_btn.setStyleSheet(self._page_btn_style(index == 0))
-        self.page_caption_studio_btn.setStyleSheet(self._page_btn_style(index == 1))
-        self.page_char_sort_btn.setStyleSheet(self._page_btn_style(index == 2))
-        self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(index == 3))
+        old_idx = self.page_stack.currentIndex()
+        for i, btn in enumerate(self._nav_buttons):
+            btn.setStyleSheet(self._page_btn_style(i == index))
+        animate_page_switch(self.page_stack, old_idx, index, duration=220)
     
     def setup_video_page(self):
         """Setup video processing page"""
@@ -1484,18 +1564,22 @@ class VideoSmartCropperUI(QMainWindow):
         """Update all UI texts with current language"""
         self.setWindowTitle(get_text('app_title', self.current_lang))
         
-        # Page navigation buttons
-        self.page_video_btn.setText(get_text('page_video_processing', self.current_lang))
-        self.page_caption_studio_btn.setText(get_text('page_caption_studio', self.current_lang))
-        self.page_char_sort_btn.setText(get_text('page_character_sort', self.current_lang))
-        self.page_tag_freq_btn.setText(get_text('page_tag_frequency', self.current_lang))
+        # Sidebar nav buttons (icon + label)
+        _nav_labels = [
+            ("  🎬  ", 'page_video_processing'),
+            ("  🏷  ", 'page_caption_studio'),
+            ("  👥  ", 'page_character_sort'),
+            ("  📊  ", 'page_tag_frequency'),
+        ]
+        for btn, (icon, key) in zip(self._nav_buttons, _nav_labels):
+            btn.setText(f"{icon}{get_text(key, self.current_lang)}")
 
-        # Resource settings button + drawer
-        # Keep icon-only text; full label goes in tooltip
         self.res_settings_btn.setText("⚙")
         self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
         if hasattr(self, '_resource_drawer'):
             self._resource_drawer.update_language(self.current_lang)
+        if hasattr(self, '_sidebar_monitor'):
+            self._sidebar_monitor.update_language(self.current_lang)
 
         # Update caption studio page language
         if hasattr(self, 'caption_studio_page'):

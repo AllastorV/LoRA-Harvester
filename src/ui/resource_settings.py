@@ -198,8 +198,8 @@ class SystemMonitorWidget(QFrame):
 
         self._cpu_bar = _UsageBar(get_text("sys_cpu", lang), theme.ORANGE, self)
         self._ram_bar = _UsageBar(get_text("sys_ram", lang), "#5B9BD5", self)
-        self._gpu_bar = _UsageBar(get_text("sys_gpu", lang), "#70AD47", self)
-        self._vram_bar = _UsageBar(get_text("sys_vram", lang), "#FFC000", self)
+        self._gpu_bar = _UsageBar(get_text("sys_gpu", lang), theme.GREEN, self)
+        self._vram_bar = _UsageBar(get_text("sys_vram", lang), theme.YELLOW, self)
 
         lay.addWidget(self._cpu_bar)
         lay.addWidget(self._ram_bar)
@@ -225,9 +225,9 @@ class SystemMonitorWidget(QFrame):
     def _apply_frame_style(self):
         self.setStyleSheet(f"""
             SystemMonitorWidget {{
-                background-color: {theme.BG_DARK};
+                background-color: {theme.BG_CARD};
                 border: 1px solid {theme.BORDER};
-                border-radius: 8px;
+                border-radius: 6px;
             }}
         """)
 

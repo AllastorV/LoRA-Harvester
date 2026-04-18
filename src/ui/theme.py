@@ -1,7 +1,7 @@
 """
-Unified Theme for LoRA-Harvester v3.0
-Color Palette: Black, Gray, Orange (Dark) / White, Gray, Orange (Light)
-All UI components reference this module for consistent styling.
+Unified Theme for LoRA-Harvester v4.0
+Design Language: Dark-mode SaaS dashboard (Linear / Vercel / Raycast)
+Single accent: #e8832a amber-orange.  Minimal, info-dense, professional tool.
 Supports runtime theme switching via set_theme().
 """
 
@@ -15,66 +15,78 @@ from pathlib import Path as _Path
 _PREFS_PATH = _Path(__file__).resolve().parents[2] / "theme_prefs.json"
 
 _DARK_PALETTE = {
-    "BG_WINDOW":    "#1e1e1e",
-    "BG_DEEPEST":   "#121212",
-    "BG_DEEP":      "#161616",
-    "BG_DARK":      "#1a1a1a",
-    "BG_PANEL":     "#1e1e1e",
-    "BG_CARD":      "#232323",
-    "BG_SURFACE":   "#252525",
-    "BG_HOVER":     "#2d2d2d",
-    "BG_ELEVATED":  "#353535",
-    "ORANGE":       "#e8832a",
-    "ORANGE_LIGHT": "#f5a623",
-    "ORANGE_DARK":  "#c96f1e",
-    "ORANGE_GLOW":  "#ff9f43",
-    "ORANGE_DIM":   "#8b5e2f",
-    "ORANGE_SUBTLE":"#3d2a14",
-    "TEXT_PRIMARY": "#e0e0e0",
-    "TEXT_SECONDARY":"#a0a0a0",
-    "TEXT_MUTED":   "#666666",
-    "TEXT_ACCENT":  "#f5a623",
-    "BORDER":       "#333333",
-    "BORDER_LIGHT": "#444444",
-    "BORDER_ACCENT":"#e8832a",
-    "RED":          "#c0392b",
-    "RED_HOVER":    "#a93226",
-    "DISABLED_BG":  "#2a2a2a",
-    "DISABLED_TEXT":"#555555",
+    "BG_WINDOW":     "#0f0f10",
+    "BG_DEEPEST":    "#0a0a0b",
+    "BG_DEEP":       "#111113",
+    "BG_DARK":       "#141416",
+    "BG_PANEL":      "#17171a",
+    "BG_CARD":       "#1c1c1f",
+    "BG_SURFACE":    "#202024",
+    "BG_HOVER":      "#27272b",
+    "BG_ELEVATED":   "#2e2e33",
+    "ORANGE":        "#e8832a",
+    "ORANGE_LIGHT":  "#f5a623",
+    "ORANGE_DARK":   "#c96f1e",
+    "ORANGE_GLOW":   "#ff9f43",
+    "ORANGE_DIM":    "#8b5e2f",
+    "ORANGE_SUBTLE": "rgba(232,131,42,0.12)",
+    "TEXT_PRIMARY":  "#f2efe8",
+    "TEXT_SECONDARY":"#b4b0a8",
+    "TEXT_MUTED":    "#78756d",
+    "TEXT_ACCENT":   "#f5a623",
+    "BORDER":        "#262629",
+    "BORDER_LIGHT":  "#333338",
+    "BORDER_ACCENT": "#e8832a",
+    "RED":           "#e5534b",
+    "RED_HOVER":     "#d4443c",
+    "GREEN":         "#6fb35a",
+    "YELLOW":        "#e5c07b",
+    "DISABLED_BG":   "#1a1a1d",
+    "DISABLED_TEXT": "#44444a",
+    # Sidebar-specific tokens
+    "SIDEBAR_BG":    "#111113",
+    "SIDEBAR_HOVER": "#1c1c1f",
+    "SIDEBAR_ACTIVE":"rgba(232,131,42,0.12)",
+    "NAV_LABEL":     "#78756d",
 }
 
 _LIGHT_PALETTE = {
-    "BG_WINDOW":    "#f5f5f5",
-    "BG_DEEPEST":   "#ffffff",
-    "BG_DEEP":      "#fafafa",
-    "BG_DARK":      "#eeeeee",
-    "BG_PANEL":     "#f5f5f5",
-    "BG_CARD":      "#ffffff",
-    "BG_SURFACE":   "#e8e8e8",
-    "BG_HOVER":     "#e0e0e0",
-    "BG_ELEVATED":  "#d5d5d5",
-    "ORANGE":       "#e8832a",
-    "ORANGE_LIGHT": "#f5a623",
-    "ORANGE_DARK":  "#c96f1e",
-    "ORANGE_GLOW":  "#ff9f43",
-    "ORANGE_DIM":   "#d4a574",
-    "ORANGE_SUBTLE":"#fff3e6",
-    "TEXT_PRIMARY": "#1a1a1a",
-    "TEXT_SECONDARY":"#555555",
-    "TEXT_MUTED":   "#888888",
-    "TEXT_ACCENT":  "#c96f1e",
-    "BORDER":       "#cccccc",
-    "BORDER_LIGHT": "#bbbbbb",
-    "BORDER_ACCENT":"#e8832a",
-    "RED":          "#c0392b",
-    "RED_HOVER":    "#a93226",
-    "DISABLED_BG":  "#e0e0e0",
-    "DISABLED_TEXT":"#aaaaaa",
+    "BG_WINDOW":     "#f8f8f7",
+    "BG_DEEPEST":    "#ffffff",
+    "BG_DEEP":       "#fafaf9",
+    "BG_DARK":       "#f0f0ee",
+    "BG_PANEL":      "#f4f4f2",
+    "BG_CARD":       "#ffffff",
+    "BG_SURFACE":    "#eaeae8",
+    "BG_HOVER":      "#e2e2df",
+    "BG_ELEVATED":   "#d8d8d5",
+    "ORANGE":        "#e8832a",
+    "ORANGE_LIGHT":  "#d47a25",
+    "ORANGE_DARK":   "#b86a1c",
+    "ORANGE_GLOW":   "#f09030",
+    "ORANGE_DIM":    "#d4a574",
+    "ORANGE_SUBTLE": "rgba(232,131,42,0.08)",
+    "TEXT_PRIMARY":  "#1a1918",
+    "TEXT_SECONDARY":"#5a5955",
+    "TEXT_MUTED":    "#8a8884",
+    "TEXT_ACCENT":   "#c96f1e",
+    "BORDER":        "#e0dfdb",
+    "BORDER_LIGHT":  "#cccbc7",
+    "BORDER_ACCENT": "#e8832a",
+    "RED":           "#d4443c",
+    "RED_HOVER":     "#c23830",
+    "GREEN":         "#5c9a48",
+    "YELLOW":        "#c9a84e",
+    "DISABLED_BG":   "#e8e8e5",
+    "DISABLED_TEXT": "#b0afa9",
+    "SIDEBAR_BG":    "#f0f0ee",
+    "SIDEBAR_HOVER": "#e6e6e3",
+    "SIDEBAR_ACTIVE":"rgba(232,131,42,0.10)",
+    "NAV_LABEL":     "#8a8884",
 }
 
-# Current mode: "dark" or "light"
 _current_mode = "dark"
-_font_scale = 1.0  # 0.8 .. 1.4
+_font_scale = 1.0
 
 def _load_prefs():
     global _current_mode, _font_scale
@@ -95,10 +107,9 @@ def save_prefs():
     except Exception:
         pass
 
-_load_prefs()  # run once at import
+_load_prefs()
 
 def set_theme(mode: str = "dark", font_scale: float = 1.0):
-    """Switch palette and update module-level constants."""
     global _current_mode, _font_scale
     _current_mode = mode if mode in ("dark", "light") else "dark"
     _font_scale = max(0.8, min(1.4, font_scale))
@@ -115,28 +126,45 @@ def get_font_scale() -> float:
     return _font_scale
 
 def fs(base: int) -> str:
-    """Scale a font-size value and return CSS string."""
     return f"{max(8, int(base * _font_scale))}px"
 
-# Apply the loaded palette on import
 set_theme(_current_mode, _font_scale)
 
 # ═══════════════════════════════════════════════════════════
-#  BACKWARDS-COMPAT ALIASES — these are updated by set_theme()
+#  FONT STACKS
+# ═══════════════════════════════════════════════════════════
+
+FONT_BODY = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif"
+FONT_MONO = "'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace"
+
+# ═══════════════════════════════════════════════════════════
+#  RADIUS TOKENS
+# ═══════════════════════════════════════════════════════════
+
+R = "10px"
+R_SM = "6px"
+R_LG = "14px"
+
+# ═══════════════════════════════════════════════════════════
+#  GLOBAL STYLESHEET
 # ═══════════════════════════════════════════════════════════
 
 def global_stylesheet() -> str:
-    """Main window-level stylesheet (applied once at root)"""
     return f"""
+        * {{
+            font-family: {FONT_BODY};
+            letter-spacing: -0.003em;
+        }}
         QMainWindow {{
             background-color: {BG_WINDOW};
         }}
         QWidget {{
             background-color: {BG_WINDOW};
             color: {TEXT_PRIMARY};
+            font-size: {fs(13)};
         }}
         QScrollArea {{
-            background-color: {BG_WINDOW};
+            background-color: transparent;
             border: none;
         }}
         QLabel {{
@@ -144,23 +172,24 @@ def global_stylesheet() -> str:
             background-color: transparent;
         }}
         QToolTip {{
-            background-color: {BG_DARK};
+            background-color: {BG_CARD};
             color: {TEXT_PRIMARY};
-            border: 1px solid {ORANGE};
-            padding: 8px;
-            border-radius: 4px;
-            font-size: {fs(18)};
+            border: 1px solid {BORDER_LIGHT};
+            padding: 8px 10px;
+            border-radius: {R_SM};
+            font-size: {fs(12)};
         }}
         QCheckBox {{
             color: {TEXT_PRIMARY};
             spacing: 8px;
+            font-size: {fs(12)};
         }}
         QCheckBox::indicator {{
-            width: 18px;
-            height: 18px;
-            border: 2px solid {BORDER_LIGHT};
+            width: 16px;
+            height: 16px;
+            border: 1px solid {BORDER_LIGHT};
             border-radius: 4px;
-            background-color: {BG_PANEL};
+            background-color: {BG_SURFACE};
         }}
         QCheckBox::indicator:checked {{
             background-color: {ORANGE};
@@ -171,173 +200,252 @@ def global_stylesheet() -> str:
             border-color: {ORANGE};
         }}
         QScrollBar:vertical {{
-            background: {BG_PANEL};
-            width: 8px;
-            border-radius: 4px;
+            background: transparent;
+            width: 6px;
+            margin: 2px;
         }}
         QScrollBar::handle:vertical {{
             background: {BORDER_LIGHT};
-            border-radius: 4px;
-            min-height: 20px;
+            border-radius: 3px;
+            min-height: 24px;
         }}
         QScrollBar::handle:vertical:hover {{
-            background: {ORANGE_DIM};
+            background: {TEXT_MUTED};
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             height: 0px;
         }}
-    """
-
-
-# ──────────── Navigation ────────────
-
-def page_btn_active() -> str:
-    return f"""
-        QPushButton {{
-            background-color: {ORANGE};
-            color: white;
-            border: none;
-            padding: 12px 25px;
-            font-size: {fs(14)};
-            font-weight: bold;
-            border-radius: 6px;
-            margin-right: 5px;
+        QScrollBar:horizontal {{
+            background: transparent;
+            height: 6px;
+            margin: 2px;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: {BORDER_LIGHT};
+            border-radius: 3px;
+            min-width: 24px;
+        }}
+        QScrollBar::handle:horizontal:hover {{
+            background: {TEXT_MUTED};
+        }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+            width: 0px;
         }}
     """
 
-def page_btn_inactive() -> str:
+
+# ═══════════════════════════════════════════════════════════
+#  SIDEBAR NAVIGATION
+# ═══════════════════════════════════════════════════════════
+
+def sidebar_frame() -> str:
+    return f"""
+        QFrame {{
+            background-color: {SIDEBAR_BG};
+            border: none;
+            border-right: 1px solid {BORDER};
+        }}
+    """
+
+def sidebar_brand() -> str:
+    return f"""
+        color: {TEXT_PRIMARY};
+        font-size: {fs(15)};
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        padding: 0;
+        border: none;
+        background: transparent;
+    """
+
+def sidebar_section_label() -> str:
+    return f"""
+        color: {NAV_LABEL};
+        font-size: {fs(10)};
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 0;
+        border: none;
+        background: transparent;
+    """
+
+def nav_btn_active() -> str:
     return f"""
         QPushButton {{
-            background-color: {BG_PANEL};
-            color: {TEXT_MUTED};
-            border: 2px solid {BORDER};
-            padding: 12px 25px;
-            font-size: {fs(14)};
-            font-weight: bold;
-            border-radius: 6px;
-            margin-right: 5px;
+            background-color: {SIDEBAR_ACTIVE};
+            color: {ORANGE};
+            border: none;
+            padding: 7px 12px;
+            font-size: {fs(12)};
+            font-weight: 600;
+            border-radius: {R_SM};
+            text-align: left;
+        }}
+    """
+
+def nav_btn_inactive() -> str:
+    return f"""
+        QPushButton {{
+            background-color: transparent;
+            color: {TEXT_SECONDARY};
+            border: none;
+            padding: 7px 12px;
+            font-size: {fs(12)};
+            font-weight: 500;
+            border-radius: {R_SM};
+            text-align: left;
         }}
         QPushButton:hover {{
-            background-color: {BG_HOVER};
+            background-color: {SIDEBAR_HOVER};
             color: {TEXT_PRIMARY};
-            border-color: {ORANGE};
+        }}
+    """
+
+def page_btn_active() -> str:
+    return nav_btn_active()
+
+def page_btn_inactive() -> str:
+    return nav_btn_inactive()
+
+
+# ═══════════════════════════════════════════════════════════
+#  TOPBAR
+# ═══════════════════════════════════════════════════════════
+
+def topbar_frame() -> str:
+    return f"""
+        QFrame {{
+            background-color: {BG_WINDOW};
+            border: none;
+            border-bottom: 1px solid {BORDER};
         }}
     """
 
 
-# ──────────── Collapsible Panels ────────────
+# ═══════════════════════════════════════════════════════════
+#  COLLAPSIBLE PANELS
+# ═══════════════════════════════════════════════════════════
 
 def collapsible_btn() -> str:
     return f"""
         QPushButton {{
-            background-color: {BG_DARK};
+            background-color: {BG_CARD};
             color: {TEXT_PRIMARY};
-            border: 2px solid {BORDER};
-            padding: 10px 15px;
-            font-size: {fs(13)};
-            font-weight: bold;
-            border-radius: 6px;
+            border: 1px solid {BORDER};
+            padding: 9px 14px;
+            font-size: {fs(12)};
+            font-weight: 600;
+            border-radius: {R_SM};
             text-align: left;
         }}
         QPushButton:hover {{
             background-color: {BG_HOVER};
-            border-color: {ORANGE};
+            border-color: {BORDER_LIGHT};
         }}
         QPushButton:checked {{
-            background-color: {ORANGE_DARK};
+            background-color: {SIDEBAR_ACTIVE};
             border-color: {ORANGE};
-            color: white;
+            color: {ORANGE};
         }}
     """
 
 
-# ──────────── Group Boxes ────────────
+# ═══════════════════════════════════════════════════════════
+#  GROUP BOXES
+# ═══════════════════════════════════════════════════════════
 
 def group_box() -> str:
     return f"""
         QGroupBox {{
-            font-size: {fs(14)};
-            font-weight: bold;
-            border: 2px solid {BORDER};
-            border-radius: 8px;
-            margin-top: 10px;
-            padding-top: 15px;
-            background-color: {BG_PANEL};
-            color: {ORANGE_LIGHT};
+            font-size: {fs(13)};
+            font-weight: 600;
+            border: 1px solid {BORDER};
+            border-radius: {R};
+            margin-top: 8px;
+            padding-top: 14px;
+            background-color: {BG_CARD};
+            color: {ORANGE};
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 5px;
-            color: {ORANGE_LIGHT};
+            left: 12px;
+            padding: 0 6px;
+            color: {ORANGE};
         }}
     """
 
 def panel_group() -> str:
-    """Sub-panel group boxes (quality, caption, tag panels)"""
     return f"""
         QGroupBox {{
             font-size: {fs(12)};
-            font-weight: bold;
-            border: 2px solid {BORDER};
-            border-radius: 6px;
-            margin-top: 5px;
+            font-weight: 600;
+            border: 1px solid {BORDER};
+            border-radius: {R_SM};
+            margin-top: 4px;
             padding-top: 10px;
             background-color: {BG_PANEL};
-            color: {ORANGE_LIGHT};
+            color: {ORANGE};
         }}
         QGroupBox::title {{
-            color: {ORANGE_LIGHT};
+            color: {ORANGE};
         }}
     """
 
 
-# ──────────── Input Controls ────────────
+# ═══════════════════════════════════════════════════════════
+#  INPUT CONTROLS
+# ═══════════════════════════════════════════════════════════
 
 def combo() -> str:
     return f"""
         QComboBox {{
-            padding: 8px;
-            border: 2px solid {BORDER};
-            border-radius: 5px;
-            background-color: {BG_DEEP};
+            padding: 7px 10px;
+            border: 1px solid {BORDER};
+            border-radius: {R_SM};
+            background-color: {BG_SURFACE};
             color: {TEXT_PRIMARY};
-            font-weight: bold;
+            font-weight: 500;
             min-width: 100px;
+            font-size: {fs(12)};
         }}
         QComboBox:hover {{
+            border-color: {BORDER_LIGHT};
+        }}
+        QComboBox:focus {{
             border-color: {ORANGE};
         }}
         QComboBox::drop-down {{
             border: none;
+            width: 20px;
         }}
         QComboBox QAbstractItemView {{
-            background-color: {BG_HOVER};
+            background-color: {BG_CARD};
             color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_LIGHT};
             selection-background-color: {ORANGE};
             selection-color: white;
+            border-radius: {R_SM};
+            padding: 4px;
         }}
     """
 
 def combo_compact() -> str:
-    """Smaller combo for dense panels"""
     return f"""
         QComboBox {{
-            padding: 5px;
+            padding: 4px 8px;
             border: 1px solid {BORDER};
-            border-radius: 3px;
-            background-color: {BG_DEEP};
+            border-radius: 4px;
+            background-color: {BG_SURFACE};
             color: {TEXT_PRIMARY};
-            min-width: 120px;
+            min-width: 110px;
+            font-size: {fs(11)};
         }}
-        QComboBox:hover {{
-            border-color: {ORANGE};
-        }}
-        QComboBox::drop-down {{
-            border: none;
-        }}
+        QComboBox:hover {{ border-color: {BORDER_LIGHT}; }}
+        QComboBox:focus {{ border-color: {ORANGE}; }}
+        QComboBox::drop-down {{ border: none; }}
         QComboBox QAbstractItemView {{
-            background-color: {BG_HOVER};
+            background-color: {BG_CARD};
             color: {TEXT_PRIMARY};
             selection-background-color: {ORANGE};
             selection-color: white;
@@ -347,113 +455,118 @@ def combo_compact() -> str:
 def spinbox() -> str:
     return f"""
         QSpinBox, QDoubleSpinBox {{
-            padding: 5px;
-            border: 2px solid {BORDER};
-            border-radius: 5px;
-            background-color: {BG_DEEP};
+            padding: 5px 8px;
+            border: 1px solid {BORDER};
+            border-radius: {R_SM};
+            background-color: {BG_SURFACE};
             color: {TEXT_PRIMARY};
-            font-weight: bold;
+            font-weight: 500;
+            font-family: {FONT_MONO};
+            font-size: {fs(12)};
         }}
         QSpinBox:hover, QDoubleSpinBox:hover {{
+            border-color: {BORDER_LIGHT};
+        }}
+        QSpinBox:focus, QDoubleSpinBox:focus {{
             border-color: {ORANGE};
         }}
     """
 
 def spinbox_compact() -> str:
-    """Smaller spinbox for dense panels"""
     return f"""
         QSpinBox, QDoubleSpinBox {{
-            padding: 3px;
+            padding: 3px 6px;
             border: 1px solid {BORDER};
-            border-radius: 3px;
-            background-color: {BG_DEEP};
+            border-radius: 4px;
+            background-color: {BG_SURFACE};
             color: {TEXT_PRIMARY};
-            min-width: 60px;
+            min-width: 55px;
+            font-family: {FONT_MONO};
+            font-size: {fs(11)};
         }}
-        QSpinBox:hover, QDoubleSpinBox:hover {{
-            border-color: {ORANGE};
-        }}
+        QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: {BORDER_LIGHT}; }}
+        QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {ORANGE}; }}
     """
 
 def slider() -> str:
     return f"""
         QSlider::groove:horizontal {{
-            background: {BG_DARK};
-            height: 8px;
-            border-radius: 4px;
+            background: {BG_SURFACE};
+            height: 4px;
+            border-radius: 2px;
         }}
         QSlider::handle:horizontal {{
             background: {ORANGE};
-            width: 18px;
+            width: 14px;
             margin: -5px 0;
-            border-radius: 9px;
+            border-radius: 7px;
         }}
         QSlider::handle:horizontal:hover {{
-            background: {ORANGE_LIGHT};
+            background: {ORANGE_GLOW};
         }}
         QSlider::sub-page:horizontal {{
             background: {ORANGE_DIM};
-            border-radius: 4px;
+            border-radius: 2px;
         }}
     """
 
 def line_edit() -> str:
     return f"""
         QLineEdit {{
-            padding: 8px 12px;
-            border: 2px solid {BORDER};
-            border-radius: 5px;
-            background-color: {BG_DEEP};
+            padding: 7px 10px;
+            border: 1px solid {BORDER};
+            border-radius: {R_SM};
+            background-color: {BG_SURFACE};
             color: {TEXT_PRIMARY};
+            font-size: {fs(12)};
         }}
-        QLineEdit:hover, QLineEdit:focus {{
-            border-color: {ORANGE};
-        }}
+        QLineEdit:hover {{ border-color: {BORDER_LIGHT}; }}
+        QLineEdit:focus {{ border-color: {ORANGE}; }}
     """
 
 def line_edit_compact() -> str:
     return f"""
         QLineEdit {{
-            padding: 5px;
+            padding: 4px 8px;
             border: 1px solid {BORDER};
-            border-radius: 3px;
-            background-color: {BG_DEEP};
+            border-radius: 4px;
+            background-color: {BG_SURFACE};
             color: {TEXT_PRIMARY};
+            font-size: {fs(11)};
         }}
-        QLineEdit:hover, QLineEdit:focus {{
-            border-color: {ORANGE};
-        }}
+        QLineEdit:hover {{ border-color: {BORDER_LIGHT}; }}
+        QLineEdit:focus {{ border-color: {ORANGE}; }}
     """
 
 def text_edit_input() -> str:
-    """Multi-line text area for user input (negative tags, etc.)"""
     return f"""
         QTextEdit {{
-            border: 2px solid {BORDER};
-            border-radius: 5px;
-            background-color: {BG_DEEP};
+            border: 1px solid {BORDER};
+            border-radius: {R_SM};
+            background-color: {BG_SURFACE};
             color: {TEXT_PRIMARY};
-            padding: 5px;
+            padding: 6px;
+            font-size: {fs(12)};
         }}
-        QTextEdit:hover, QTextEdit:focus {{
-            border-color: {ORANGE};
-        }}
+        QTextEdit:hover {{ border-color: {BORDER_LIGHT}; }}
+        QTextEdit:focus {{ border-color: {ORANGE}; }}
     """
 
 
-# ──────────── Buttons ────────────
+# ═══════════════════════════════════════════════════════════
+#  BUTTONS
+# ═══════════════════════════════════════════════════════════
 
 def btn_primary() -> str:
-    """Main action button (orange)"""
     return f"""
         QPushButton {{
             background-color: {ORANGE};
             color: white;
             border: none;
-            padding: 15px;
-            font-size: {fs(16)};
-            border-radius: 6px;
-            font-weight: bold;
+            padding: 10px 20px;
+            font-size: {fs(13)};
+            border-radius: {R_SM};
+            font-weight: 600;
         }}
         QPushButton:hover {{
             background-color: {ORANGE_GLOW};
@@ -468,20 +581,17 @@ def btn_primary() -> str:
     """
 
 def btn_danger() -> str:
-    """Stop / danger button"""
     return f"""
         QPushButton {{
             background-color: {RED};
             color: white;
             border: none;
-            padding: 15px;
-            font-size: {fs(16)};
-            border-radius: 6px;
-            font-weight: bold;
+            padding: 10px 20px;
+            font-size: {fs(13)};
+            border-radius: {R_SM};
+            font-weight: 600;
         }}
-        QPushButton:hover {{
-            background-color: {RED_HOVER};
-        }}
+        QPushButton:hover {{ background-color: {RED_HOVER}; }}
         QPushButton:disabled {{
             background-color: {DISABLED_BG};
             color: {DISABLED_TEXT};
@@ -489,132 +599,117 @@ def btn_danger() -> str:
     """
 
 def btn_secondary() -> str:
-    """Secondary / outline button (orange outline)"""
     return f"""
         QPushButton {{
-            background-color: {BG_SURFACE};
-            color: {ORANGE_LIGHT};
-            border: 2px solid {ORANGE};
-            padding: 15px;
-            font-size: {fs(16)};
-            border-radius: 6px;
-            font-weight: bold;
+            background-color: transparent;
+            color: {TEXT_SECONDARY};
+            border: 1px solid {BORDER};
+            padding: 10px 20px;
+            font-size: {fs(13)};
+            border-radius: {R_SM};
+            font-weight: 600;
         }}
         QPushButton:hover {{
             background-color: {BG_HOVER};
-            color: white;
+            color: {TEXT_PRIMARY};
+            border-color: {BORDER_LIGHT};
         }}
     """
 
 def btn_browse() -> str:
-    """Browse / folder selection button"""
     return f"""
         QPushButton {{
             background-color: {ORANGE};
             color: white;
             border: none;
-            padding: 12px;
-            font-size: {fs(14)};
-            border-radius: 5px;
-            font-weight: bold;
+            padding: 9px 16px;
+            font-size: {fs(12)};
+            border-radius: {R_SM};
+            font-weight: 600;
         }}
-        QPushButton:hover {{
-            background-color: {ORANGE_GLOW};
-        }}
-        QPushButton:pressed {{
-            background-color: {ORANGE_DARK};
-        }}
+        QPushButton:hover {{ background-color: {ORANGE_GLOW}; }}
+        QPushButton:pressed {{ background-color: {ORANGE_DARK}; }}
     """
 
 def btn_icon_square() -> str:
-    """Small square icon button for toolbar-style actions (e.g. settings gear)."""
     return f"""
         QPushButton {{
-            background-color: {BG_SURFACE};
-            color: {ORANGE_LIGHT};
+            background-color: transparent;
+            color: {TEXT_SECONDARY};
             border: 1px solid {BORDER};
-            padding: 4px;
-            min-width: {fs(28)};
-            max-width: {fs(28)};
-            min-height: {fs(28)};
-            max-height: {fs(28)};
+            padding: 0px;
+            min-width: 32px;
+            max-width: 32px;
+            min-height: 32px;
+            max-height: 32px;
             font-size: {fs(14)};
-            border-radius: 4px;
+            border-radius: {R_SM};
         }}
         QPushButton:hover {{
             background-color: {BG_HOVER};
-            border-color: {ORANGE};
+            color: {TEXT_PRIMARY};
+            border-color: {BORDER_LIGHT};
         }}
     """
 
-
 def btn_action_start() -> str:
-    """Start button — orange, widest."""
     return f"""
         QPushButton {{
             background-color: {ORANGE};
             color: white;
             border: none;
-            padding: 10px 28px;
-            font-size: {fs(13)};
-            border-radius: 6px;
-            font-weight: bold;
-            min-width: 140px;
+            padding: 9px 24px;
+            font-size: {fs(12)};
+            border-radius: {R_SM};
+            font-weight: 600;
+            min-width: 130px;
         }}
-        QPushButton:hover {{
-            background-color: {ORANGE_GLOW};
-        }}
-        QPushButton:pressed {{
-            background-color: {ORANGE_DARK};
-        }}
+        QPushButton:hover {{ background-color: {ORANGE_GLOW}; }}
+        QPushButton:pressed {{ background-color: {ORANGE_DARK}; }}
         QPushButton:disabled {{
             background-color: {DISABLED_BG};
             color: {DISABLED_TEXT};
         }}
     """
-
 
 def btn_action_pause() -> str:
-    """Pause/resume button — subtle surface tone, same height as others."""
-    return f"""
-        QPushButton {{
-            background-color: {BG_SURFACE};
-            color: {TEXT_PRIMARY};
-            border: 1px solid {BORDER_LIGHT};
-            padding: 10px 18px;
-            font-size: {fs(13)};
-            border-radius: 6px;
-            font-weight: bold;
-            min-width: 100px;
-        }}
-        QPushButton:hover {{
-            background-color: {BG_HOVER};
-            border-color: {TEXT_SECONDARY};
-        }}
-        QPushButton:disabled {{
-            background-color: {DISABLED_BG};
-            color: {DISABLED_TEXT};
-            border-color: {DISABLED_BG};
-        }}
-    """
-
-
-def btn_action_skip() -> str:
-    """Skip button — dim orange outline, same height as others."""
     return f"""
         QPushButton {{
             background-color: transparent;
-            color: {ORANGE_LIGHT};
-            border: 1px solid {ORANGE_DIM};
-            padding: 10px 18px;
-            font-size: {fs(13)};
-            border-radius: 6px;
-            font-weight: bold;
-            min-width: 100px;
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER};
+            padding: 9px 16px;
+            font-size: {fs(12)};
+            border-radius: {R_SM};
+            font-weight: 600;
+            min-width: 95px;
         }}
         QPushButton:hover {{
-            background-color: {ORANGE_SUBTLE};
-            border-color: {ORANGE_LIGHT};
+            background-color: {BG_HOVER};
+            border-color: {BORDER_LIGHT};
+        }}
+        QPushButton:disabled {{
+            background-color: {DISABLED_BG};
+            color: {DISABLED_TEXT};
+            border-color: {DISABLED_BG};
+        }}
+    """
+
+def btn_action_skip() -> str:
+    return f"""
+        QPushButton {{
+            background-color: transparent;
+            color: {ORANGE};
+            border: 1px solid {BORDER};
+            padding: 9px 16px;
+            font-size: {fs(12)};
+            border-radius: {R_SM};
+            font-weight: 600;
+            min-width: 95px;
+        }}
+        QPushButton:hover {{
+            background-color: {SIDEBAR_ACTIVE};
+            border-color: {ORANGE_DIM};
         }}
         QPushButton:disabled {{
             color: {DISABLED_TEXT};
@@ -622,23 +717,19 @@ def btn_action_skip() -> str:
         }}
     """
 
-
 def btn_action_stop() -> str:
-    """Stop button — red, same shape as others."""
     return f"""
         QPushButton {{
             background-color: {RED};
             color: white;
             border: none;
-            padding: 10px 18px;
-            font-size: {fs(13)};
-            border-radius: 6px;
-            font-weight: bold;
-            min-width: 100px;
+            padding: 9px 16px;
+            font-size: {fs(12)};
+            border-radius: {R_SM};
+            font-weight: 600;
+            min-width: 95px;
         }}
-        QPushButton:hover {{
-            background-color: {RED_HOVER};
-        }}
+        QPushButton:hover {{ background-color: {RED_HOVER}; }}
         QPushButton:disabled {{
             background-color: {DISABLED_BG};
             color: {DISABLED_TEXT};
@@ -646,22 +737,26 @@ def btn_action_stop() -> str:
     """
 
 
-# ──────────── Progress & Log ────────────
+# ═══════════════════════════════════════════════════════════
+#  PROGRESS & LOG
+# ═══════════════════════════════════════════════════════════
 
 def progress_bar() -> str:
     return f"""
         QProgressBar {{
-            border: 2px solid {BORDER};
-            border-radius: 6px;
+            border: 1px solid {BORDER};
+            border-radius: 4px;
             text-align: center;
-            height: 25px;
-            background-color: {BG_DARK};
+            height: 20px;
+            background-color: {BG_SURFACE};
             color: {TEXT_PRIMARY};
-            font-weight: bold;
+            font-weight: 600;
+            font-family: {FONT_MONO};
+            font-size: {fs(11)};
         }}
         QProgressBar::chunk {{
             background-color: {ORANGE};
-            border-radius: 4px;
+            border-radius: 3px;
         }}
     """
 
@@ -669,58 +764,59 @@ def log_area() -> str:
     return f"""
         QTextEdit {{
             background-color: {BG_DEEPEST};
-            color: {ORANGE_LIGHT};
-            border: 2px solid {BORDER};
-            border-radius: 6px;
+            color: {TEXT_SECONDARY};
+            border: 1px solid {BORDER};
+            border-radius: {R_SM};
             padding: 10px;
-            font-family: 'Consolas', 'Cascadia Code', monospace;
-            font-size: {fs(17)};
+            font-family: {FONT_MONO};
+            font-size: {fs(11)};
+            line-height: 1.5;
         }}
     """
 
 
-# ──────────── Drop Zones ────────────
+# ═══════════════════════════════════════════════════════════
+#  DROP ZONES
+# ═══════════════════════════════════════════════════════════
 
 def drop_zone_default() -> str:
     return f"""
         QLabel {{
-            border: 3px dashed {ORANGE_DIM};
-            border-radius: 10px;
+            border: 2px dashed {BORDER_LIGHT};
+            border-radius: {R};
             background-color: {BG_PANEL};
-            color: {TEXT_SECONDARY};
-            font-size: {fs(14)};
-            padding: 20px;
+            color: {TEXT_MUTED};
+            font-size: {fs(13)};
+            padding: 24px;
         }}
         QLabel:hover {{
             background-color: {BG_HOVER};
-            border-color: {ORANGE};
-            color: {ORANGE_LIGHT};
+            border-color: {ORANGE_DIM};
+            color: {TEXT_SECONDARY};
         }}
     """
 
 def drop_zone_active() -> str:
-    """When a file is being dragged over"""
     return f"""
         QLabel {{
-            border: 3px dashed {ORANGE};
-            border-radius: 10px;
+            border: 2px dashed {ORANGE};
+            border-radius: {R};
             background-color: {ORANGE_SUBTLE};
-            color: {ORANGE_LIGHT};
-            font-size: {fs(14)};
-            padding: 20px;
+            color: {ORANGE};
+            font-size: {fs(13)};
+            padding: 24px;
         }}
     """
 
 def drop_zone_frame_default() -> str:
-    """Drop zone frame (captioning page)"""
     return f"""
         QFrame {{
-            background: {BG_DARK};
+            background: {BG_PANEL};
             border: 2px dashed {BORDER_LIGHT};
-            border-radius: 8px;
+            border-radius: {R};
         }}
         QFrame:hover {{
-            border-color: {ORANGE};
+            border-color: {ORANGE_DIM};
             background: {BG_SURFACE};
         }}
     """
@@ -730,7 +826,7 @@ def drop_zone_frame_active() -> str:
         QFrame {{
             background: {ORANGE_SUBTLE};
             border: 2px dashed {ORANGE};
-            border-radius: 8px;
+            border-radius: {R};
         }}
     """
 
@@ -739,109 +835,138 @@ def drop_zone_frame_success() -> str:
         QFrame {{
             background: {ORANGE_SUBTLE};
             border: 2px solid {ORANGE};
-            border-radius: 8px;
+            border-radius: {R};
         }}
     """
 
 
-# ──────────── Card Frames ────────────
+# ═══════════════════════════════════════════════════════════
+#  CARD FRAMES
+# ═══════════════════════════════════════════════════════════
 
 def card_frame() -> str:
     return f"""
         QFrame {{
-            background-color: {BG_PANEL};
-            border: 2px solid {BORDER};
-            border-radius: 10px;
-            padding: 15px;
+            background-color: {BG_CARD};
+            border: 1px solid {BORDER};
+            border-radius: {R};
+            padding: 14px;
         }}
     """
 
 def card_frame_compact() -> str:
     return f"""
         QFrame {{
-            background-color: {BG_PANEL};
-            border: 2px solid {BORDER};
-            border-radius: 10px;
+            background-color: {BG_CARD};
+            border: 1px solid {BORDER};
+            border-radius: {R};
             padding: 10px;
         }}
     """
 
 
-# ──────────── Tab Widget ────────────
+# ═══════════════════════════════════════════════════════════
+#  TAB WIDGET
+# ═══════════════════════════════════════════════════════════
 
 def tab_widget() -> str:
     return f"""
         QTabWidget::pane {{
-            border: 2px solid {BORDER};
-            border-radius: 5px;
+            border: 1px solid {BORDER};
+            border-radius: {R_SM};
             background-color: {BG_PANEL};
+            margin-top: -1px;
         }}
         QTabBar::tab {{
-            background-color: {BG_DARK};
-            color: {TEXT_SECONDARY};
-            padding: 8px 15px;
+            background-color: transparent;
+            color: {TEXT_MUTED};
+            padding: 8px 16px;
             margin-right: 2px;
-            border-top-left-radius: 5px;
-            border-top-right-radius: 5px;
+            border-bottom: 2px solid transparent;
+            font-weight: 500;
+            font-size: {fs(12)};
         }}
         QTabBar::tab:selected {{
-            background-color: {ORANGE};
-            color: white;
+            color: {ORANGE};
+            border-bottom: 2px solid {ORANGE};
         }}
         QTabBar::tab:hover {{
-            background-color: {BG_HOVER};
             color: {TEXT_PRIMARY};
         }}
     """
 
 
-# ──────────── Inline Helpers ────────────
+# ═══════════════════════════════════════════════════════════
+#  SYSTEM MONITOR (sidebar)
+# ═══════════════════════════════════════════════════════════
+
+def monitor_frame() -> str:
+    return f"""
+        QFrame {{
+            background-color: {BG_CARD};
+            border: 1px solid {BORDER};
+            border-radius: {R_SM};
+            padding: 0;
+        }}
+    """
+
+def monitor_bar(color: str) -> str:
+    return f"""
+        QProgressBar {{
+            background-color: {BG_SURFACE};
+            border: none;
+            border-radius: 2px;
+            height: 4px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {color};
+            border-radius: 2px;
+        }}
+    """
+
+
+# ═══════════════════════════════════════════════════════════
+#  INLINE HELPERS
+# ═══════════════════════════════════════════════════════════
 
 def info_icon() -> str:
-    """Style for ℹ️ info icons"""
-    return f"color: {ORANGE}; font-size: {fs(14)};"
+    return f"color: {TEXT_MUTED}; font-size: {fs(13)};"
 
 def label_default() -> str:
-    return f"color: {TEXT_PRIMARY};"
+    return f"color: {TEXT_PRIMARY}; font-size: {fs(12)};"
 
 def label_accent() -> str:
-    return f"color: {ORANGE_LIGHT}; font-weight: bold;"
+    return f"color: {ORANGE}; font-weight: 600;"
 
 def label_muted() -> str:
-    return f"color: {TEXT_SECONDARY}; font-size: {fs(18)}; margin-bottom: 20px;"
+    return f"color: {TEXT_MUTED}; font-size: {fs(11)}; margin-bottom: 12px;"
 
 def label_title() -> str:
-    return f"color: {ORANGE_LIGHT}; margin: 20px;"
+    return f"color: {TEXT_PRIMARY}; font-size: {fs(18)}; font-weight: 700; letter-spacing: -0.02em;"
 
 def label_section() -> str:
-    """Section title inside cards"""
-    return f"color: {ORANGE_LIGHT}; border: none; font-weight: bold;"
+    return f"color: {ORANGE}; border: none; font-weight: 600; font-size: {fs(12)};"
 
 def label_value() -> str:
-    return f"font-weight: bold; color: {TEXT_PRIMARY}; min-width: 30px;"
+    return f"font-weight: 600; color: {TEXT_PRIMARY}; min-width: 30px; font-family: {FONT_MONO}; font-size: {fs(12)};"
 
 def label_transparent() -> str:
-    """For labels inside frames (no border inheritance)"""
-    return f"color: {TEXT_SECONDARY}; font-size: {fs(12)}; border: none; background: transparent;"
+    return f"color: {TEXT_MUTED}; font-size: {fs(11)}; border: none; background: transparent;"
 
 def label_success() -> str:
-    return f"color: {ORANGE_LIGHT}; font-weight: bold; font-size: {fs(13)}; border: none;"
+    return f"color: {GREEN}; font-weight: 600; font-size: {fs(12)}; border: none;"
 
 def icon_transparent() -> str:
-    return f"font-size: {fs(20)}; border: none; background: transparent;"
+    return f"font-size: {fs(16)}; border: none; background: transparent;"
 
 def label_frame() -> str:
-    """Label inside a styled frame (needs border: none to avoid frame cascade)"""
-    return f"color: {TEXT_PRIMARY}; border: none;"
+    return f"color: {TEXT_PRIMARY}; border: none; font-size: {fs(12)};"
 
 def info_icon_frame() -> str:
-    """Info icon inside a styled frame"""
-    return f"color: {ORANGE}; font-size: {fs(14)}; border: none; margin-right: 5px;"
+    return f"color: {TEXT_MUTED}; font-size: {fs(13)}; border: none; margin-right: 4px;"
 
 def info_icon_frame_compact() -> str:
-    """Info icon inside a frame without margin"""
-    return f"color: {ORANGE}; font-size: {fs(14)}; border: none;"
+    return f"color: {TEXT_MUTED}; font-size: {fs(13)}; border: none;"
 
 def checkbox_frame() -> str:
-    """Checkbox inside a styled frame"""
-    return f"color: {TEXT_PRIMARY}; border: none;"
+    return f"color: {TEXT_PRIMARY}; border: none; font-size: {fs(12)};"
