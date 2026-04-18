@@ -69,6 +69,7 @@ def _defaults() -> dict:
         # Theme / UI
         "theme_mode": theme.get_mode(),       # "dark" or "light"
         "font_scale": int(theme.get_font_scale() * 100),  # 80..140
+        "accent": theme.get_accent(),         # hex color "#rrggbb"
     }
 
 
@@ -664,6 +665,35 @@ class ResourceSettingsDrawer(QFrame):
             "res_font_scale", 80, 140, 5, "%",
         )
 
+        # Accent color swatches + custom picker
+        self._accent_label = QLabel(get_text("res_accent_color", self.lang))
+        self._accent_label.setStyleSheet(theme.label_default())
+        self._lay.addWidget(self._accent_label)
+
+        accent_row = QHBoxLayout()
+        accent_row.setSpacing(8)
+        accent_row.setContentsMargins(0, 2, 0, 6)
+        self._accent_btns = []
+        self._selected_accent = theme.get_accent()
+        for color, name in theme.ACCENT_PRESETS:
+            btn = QPushButton()
+            btn.setFixedSize(28, 28)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setToolTip(name)
+            btn.clicked.connect(lambda _, c=color: self._pick_accent(c))
+            accent_row.addWidget(btn)
+            self._accent_btns.append((btn, color))
+
+        self._custom_accent_btn = QPushButton("🎨")
+        self._custom_accent_btn.setFixedSize(28, 28)
+        self._custom_accent_btn.setCursor(Qt.PointingHandCursor)
+        self._custom_accent_btn.setToolTip(get_text("res_accent_custom", self.lang))
+        self._custom_accent_btn.clicked.connect(self._pick_custom_accent)
+        accent_row.addWidget(self._custom_accent_btn)
+        accent_row.addStretch()
+        self._lay.addLayout(accent_row)
+        self._refresh_accent_swatches()
+
         self._lay.addStretch()
         scroll.setWidget(inner)
         root.addWidget(scroll, stretch=1)
@@ -771,6 +801,8 @@ class ResourceSettingsDrawer(QFrame):
         self.jpeg_slider.setValue(s["jpeg_quality"])
         self.theme_cb.setChecked(s.get("theme_mode", "dark") == "light")
         self.font_slider.setValue(s.get("font_scale", 100))
+        self._selected_accent = s.get("accent", theme.get_accent())
+        self._refresh_accent_swatches()
 
     def _collect_values(self) -> dict:
         return {
@@ -787,7 +819,61 @@ class ResourceSettingsDrawer(QFrame):
             "jpeg_quality": self.jpeg_slider.value(),
             "theme_mode": "light" if self.theme_cb.isChecked() else "dark",
             "font_scale": self.font_slider.value(),
+            "accent": self._selected_accent,
         }
+
+    # ─── Accent color helpers ────────────────────────────────────────────
+
+    def _accent_swatch_style(self, color: str, selected: bool) -> str:
+        border = (f"2px solid {theme.TEXT_PRIMARY}"
+                  if selected else f"1px solid {theme.BORDER}")
+        return f"""
+            QPushButton {{
+                background-color: {color};
+                border: {border};
+                border-radius: 14px;
+            }}
+            QPushButton:hover {{
+                border: 2px solid {theme.TEXT_PRIMARY};
+            }}
+        """
+
+    def _refresh_accent_swatches(self):
+        current = (self._selected_accent or "").lower()
+        for btn, color in self._accent_btns:
+            btn.setStyleSheet(
+                self._accent_swatch_style(color, selected=(color.lower() == current))
+            )
+        # Custom button: preview the current accent if it's not in presets
+        preset_colors = {c.lower() for c, _ in theme.ACCENT_PRESETS}
+        is_custom = current and current not in preset_colors
+        custom_bg = self._selected_accent if is_custom else "transparent"
+        custom_border = (f"2px solid {theme.TEXT_PRIMARY}"
+                         if is_custom else f"1px solid {theme.BORDER}")
+        self._custom_accent_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {custom_bg};
+                border: {custom_border};
+                border-radius: 14px;
+                font-size: {theme.fs(12)};
+            }}
+            QPushButton:hover {{
+                border: 2px solid {theme.TEXT_PRIMARY};
+            }}
+        """)
+
+    def _pick_accent(self, color: str):
+        self._selected_accent = color
+        self._refresh_accent_swatches()
+
+    def _pick_custom_accent(self):
+        from PyQt5.QtWidgets import QColorDialog
+        initial = QColor(self._selected_accent or theme.get_accent())
+        col = QColorDialog.getColor(
+            initial, self, get_text("res_accent_custom", self.lang)
+        )
+        if col.isValid():
+            self._pick_accent(col.name())
 
     def _apply(self):
         data = self._collect_values()
@@ -900,6 +986,9 @@ class ResourceSettingsDrawer(QFrame):
             cb.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; padding: 3px 0;")
         for lbl, _key in self._slider_keys:
             lbl.setStyleSheet(theme.label_default())
+        if hasattr(self, "_accent_label"):
+            self._accent_label.setStyleSheet(theme.label_default())
+            self._refresh_accent_swatches()
 
     # ─── Language update ─────────────────────────────────────────────────
 
@@ -909,6 +998,9 @@ class ResourceSettingsDrawer(QFrame):
         self._subtitle.setText(get_text("res_subtitle", lang))
         self._reset_btn.setText(get_text("res_reset", lang))
         self._apply_btn.setText(get_text("res_apply", lang))
+        if hasattr(self, "_accent_label"):
+            self._accent_label.setText(get_text("res_accent_color", lang))
+            self._custom_accent_btn.setToolTip(get_text("res_accent_custom", lang))
         for lbl, key, _color in self._section_labels:
             lbl.setText(get_text(key, lang))
         for cb, key in self._cb_keys:

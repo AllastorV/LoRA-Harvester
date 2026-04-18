@@ -676,11 +676,15 @@ class VideoSmartCropperUI(QMainWindow):
     def _on_resource_settings_changed(self, data: dict):
         """Slot: user clicked Apply in the resource drawer."""
         self._resource_cfg = data
-        # Apply theme changes if mode or font scale changed
+        # Apply theme changes if mode, font scale, or accent color changed
         new_mode = data.get("theme_mode", "dark")
         new_scale = data.get("font_scale", 100) / 100.0
-        if new_mode != theme.get_mode() or abs(new_scale - theme.get_font_scale()) > 0.01:
-            theme.set_theme(new_mode, new_scale)
+        new_accent = data.get("accent", theme.get_accent())
+        mode_changed = new_mode != theme.get_mode()
+        scale_changed = abs(new_scale - theme.get_font_scale()) > 0.01
+        accent_changed = (new_accent or "").lower() != theme.get_accent().lower()
+        if mode_changed or scale_changed or accent_changed:
+            theme.set_theme(new_mode, new_scale, accent=new_accent)
             self._refresh_all_styles()
         self.log(get_text('res_apply', self.current_lang))
 

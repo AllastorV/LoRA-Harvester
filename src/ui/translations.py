@@ -370,6 +370,8 @@ TRANSLATIONS = {
         'res_section_theme': 'Theme / UI',
         'res_light_mode': 'Light Mode',
         'res_font_scale': 'Font Scale',
+        'res_accent_color': 'Accent Color',
+        'res_accent_custom': 'Custom color...',
         'res_section_lang': 'Language',
 
         # System Usage Monitor
@@ -748,6 +750,8 @@ TRANSLATIONS = {
         'res_section_theme': 'Tema / Arayüz',
         'res_light_mode': 'Açık Mod',
         'res_font_scale': 'Yazı Tipi Ölçeği',
+        'res_accent_color': 'Vurgu Rengi',
+        'res_accent_custom': 'Özel renk...',
         'res_section_lang': 'Dil',
 
         # System Usage Monitor

@@ -85,16 +85,75 @@ _LIGHT_PALETTE = {
     "NAV_LABEL":     "#8a8884",
 }
 
+_DEFAULT_ACCENT = "#e8832a"
+ACCENT_PRESETS = [
+    ("#e8832a", "Orange"),
+    ("#3b82f6", "Blue"),
+    ("#10b981", "Green"),
+    ("#a855f7", "Purple"),
+    ("#ec4899", "Pink"),
+]
+
 _current_mode = "dark"
 _font_scale = 1.0
+_current_accent = _DEFAULT_ACCENT
+
+
+def _hex_to_rgb(hex_color: str):
+    h = hex_color.lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def _rgb_to_hex(r, g, b):
+    r = max(0, min(255, int(r)))
+    g = max(0, min(255, int(g)))
+    b = max(0, min(255, int(b)))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _lighten(hex_color: str, amount: float) -> str:
+    r, g, b = _hex_to_rgb(hex_color)
+    return _rgb_to_hex(r + (255 - r) * amount,
+                       g + (255 - g) * amount,
+                       b + (255 - b) * amount)
+
+
+def _darken(hex_color: str, amount: float) -> str:
+    r, g, b = _hex_to_rgb(hex_color)
+    return _rgb_to_hex(r * (1 - amount), g * (1 - amount), b * (1 - amount))
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    r, g, b = _hex_to_rgb(hex_color)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _apply_accent(accent: str):
+    """Derive the full accent family from a single base hex color."""
+    g = globals()
+    g["ORANGE"] = accent
+    g["ORANGE_LIGHT"] = _lighten(accent, 0.15)
+    g["ORANGE_DARK"] = _darken(accent, 0.20)
+    g["ORANGE_GLOW"] = _lighten(accent, 0.10)
+    g["ORANGE_DIM"] = _darken(accent, 0.30)
+    g["ORANGE_SUBTLE"] = _rgba(accent, 0.12)
+    g["BORDER_ACCENT"] = accent
+    g["TEXT_ACCENT"] = _lighten(accent, 0.10)
+    g["SIDEBAR_ACTIVE"] = _rgba(accent, 0.12)
+
 
 def _load_prefs():
-    global _current_mode, _font_scale
+    global _current_mode, _font_scale, _current_accent
     if _PREFS_PATH.exists():
         try:
             d = json.loads(_PREFS_PATH.read_text("utf-8"))
             _current_mode = d.get("mode", "dark")
             _font_scale = max(0.8, min(1.4, d.get("font_scale", 1.0)))
+            acc = d.get("accent", _DEFAULT_ACCENT)
+            if isinstance(acc, str) and acc.startswith("#") and len(acc) in (4, 7):
+                _current_accent = acc
         except Exception:
             pass
 
@@ -103,20 +162,24 @@ def save_prefs():
         _PREFS_PATH.write_text(json.dumps({
             "mode": _current_mode,
             "font_scale": _font_scale,
+            "accent": _current_accent,
         }, indent=2), "utf-8")
     except Exception:
         pass
 
 _load_prefs()
 
-def set_theme(mode: str = "dark", font_scale: float = 1.0):
-    global _current_mode, _font_scale
+def set_theme(mode: str = "dark", font_scale: float = 1.0, accent: str = None):
+    global _current_mode, _font_scale, _current_accent
     _current_mode = mode if mode in ("dark", "light") else "dark"
     _font_scale = max(0.8, min(1.4, font_scale))
+    if accent and isinstance(accent, str) and accent.startswith("#"):
+        _current_accent = accent
     pal = _LIGHT_PALETTE if _current_mode == "light" else _DARK_PALETTE
     g = globals()
     for k, v in pal.items():
         g[k] = v
+    _apply_accent(_current_accent)
     save_prefs()
 
 def get_mode() -> str:
@@ -125,12 +188,15 @@ def get_mode() -> str:
 def get_font_scale() -> float:
     return _font_scale
 
+def get_accent() -> str:
+    return _current_accent
+
 _FONT_BASELINE = 1.30
 
 def fs(base: int) -> str:
     return f"{max(9, int(base * _FONT_BASELINE * _font_scale))}px"
 
-set_theme(_current_mode, _font_scale)
+set_theme(_current_mode, _font_scale, _current_accent)
 
 # ═══════════════════════════════════════════════════════════
 #  FONT STACKS
