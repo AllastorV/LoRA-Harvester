@@ -13,7 +13,8 @@ from PyQt5.QtWidgets import (
     QGraphicsOpacityEffect,
 )
 from PyQt5.QtCore import (
-    Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QRect, QTimer,
+    Qt, QPropertyAnimation, QAbstractAnimation, QEasingCurve, pyqtSignal,
+    QRect, QTimer,
 )
 from PyQt5.QtGui import QFont, QColor
 from src.ui.translations import get_text
@@ -153,7 +154,7 @@ class _UsageBar(QFrame):
 
     def set_value(self, pct: float, text: str):
         target = max(0, min(1000, int(pct * 10)))
-        if self._anim.state() == QPropertyAnimation.Running:
+        if self._anim.state() == QAbstractAnimation.Running:
             self._anim.stop()
         self._anim.setStartValue(self._bar.value())
         self._anim.setEndValue(target)
@@ -252,6 +253,9 @@ class SystemMonitorWidget(QFrame):
     def _poll(self):
         try:
             import psutil
+            if not hasattr(self, '_psutil_primed'):
+                psutil.cpu_percent()
+                self._psutil_primed = True
             cpu_pct = psutil.cpu_percent(interval=None)
             mem = psutil.virtual_memory()
             ram_pct = mem.percent
@@ -272,7 +276,7 @@ class SystemMonitorWidget(QFrame):
             try:
                 import torch
                 gpu_props = torch.cuda.get_device_properties(0)
-                total_vram = gpu_props.total_mem / (1024 ** 3)
+                total_vram = gpu_props.total_memory / (1024 ** 3)
                 used_vram = torch.cuda.memory_allocated(0) / (1024 ** 3)
                 vram_pct = (used_vram / total_vram * 100) if total_vram > 0 else 0
 
