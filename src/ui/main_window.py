@@ -780,33 +780,35 @@ class VideoSmartCropperUI(QMainWindow):
     def setup_video_page(self):
         """Setup video processing page"""
         layout = QVBoxLayout()
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
         self.video_page.setLayout(layout)
-        
-        # Title
+
+        # Title — left-aligned, SaaS style
         self.title_label = QLabel(get_text('title', self.current_lang))
-        self.title_label.setFont(QFont('Arial', 24, QFont.Bold))
-        self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet(theme.label_title())
         layout.addWidget(self.title_label)
-        
+
         # Subtitle
         self.subtitle_label = QLabel(get_text('subtitle', self.current_lang))
-        self.subtitle_label.setFont(QFont('Arial', 11))
-        self.subtitle_label.setAlignment(Qt.AlignCenter)
         self.subtitle_label.setStyleSheet(theme.label_muted())
         layout.addWidget(self.subtitle_label)
-        
-        # Drop zone
+
+        # Drop zone + browse on same row
+        drop_row = QHBoxLayout()
+        drop_row.setSpacing(10)
         self.drop_zone = DropZone()
-        self.drop_zone.files_dropped.connect(self.on_files_dropped)  # Updated signal
+        self.drop_zone.files_dropped.connect(self.on_files_dropped)
         self.update_drop_zone_text()
-        layout.addWidget(self.drop_zone)
-        
-        # Browse button
+        drop_row.addWidget(self.drop_zone, stretch=1)
+
         self.browse_btn = QPushButton(get_text('browse_btn', self.current_lang))
         self.browse_btn.setStyleSheet(theme.btn_browse())
+        self.browse_btn.setCursor(Qt.PointingHandCursor)
         self.browse_btn.clicked.connect(self.browse_video)
-        layout.addWidget(self.browse_btn)
+        self.browse_btn.setFixedWidth(180)
+        drop_row.addWidget(self.browse_btn, alignment=Qt.AlignTop)
+        layout.addLayout(drop_row)
         
         # Settings Group
         self.settings_group = QGroupBox(get_text('settings_title', self.current_lang))
@@ -1112,21 +1114,20 @@ class VideoSmartCropperUI(QMainWindow):
         self.progress_bar.setStyleSheet(theme.progress_bar())
         layout.addWidget(self.progress_bar)
 
-        # ── Live preview thumbnail grid ──────────────────────────────
+        # ── Live preview thumbnail grid ──
         self.preview_label = QLabel(get_text('preview_title', self.current_lang))
-        self.preview_label.setStyleSheet(
-            f"font-weight: bold; margin-top: 6px; color: {theme.TEXT_PRIMARY};"
-        )
+        self.preview_label.setStyleSheet(theme.label_section())
         layout.addWidget(self.preview_label)
 
         from PyQt5.QtWidgets import QGridLayout
         self._preview_frame = QFrame()
         self._preview_frame.setStyleSheet(
-            f"background-color: {theme.BG_DARK}; border-radius: 6px;"
+            f"background-color: {theme.BG_PANEL}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: {theme.R_SM};"
         )
         self._preview_grid = QGridLayout(self._preview_frame)
-        self._preview_grid.setSpacing(4)
-        self._preview_grid.setContentsMargins(4, 4, 4, 4)
+        self._preview_grid.setSpacing(6)
+        self._preview_grid.setContentsMargins(8, 8, 8, 8)
         self._PREVIEW_COLS = 6
         self._PREVIEW_ROWS = 2
         self._preview_labels: list = []
@@ -1136,23 +1137,22 @@ class VideoSmartCropperUI(QMainWindow):
                 lbl.setFixedSize(96, 96)
                 lbl.setAlignment(Qt.AlignCenter)
                 lbl.setStyleSheet(
-                    f"background-color: {theme.BG_CARD}; border-radius: 4px;"
+                    f"background-color: {theme.BG_SURFACE}; "
+                    f"border: 1px solid {theme.BORDER}; border-radius: 4px;"
                 )
                 self._preview_grid.addWidget(lbl, r, c)
                 self._preview_labels.append(lbl)
-        self._preview_frame.setMaximumHeight(
-            self._PREVIEW_ROWS * 100 + 12
-        )
+        self._preview_frame.setMaximumHeight(self._PREVIEW_ROWS * 104 + 20)
         layout.addWidget(self._preview_frame)
 
-        # Status/Log area
+        # Log area
         self.log_label = QLabel(get_text('log_title', self.current_lang))
-        self.log_label.setStyleSheet(f"font-weight: bold; margin-top: 10px; color: {theme.TEXT_PRIMARY};")
+        self.log_label.setStyleSheet(theme.label_section())
         layout.addWidget(self.log_label)
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(150)
+        self.log_text.setMaximumHeight(160)
         self.log_text.setStyleSheet(theme.log_area())
         layout.addWidget(self.log_text)
 
