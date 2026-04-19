@@ -338,3 +338,30 @@ class NavIndicator(QWidget):
         self._anim.setStartValue(self.geometry())
         self._anim.setEndValue(target)
         self._anim.start()
+
+
+# ══════════════════════════════════════════════════════════════
+#  Press flash (accent swatch / button tap feedback)
+# ══════════════════════════════════════════════════════════════
+
+def press_flash(widget: QWidget, duration: int = 180) -> QSequentialAnimationGroup:
+    """Opacity dip 1.0 → 0.6 → 1.0 for instant press feedback."""
+    effect = QGraphicsOpacityEffect(widget)
+    widget.setGraphicsEffect(effect)
+    effect.setOpacity(1.0)
+    group = QSequentialAnimationGroup(widget)
+    dip = QPropertyAnimation(effect, b"opacity")
+    dip.setDuration(duration // 2)
+    dip.setStartValue(1.0)
+    dip.setEndValue(0.6)
+    dip.setEasingCurve(QEasingCurve.OutCubic)
+    recover = QPropertyAnimation(effect, b"opacity")
+    recover.setDuration(duration // 2)
+    recover.setStartValue(0.6)
+    recover.setEndValue(1.0)
+    recover.setEasingCurve(QEasingCurve.InCubic)
+    group.addAnimation(dip)
+    group.addAnimation(recover)
+    group.finished.connect(lambda: widget.setGraphicsEffect(None))
+    group.start(QAbstractAnimation.DeleteWhenStopped)
+    return group

@@ -20,7 +20,10 @@ from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent
 from typing import List
 from src.ui.translations import get_text
 from src.ui import theme
-from src.ui.animations import animate_page_switch, fade_in, smooth_expand
+from src.ui.animations import (
+    animate_page_switch, fade_in, smooth_expand,
+    HoverLift, PulseEffect, NavIndicator, progress_smooth,
+)
 from src.ui.advanced_settings import (
     QualitySettingsPanel,
     CaptioningSettingsPanel,
@@ -332,24 +335,34 @@ class DropZone(QLabel):
         self.setMinimumHeight(120)
         self.setStyleSheet(theme.drop_zone_default())
         self.setText("🎬 Drag & Drop Video File(s) Here\n(Supports multiple videos)\nor click 'Browse' button")
-    
+        self._pulse = None
+
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter"""
         if event.mimeData().hasUrls():
             event.accept()
             self.setStyleSheet(theme.drop_zone_active())
+            if self._pulse is None:
+                self._pulse = PulseEffect(self, min_opacity=0.70, duration=700)
+                self._pulse.start()
         else:
             event.ignore()
-    
+
     def dragLeaveEvent(self, event):
         """Handle drag leave"""
         self.setStyleSheet(theme.drop_zone_default())
+        if self._pulse:
+            self._pulse.stop()
+            self._pulse = None
     
     _VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v'}
 
     def dropEvent(self, event: QDropEvent):
         """Handle drop - supports video files, folders, and .txt list files"""
         self.setStyleSheet(theme.drop_zone_default())
+        if self._pulse:
+            self._pulse.stop()
+            self._pulse = None
 
         files = [u.toLocalFile() for u in event.mimeData().urls()]
 
@@ -540,6 +553,10 @@ class VideoSmartCropperUI(QMainWindow):
         sidebar_lay.addWidget(self.page_tag_freq_btn)
         self._nav_buttons.append(self.page_tag_freq_btn)
 
+        # Sliding underline indicator for the active nav button
+        self._nav_indicator = NavIndicator(self._sidebar, color=theme.get_accent(), height=3)
+        QTimer.singleShot(0, lambda: self._nav_indicator.move_under(self._nav_buttons[0]))
+
         sidebar_lay.addStretch()
 
         root_layout.addWidget(self._sidebar)
@@ -699,6 +716,8 @@ class VideoSmartCropperUI(QMainWindow):
         current_idx = self.page_stack.currentIndex()
         for i, btn in enumerate(self._nav_buttons):
             btn.setStyleSheet(self._page_btn_style(i == current_idx))
+        if hasattr(self, '_nav_indicator'):
+            self._nav_indicator.set_color(theme.get_accent())
 
         # Topbar
         self._topbar.setStyleSheet(theme.topbar_frame())
@@ -777,6 +796,8 @@ class VideoSmartCropperUI(QMainWindow):
         for i, btn in enumerate(self._nav_buttons):
             btn.setStyleSheet(self._page_btn_style(i == index))
         animate_page_switch(self.page_stack, old_idx, index, duration=220)
+        if hasattr(self, '_nav_indicator'):
+            self._nav_indicator.move_under(self._nav_buttons[index])
     
     def setup_video_page(self):
         """Setup video processing page"""
@@ -977,7 +998,9 @@ class VideoSmartCropperUI(QMainWindow):
         settings_layout.addWidget(self.ensemble_group)
         
         # Connect ensemble checkbox to show/hide settings
-        self.ensemble_cb.toggled.connect(self.ensemble_group.setVisible)
+        self.ensemble_cb.toggled.connect(
+            lambda checked: smooth_expand(self.ensemble_group, expand=checked, duration=200)
+        )
         
         # Skip subtitle checkbox
         skip_layout_cb = QHBoxLayout()
@@ -1102,6 +1125,11 @@ class VideoSmartCropperUI(QMainWindow):
         self.open_output_btn = QPushButton(get_text('open_output_btn', self.current_lang))
         self.open_output_btn.setStyleSheet(theme.btn_secondary())
         self.open_output_btn.clicked.connect(self.open_output_folder)
+
+        # Hover lift on all control + browse buttons
+        for _btn in (self.process_btn, self.pause_btn, self.skip_btn,
+                     self.stop_btn, self.open_output_btn, self.browse_btn):
+            HoverLift(_btn, lift_px=2)
 
         # Layout: [  Start  ] [Pause] [Skip] ─── stretch ─── (Stop)
         buttons_layout.addWidget(self.process_btn)
@@ -1439,10 +1467,11 @@ class VideoSmartCropperUI(QMainWindow):
             else:
                 self._preview_labels[i].clear()
         self._preview_labels[-1].setPixmap(thumb)
+        fade_in(self._preview_labels[-1], duration=160)
 
     def on_progress(self, progress: float, stats: dict):
         """Update progress"""
-        self.progress_bar.setValue(int(progress))
+        progress_smooth(self.progress_bar, int(progress), duration=160)
         # The skip button gets disabled while the "skip" request is
         # in-flight; as soon as we see a progress tick again it means
         # the next video has started and the button is safe to re-arm.

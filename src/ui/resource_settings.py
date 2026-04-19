@@ -21,6 +21,7 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import QFont, QColor
 from src.ui.translations import get_text
 from src.ui import theme
+from src.ui.animations import press_flash
 
 # Windows: suppress the black console window that flashes on every subprocess.run().
 _NO_WINDOW_KW = {}
@@ -680,7 +681,7 @@ class ResourceSettingsDrawer(QFrame):
             btn.setFixedSize(28, 28)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setToolTip(name)
-            btn.clicked.connect(lambda _, c=color: self._pick_accent(c))
+            btn.clicked.connect(lambda _, b=btn, c=color: (press_flash(b), self._pick_accent(c)))
             accent_row.addWidget(btn)
             self._accent_btns.append((btn, color))
 
