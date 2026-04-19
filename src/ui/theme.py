@@ -251,6 +251,7 @@ def global_stylesheet() -> str:
             color: {TEXT_PRIMARY};
             spacing: 8px;
             font-size: {fs(12)};
+            background: transparent;
         }}
         QCheckBox::indicator {{
             width: 16px;
@@ -523,7 +524,7 @@ def combo_compact() -> str:
 def spinbox() -> str:
     return f"""
         QSpinBox, QDoubleSpinBox {{
-            padding: 5px 8px;
+            padding: 5px 24px 5px 8px;
             border: 1px solid {BORDER};
             border-radius: {R_SM};
             background-color: {BG_SURFACE};
@@ -543,30 +544,27 @@ def spinbox() -> str:
         QSpinBox::up-button, QDoubleSpinBox::up-button {{
             subcontrol-origin: border;
             subcontrol-position: top right;
-            width: 16px;
-            background-color: {BG_SURFACE};
+            width: 18px;
+            background-color: {BG_HOVER};
             border-left: 1px solid {BORDER};
             border-top-right-radius: {R_SM};
         }}
         QSpinBox::down-button, QDoubleSpinBox::down-button {{
             subcontrol-origin: border;
             subcontrol-position: bottom right;
-            width: 16px;
-            background-color: {BG_SURFACE};
+            width: 18px;
+            background-color: {BG_HOVER};
             border-left: 1px solid {BORDER};
+            border-top: 1px solid {BORDER};
             border-bottom-right-radius: {R_SM};
         }}
         QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
         QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
-            background-color: {BG_HOVER};
+            background-color: {BG_ELEVATED};
         }}
-        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-            width: 8px; height: 8px;
-            image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjRiMGE4IiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iMTggMTUgMTIgOSA2IDE1Ij48L3BvbHlsaW5lPjwvc3ZnPg==);
-        }}
-        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-            width: 8px; height: 8px;
-            image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjRiMGE4IiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBvbHlsaW5lIHBvaW50cz0iNiA5IDEyIDE1IDE4IDkiPjwvcG9seWxpbmU+PC9zdmc+);
+        QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+        QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {{
+            background-color: {ORANGE};
         }}
     """
 
@@ -588,6 +586,9 @@ def spinbox_compact() -> str:
 
 def slider() -> str:
     return f"""
+        QSlider {{
+            background: transparent;
+        }}
         QSlider::groove:horizontal {{
             background: {BG_SURFACE};
             height: 4px;
