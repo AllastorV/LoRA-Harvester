@@ -297,7 +297,11 @@ class UnifiedVideoProcessor:
 
             # Update overall stats
             self.overall_stats['processed_videos'] += 1
-            self.overall_stats['total_frames_saved'] += video_stats['saved_frames']
+            self.overall_stats['total_frames_saved'] += video_stats.get('saved_frames', 0)
+            self.overall_stats['total_frames_processed'] = (
+                self.overall_stats.get('total_frames_processed', 0)
+                + video_stats.get('processed_frames', 0)
+            )
             self.overall_stats['videos_stats'].append({
                 'video_name': Path(video_path).name,
                 'stats': video_stats
@@ -446,10 +450,10 @@ class UnifiedVideoProcessor:
 
             self.stats['processed_frames'] += 1
 
-            # Progress callback — fire every 10 processed frames (independent of frame_interval)
-            if progress_callback and self.stats['processed_frames'] % 10 == 0:
+            # Progress callback — copy dict so main thread reads a stable snapshot
+            if progress_callback and self.stats['processed_frames'] % 5 == 0:
                 progress = (frame_count / self.total_frames) * 100 if self.total_frames > 0 else 0
-                progress_callback(progress, self.stats)
+                progress_callback(progress, dict(self.stats))
 
             # Process frame
             self._process_single_frame(frame, frame_count, skip_text, use_quick_text)
@@ -483,13 +487,10 @@ class UnifiedVideoProcessor:
                 print("▶  Resumed")
 
             if stop_callback and stop_callback():
-                if frame_batch:
-                    self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                # User stopped — discard pending batch so we exit fast
                 break
             if skip_callback and skip_callback():
-                # Flush whatever's already buffered before abandoning the
-                # rest of this video, then break to let the outer loop
-                # move on to the next file.
+                # Flush buffered frames for this video before moving on
                 if frame_batch:
                     self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                 print("\n⏭️  Skipping current video by user request")
@@ -523,9 +524,9 @@ class UnifiedVideoProcessor:
                 frame_batch = []
                 frame_numbers = []
 
-            if progress_callback and frame_count % (frame_interval * 10) == 0:
+            if progress_callback and frame_count % max(frame_interval, 1) == 0:
                 progress = (frame_count / self.total_frames) * 100 if self.total_frames > 0 else 0
-                progress_callback(progress, self.stats)
+                progress_callback(progress, dict(self.stats))
 
     # ─── VRAM-safe batch wrapper ──────────────────────────────────────────
     def _safe_process_batch(self,

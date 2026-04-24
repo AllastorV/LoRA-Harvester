@@ -5,6 +5,8 @@ Works on any existing image folder — fully independent from video processing.
 """
 
 import os
+import shutil
+import tempfile
 from pathlib import Path
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
@@ -13,7 +15,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QDragEnterEvent, QDropEvent
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from src.ui.translations import get_text
 from src.ui import theme
 
@@ -26,16 +28,18 @@ class CharacterSortThread(QThread):
     """Runs CharacterRecognizer.sort_directory() in a background thread."""
 
     progress = pyqtSignal(int, int, str)   # current, total, message
-    finished = pyqtSignal(dict)            # stats dict
+    sort_finished = pyqtSignal(dict)       # stats dict (renamed to avoid shadowing QThread.finished)
     error = pyqtSignal(str)
     log_msg = pyqtSignal(str)              # intermediate log messages
 
     def __init__(
         self,
-        input_dir: str,
+        input_dir: Optional[str],
         output_dir: Optional[str],
         reference_dir: Optional[str],
         settings: Dict,
+        input_files: Optional[List[str]] = None,
+        mode: str = 'real',   # 'real' → InsightFace   |   'anime' → ResNet+cascade
         parent=None,
     ):
         super().__init__(parent)
@@ -43,13 +47,29 @@ class CharacterSortThread(QThread):
         self.output_dir = output_dir
         self.reference_dir = reference_dir
         self.settings = settings
+        self.input_files = input_files
+        self.mode = mode
         self._running = True
+        self._temp_dir: Optional[str] = None
 
     def run(self):
         try:
-            from src.core.character_recognizer import CharacterRecognizer
-
             s = self.settings
+
+            # ── temp dir for individual files ─────────────────────────────────
+            actual_input = self.input_dir
+            if self.input_files:
+                self._temp_dir = tempfile.mkdtemp(prefix='lora_charsort_')
+                self.log_msg.emit(f"📋 Copying {len(self.input_files)} files to temp dir...")
+                for src in self.input_files:
+                    if self._running:
+                        dst = os.path.join(self._temp_dir, os.path.basename(src))
+                        if os.path.exists(dst):
+                            stem = Path(src).stem
+                            suffix = Path(src).suffix
+                            dst = os.path.join(self._temp_dir, f"{stem}_{id(src)}{suffix}")
+                        shutil.copy2(src, dst)
+                actual_input = self._temp_dir
 
             cluster_eps = 99.0 if s.get('no_cluster') else s.get('cluster_eps', 0.6)
             cluster_min = 99999 if s.get('no_cluster') else s.get('cluster_min', 2)
@@ -58,19 +78,37 @@ class CharacterSortThread(QThread):
                 if self._running:
                     self.progress.emit(current, total, msg)
 
-            recognizer = CharacterRecognizer(
-                reference_dir=self.reference_dir if self.reference_dir else None,
-                similarity_threshold=s.get('threshold', 0.45),
-                match_margin=s.get('match_margin', 0.05),
-                cluster_eps=cluster_eps,
-                cluster_min_samples=cluster_min,
-                use_gpu=s.get('use_gpu', True),
-                model_name=s.get('model', 'buffalo_l'),
-                progress_callback=progress_cb,
-                num_workers=s.get('num_workers', 4),
-                use_cache=s.get('use_cache', True),
-                cache_path=s.get('cache_path'),
-            )
+            # ── select recognizer based on mode ───────────────────────────────
+            if self.mode == 'anime':
+                from src.core.anime_character_recognizer import AnimeCharacterRecognizer
+                self.log_msg.emit("🎌 Anime modu: lbpcascade_animeface + ResNet-18")
+                recognizer = AnimeCharacterRecognizer(
+                    similarity_threshold=s.get('threshold', 0.55),
+                    match_margin=s.get('match_margin', 0.05),
+                    cluster_eps=cluster_eps if cluster_eps < 90 else 0.55,
+                    cluster_min_samples=cluster_min if cluster_min < 9999 else 2,
+                    use_gpu=s.get('use_gpu', True),
+                    progress_callback=progress_cb,
+                    num_workers=s.get('num_workers', 4),
+                    use_cache=s.get('use_cache', True),
+                    cache_path=s.get('cache_path'),
+                )
+            else:
+                from src.core.character_recognizer import CharacterRecognizer
+                self.log_msg.emit("🎭 Gerçek yüz modu: InsightFace " + s.get('model', 'buffalo_l'))
+                recognizer = CharacterRecognizer(
+                    reference_dir=self.reference_dir if self.reference_dir else None,
+                    similarity_threshold=s.get('threshold', 0.45),
+                    match_margin=s.get('match_margin', 0.05),
+                    cluster_eps=cluster_eps,
+                    cluster_min_samples=cluster_min,
+                    use_gpu=s.get('use_gpu', True),
+                    model_name=s.get('model', 'buffalo_l'),
+                    progress_callback=progress_cb,
+                    num_workers=s.get('num_workers', 4),
+                    use_cache=s.get('use_cache', True),
+                    cache_path=s.get('cache_path'),
+                )
 
             if self.reference_dir:
                 self.log_msg.emit(f"📚 Loading references from {self.reference_dir} ...")
@@ -82,29 +120,38 @@ class CharacterSortThread(QThread):
 
             try:
                 stats = recognizer.sort_directory(
-                    input_dir=self.input_dir,
+                    input_dir=actual_input,
                     output_dir=self.output_dir if self.output_dir else None,
                     copy=s.get('copy_files', False),
-                    recursive=s.get('recursive', False),
+                    recursive=s.get('recursive', True),
                     max_characters=s.get('max_characters', 6),
                     max_per_character=s.get('max_per_character', 0),
                 )
             finally:
-                # Always release the SQLite cache so WAL is flushed before
-                # this worker thread terminates.
                 recognizer.close_cache()
+                self._cleanup_temp()
 
             if self._running:
-                self.finished.emit(stats)
+                self.sort_finished.emit(stats)
 
         except ImportError as e:
+            self._cleanup_temp()
             self.error.emit(
-                f"Missing dependency: {e}\n"
-                "Install with: pip install insightface scikit-learn onnxruntime"
+                f"Eksik bağımlılık: {e}\n"
+                "Kur: pip install insightface scikit-learn onnxruntime torchvision"
             )
         except Exception as e:
             import traceback
+            self._cleanup_temp()
             self.error.emit(f"{e}\n{traceback.format_exc()}")
+
+    def _cleanup_temp(self):
+        if self._temp_dir and os.path.isdir(self._temp_dir):
+            try:
+                shutil.rmtree(self._temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+            self._temp_dir = None
 
     def stop(self):
         self._running = False
@@ -115,15 +162,18 @@ class CharacterSortThread(QThread):
 # Drop Zone Frame — proper PyQt5 subclass for folder drag & drop
 # ─────────────────────────────────────────────────────────────────────────────
 
+_IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+
+
 class DropZoneFrame(QFrame):
     """
-    A QFrame subclass that correctly handles folder drag-and-drop.
-    Using a proper subclass instead of lambda monkey-patching is required
-    because PyQt5 dispatches events via C++ virtual methods, not Python
-    attribute lookup.
+    QFrame subclass for folder OR image-file drag-and-drop.
+    Emits folder_dropped(str) for a single folder,
+    or files_dropped(list[str]) for one or more image files.
     """
 
     folder_dropped = pyqtSignal(str)
+    files_dropped = pyqtSignal(list)
 
     def __init__(self, placeholder: str, parent=None):
         super().__init__(parent)
@@ -142,10 +192,22 @@ class DropZoneFrame(QFrame):
     def get_label(self) -> QLabel:
         return self._lbl
 
+    def _classify_urls(self, urls):
+        """Return ('folder', path) or ('files', [paths]) or None."""
+        paths = [u.toLocalFile() for u in urls if u.isLocalFile()]
+        if not paths:
+            return None
+        if len(paths) == 1 and os.path.isdir(paths[0]):
+            return ('folder', paths[0])
+        image_paths = [p for p in paths if Path(p).suffix.lower() in _IMAGE_EXTS]
+        if image_paths:
+            return ('files', image_paths)
+        return None
+
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            if urls and urls[0].isLocalFile() and os.path.isdir(urls[0].toLocalFile()):
+            result = self._classify_urls(event.mimeData().urls())
+            if result:
                 event.acceptProposedAction()
                 self.setStyleSheet(theme.drop_zone_frame_active())
                 return
@@ -157,13 +219,15 @@ class DropZoneFrame(QFrame):
     def dropEvent(self, event: QDropEvent):
         self.setStyleSheet(theme.drop_zone_frame_default())
         if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            if urls and urls[0].isLocalFile():
-                path = urls[0].toLocalFile()
-                if os.path.isdir(path):
-                    event.acceptProposedAction()
-                    self.folder_dropped.emit(path)
-                    return
+            result = self._classify_urls(event.mimeData().urls())
+            if result:
+                event.acceptProposedAction()
+                kind, payload = result
+                if kind == 'folder':
+                    self.folder_dropped.emit(payload)
+                else:
+                    self.files_dropped.emit(payload)
+                return
         event.ignore()
 
 
@@ -178,13 +242,35 @@ class CharacterSortPage(QWidget):
 
     SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
 
+    # ── preset definitions ────────────────────────────────────────────────────
+    PRESETS = {
+        'real': {
+            'mode':        'real',
+            'model':       'buffalo_l',
+            'threshold':   0.45,
+            'cluster_eps': 0.60,
+            'cluster_min': 2,
+            'no_cluster':  False,
+        },
+        'anime': {
+            'mode':        'anime',
+            'model':       'anime',       # display label only
+            'threshold':   0.55,
+            'cluster_eps': 0.55,
+            'cluster_min': 2,
+            'no_cluster':  False,
+        },
+    }
+
     def __init__(self, lang: str = 'en', parent=None):
         super().__init__(parent)
         self.lang = lang
         self.input_folder: Optional[str] = None
+        self.input_files: Optional[List[str]] = None
         self.ref_folder: Optional[str] = None
         self.output_folder: Optional[str] = None
         self._thread: Optional[CharacterSortThread] = None
+        self._mode: str = 'real'           # 'real' | 'anime'
         self.init_ui()
 
     # ─── UI construction ──────────────────────────────────────────────────────
@@ -209,6 +295,9 @@ class CharacterSortPage(QWidget):
         self.subtitle_lbl.setStyleSheet(theme.label_muted())
         layout.addWidget(self.subtitle_lbl)
 
+        # ── Preset butonları ───────────────────────────────────────────────
+        layout.addWidget(self._build_preset_bar())
+
         # ── Step 1: Folders ────────────────────────────────────────────────
         layout.addWidget(self._build_folder_step())
 
@@ -228,6 +317,92 @@ class CharacterSortPage(QWidget):
 
         layout.addStretch()
 
+    # ── Preset bar ────────────────────────────────────────────────────────────
+
+    def _build_preset_bar(self) -> QFrame:
+        """Two large preset buttons: Gerçek Yüz and Anime."""
+        frame = QFrame()
+        frame.setStyleSheet(theme.card_frame())
+        lay = QHBoxLayout(frame)
+        lay.setSpacing(12)
+
+        self._preset_type_lbl = QLabel("Model Tipi:")
+        self._preset_type_lbl.setStyleSheet(theme.label_default())
+        self._preset_type_lbl.setFixedWidth(80)
+        lay.addWidget(self._preset_type_lbl)
+
+        self._preset_real_btn = QPushButton("🎭  Gerçek Yüz")
+        self._preset_real_btn.setCheckable(True)
+        self._preset_real_btn.setChecked(True)
+        self._preset_real_btn.setFixedHeight(38)
+        self._preset_real_btn.setStyleSheet(self._preset_btn_style(active=True))
+        self._preset_real_btn.clicked.connect(lambda: self._apply_preset('real'))
+        lay.addWidget(self._preset_real_btn)
+
+        self._preset_anime_btn = QPushButton("🎌  Anime")
+        self._preset_anime_btn.setCheckable(True)
+        self._preset_anime_btn.setChecked(False)
+        self._preset_anime_btn.setFixedHeight(38)
+        self._preset_anime_btn.setStyleSheet(self._preset_btn_style(active=False))
+        self._preset_anime_btn.clicked.connect(lambda: self._apply_preset('anime'))
+        lay.addWidget(self._preset_anime_btn)
+
+        # Info label — changes based on active preset
+        self._preset_info_lbl = QLabel("InsightFace buffalo_l — gerçek insan yüzleri için")
+        self._preset_info_lbl.setStyleSheet(theme.label_muted())
+        lay.addWidget(self._preset_info_lbl, stretch=1)
+
+        return frame
+
+    @staticmethod
+    def _preset_btn_style(active: bool) -> str:
+        accent = theme.get_accent() if hasattr(theme, 'get_accent') else theme.ORANGE_LIGHT
+        if active:
+            return (
+                f"QPushButton {{ background:{accent}; color:#fff; border:none; "
+                f"border-radius:6px; font-weight:bold; padding:4px 16px; }}"
+                f"QPushButton:hover {{ background:{accent}; }}"
+            )
+        return (
+            f"QPushButton {{ background:transparent; color:{theme.TEXT_MUTED}; "
+            f"border:1px solid {theme.TEXT_MUTED}; border-radius:6px; padding:4px 16px; }}"
+            f"QPushButton:hover {{ border-color:{accent}; color:{accent}; }}"
+        )
+
+    def _apply_preset(self, key: str):
+        """Apply a preset: update mode, toggle button styles, apply settings."""
+        preset = self.PRESETS.get(key, self.PRESETS['real'])
+        self._mode = preset['mode']
+
+        # Toggle button styles
+        self._preset_real_btn.setChecked(key == 'real')
+        self._preset_anime_btn.setChecked(key == 'anime')
+        self._preset_real_btn.setStyleSheet(self._preset_btn_style(key == 'real'))
+        self._preset_anime_btn.setStyleSheet(self._preset_btn_style(key == 'anime'))
+
+        # Update info label
+        if key == 'anime':
+            self._preset_info_lbl.setText(
+                "lbpcascade_animeface + ResNet-18 — anime/çizgi film karakterleri için"
+            )
+            # Anime preset: hide real-face model combo, show note
+            self.model_combo.setEnabled(False)
+            self.model_combo.setToolTip("Anime modunda model seçimi kullanılmaz")
+        else:
+            self._preset_info_lbl.setText(
+                "InsightFace buffalo_l — gerçek insan yüzleri için"
+            )
+            self.model_combo.setEnabled(True)
+            self.model_combo.setToolTip(get_text('char_model_tooltip', self.lang))
+
+        # Apply numerical settings
+        self.thresh_spin.setValue(preset['threshold'])
+        self.eps_spin.setValue(preset['cluster_eps'])
+        self.min_spin.setValue(preset['cluster_min'])
+        self.no_cluster_cb.setChecked(preset['no_cluster'])
+
+        self.log(f"✅ Preset uygulandı: {'🎌 Anime' if key == 'anime' else '🎭 Gerçek Yüz'}")
+
     # ── Step 1 ────────────────────────────────────────────────────────────────
 
     def _build_folder_step(self) -> QFrame:
@@ -243,6 +418,7 @@ class CharacterSortPage(QWidget):
         # Input folder row
         self.input_drop = DropZoneFrame(get_text('char_drag_input', self.lang))
         self.input_drop.folder_dropped.connect(self._set_input)
+        self.input_drop.files_dropped.connect(self._set_input_files)
 
         self.input_lbl = QLabel(get_text('char_input_folder', self.lang))
         self.input_lbl.setStyleSheet(theme.label_default())
@@ -251,10 +427,16 @@ class CharacterSortPage(QWidget):
         self.browse_input_btn.setStyleSheet(theme.btn_browse())
         self.browse_input_btn.clicked.connect(self._browse_input)
 
+        self.browse_files_btn = QPushButton("🖼️ Görseller")
+        self.browse_files_btn.setStyleSheet(theme.btn_browse())
+        self.browse_files_btn.setToolTip("Birden fazla görsel dosyası seç")
+        self.browse_files_btn.clicked.connect(self._browse_input_files)
+
         row_in = QHBoxLayout()
         row_in.addWidget(self.input_lbl)
         row_in.addWidget(self.input_drop, stretch=1)
         row_in.addWidget(self.browse_input_btn)
+        row_in.addWidget(self.browse_files_btn)
         lay.addLayout(row_in)
 
         self.input_count_lbl = QLabel("")
@@ -472,6 +654,7 @@ class CharacterSortPage(QWidget):
         self.copy_cb.setToolTip(get_text('char_copy_tooltip', self.lang))
 
         self.recursive_cb = QCheckBox(get_text('recursive_search', self.lang))
+        self.recursive_cb.setChecked(True)
         self.recursive_cb.setToolTip(get_text('recursive_tooltip', self.lang))
 
         self.gpu_cb = QCheckBox(get_text('char_use_gpu', self.lang))
@@ -528,6 +711,12 @@ class CharacterSortPage(QWidget):
         if folder:
             self._set_input(folder)
 
+    def _browse_input_files(self):
+        exts = "Images (*.jpg *.jpeg *.png *.webp *.bmp)"
+        files, _ = QFileDialog.getOpenFileNames(self, "Görsel dosyaları seç", "", exts)
+        if files:
+            self._set_input_files(files)
+
     def _browse_ref(self):
         folder = QFileDialog.getExistingDirectory(self, get_text('char_browse_ref', self.lang))
         if folder:
@@ -540,17 +729,30 @@ class CharacterSortPage(QWidget):
 
     def _set_input(self, path: str):
         self.input_folder = path
+        self.input_files = None  # clear any previously selected files
         lbl = self.input_drop.get_label()
         display = path if len(path) <= 50 else "..." + path[-47:]
         lbl.setText(display)
         lbl.setStyleSheet(theme.label_success())
         self.input_drop.setStyleSheet(theme.drop_zone_frame_success())
         self.input_drop.setToolTip(path)
-        count = self._count_images(path)
+        count = self._count_images_recursive(path)
         self.input_count_lbl.setText(get_text('images_found', self.lang).format(count))
-        # Enable start if folder is selected — images may be in subdirectories (recursive mode)
         self.start_btn.setEnabled(True)
         self.log(f"📂 Input: {path}  ({count} images)")
+
+    def _set_input_files(self, files: List[str]):
+        self.input_files = files
+        self.input_folder = None  # clear folder selection
+        lbl = self.input_drop.get_label()
+        display = f"{len(files)} görsel seçildi"
+        lbl.setText(display)
+        lbl.setStyleSheet(theme.label_success())
+        self.input_drop.setStyleSheet(theme.drop_zone_frame_success())
+        self.input_drop.setToolTip("\n".join(files[:10]) + ("\n..." if len(files) > 10 else ""))
+        self.input_count_lbl.setText(get_text('images_found', self.lang).format(len(files)))
+        self.start_btn.setEnabled(True)
+        self.log(f"🖼️ {len(files)} görsel seçildi")
 
     def _set_ref(self, path: str):
         self.ref_folder = path
@@ -625,11 +827,10 @@ class CharacterSortPage(QWidget):
 
     # ─── Image counting ───────────────────────────────────────────────────────
 
-    def _count_images(self, folder: str) -> int:
+    def _count_images_recursive(self, folder: str) -> int:
+        """Count all images in folder and all subfolders."""
         count = 0
-        p = Path(folder)
-        pattern = "**/*" if self.recursive_cb.isChecked() else "*"
-        for f in p.glob(pattern):
+        for f in Path(folder).rglob("*"):
             if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXTENSIONS:
                 count += 1
         return count
@@ -637,13 +838,15 @@ class CharacterSortPage(QWidget):
     # ─── Processing ───────────────────────────────────────────────────────────
 
     def _start(self):
-        if not self.input_folder:
+        if not self.input_folder and not self.input_files:
             return
 
         self.log(f"\n{'='*40}")
-        self.log(f"🎭 {get_text('char_start_log', self.lang)}")
+        mode_label = "🎌 Anime" if self._mode == 'anime' else "🎭 Gerçek Yüz"
+        self.log(f"{mode_label}  —  {get_text('char_start_log', self.lang)}")
         settings = self._get_settings()
-        self.log(f"   Model    : {settings['model']}")
+        self.log(f"   Mod      : {mode_label}")
+        self.log(f"   Model    : {'lbpcascade + ResNet-18' if self._mode == 'anime' else settings['model']}")
         self.log(f"   Threshold: {settings['threshold']:.2f}")
         cluster_info = 'disabled' if settings['no_cluster'] else f"eps={settings['cluster_eps']:.2f}  min={settings['cluster_min']}"
         self.log(f"   Cluster  : {cluster_info}")
@@ -652,12 +855,16 @@ class CharacterSortPage(QWidget):
         self.log(f"   Max chars: {settings['max_characters']}")
         if self.ref_folder:
             self.log(f"   References: {self.ref_folder}")
-        out = self.output_folder or str(Path(self.input_folder) / '_sorted')
+        if self.input_files:
+            out = self.output_folder or "görsel yanında _sorted klasörü"
+        else:
+            out = self.output_folder or str(Path(self.input_folder) / '_sorted')
         self.log(f"   Output   : {out}")
 
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.browse_input_btn.setEnabled(False)
+        self.browse_files_btn.setEnabled(False)
         self.browse_ref_btn.setEnabled(False)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("")
@@ -670,38 +877,55 @@ class CharacterSortPage(QWidget):
             output_dir=self.output_folder,
             reference_dir=self.ref_folder,
             settings=settings,
+            input_files=self.input_files,
+            mode=self._mode,
         )
         self._thread.progress.connect(self._on_progress)
-        self._thread.finished.connect(self._on_finished)
+        self._thread.sort_finished.connect(self._on_finished)
         self._thread.error.connect(self._on_error)
         self._thread.log_msg.connect(self.log)
         self._thread.start()
 
     def _cleanup_thread(self):
-        """Disconnect signals and schedule deletion of the current thread"""
+        """Disconnect signals and schedule deletion of the current thread."""
         if self._thread is not None:
+            t = self._thread
+            self._thread = None
             try:
-                self._thread.progress.disconnect(self._on_progress)
-                self._thread.finished.disconnect(self._on_finished)
-                self._thread.error.disconnect(self._on_error)
-                self._thread.log_msg.disconnect(self.log)
+                t.progress.disconnect(self._on_progress)
+                t.sort_finished.disconnect(self._on_finished)
+                t.error.disconnect(self._on_error)
+                t.log_msg.disconnect(self.log)
             except (TypeError, RuntimeError):
                 pass
-            self._thread.deleteLater()
-            self._thread = None
+            if not t.isRunning():
+                t.deleteLater()
+            else:
+                # sort_directory() cannot be interrupted — thread will finish
+                # on its own. Connect QThread's built-in finished() (not our
+                # custom sort_finished) so deleteLater fires when run() returns.
+                # Qt keeps the C++ object alive until then; Python wrapper stays
+                # alive because C++ is alive.
+                try:
+                    t.finished.connect(t.deleteLater)
+                except (TypeError, RuntimeError):
+                    pass
 
     def _stop(self):
         if self._thread and self._thread.isRunning():
             self._thread.stop()
-            self._thread.wait(5000)
             self.log("⏹️  " + get_text('log_stopping', self.lang))
+            # sort_directory() runs to completion — don't block the main thread.
+            # _cleanup_thread() below wires up QThread.finished → deleteLater
+            # so the object is safely deleted when the thread naturally exits.
         self._cleanup_thread()
         self._reset_buttons()
 
     def _reset_buttons(self):
-        self.start_btn.setEnabled(bool(self.input_folder))
+        self.start_btn.setEnabled(bool(self.input_folder or self.input_files))
         self.stop_btn.setEnabled(False)
         self.browse_input_btn.setEnabled(True)
+        self.browse_files_btn.setEnabled(True)
         self.browse_ref_btn.setEnabled(True)
 
     # ─── Thread callbacks ─────────────────────────────────────────────────────
@@ -790,6 +1014,21 @@ class CharacterSortPage(QWidget):
         self.gpu_cb.setText(get_text('char_use_gpu', lang))
         self.gpu_cb.setToolTip(get_text('char_use_gpu_tooltip', lang))
 
+        # Preset bar — re-sync info text with current mode and language
+        self._preset_type_lbl.setText("Model Tipi:" if lang == 'tr' else "Model Type:")
+        if self._mode == 'anime':
+            self._preset_info_lbl.setText(
+                "lbpcascade_animeface + ResNet-18 — anime/çizgi film karakterleri için"
+                if lang == 'tr' else
+                "lbpcascade_animeface + ResNet-18 — for anime/cartoon characters"
+            )
+        else:
+            self._preset_info_lbl.setText(
+                "InsightFace buffalo_l — gerçek insan yüzleri için"
+                if lang == 'tr' else
+                "InsightFace buffalo_l — for real human faces"
+            )
+
         # Status labels (only if not already set by user selection)
         if not self.ref_folder:
             self.ref_status_lbl.setText(get_text('char_ref_optional', lang))
@@ -813,6 +1052,12 @@ class CharacterSortPage(QWidget):
         self.subtitle_lbl.setStyleSheet(theme.label_muted())
         self.log_text.setStyleSheet(theme.log_area())
 
+        # Preset buttons — re-apply active/inactive styles after theme change
+        self._preset_type_lbl.setStyleSheet(theme.label_default())
+        self._preset_real_btn.setStyleSheet(self._preset_btn_style(self._mode == 'real'))
+        self._preset_anime_btn.setStyleSheet(self._preset_btn_style(self._mode == 'anime'))
+        self._preset_info_lbl.setStyleSheet(theme.label_muted())
+
         # Step cards (the three QFrame children built via _build_*_step)
         for frame in self.findChildren(QFrame):
             ss = frame.styleSheet()
@@ -827,6 +1072,7 @@ class CharacterSortPage(QWidget):
         # Folder rows
         self.input_lbl.setStyleSheet(theme.label_default())
         self.browse_input_btn.setStyleSheet(theme.btn_browse())
+        self.browse_files_btn.setStyleSheet(theme.btn_browse())
         self.ref_lbl.setStyleSheet(theme.label_default())
         self.browse_ref_btn.setStyleSheet(theme.btn_browse())
         self.clear_ref_btn.setStyleSheet(theme.btn_danger())

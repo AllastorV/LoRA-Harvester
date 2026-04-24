@@ -44,7 +44,7 @@ class ProcessingThread(QThread):
 
     progress_update = pyqtSignal(float, dict)
     log_message = pyqtSignal(str)
-    finished = pyqtSignal(dict)
+    processing_finished = pyqtSignal(dict)  # renamed to avoid shadowing QThread.finished
     error = pyqtSignal(str)
     # Emitted right after a cropped frame is written to disk. Carries
     # the absolute path as a string so the UI can load the thumbnail.
@@ -67,6 +67,16 @@ class ProcessingThread(QThread):
 
     def run(self):
         """Initialize models and run video processing"""
+        # Outcome captured here so finally can emit AFTER _cleanup().
+        # This is critical: main thread must not try to delete this
+        # QThread object while _cleanup() (GPU model release) is still
+        # running — that causes a crash.  By emitting signals only after
+        # _cleanup() returns we guarantee the thread's heavy work is done
+        # before the main thread touches the thread object.
+        _err = None
+        _stats = None
+        _stopped = False
+
         try:
             cfg = self.config
 
@@ -92,6 +102,7 @@ class ProcessingThread(QThread):
                 self.log_message.emit("YOLO model loaded")
 
             if not self._is_running:
+                _stopped = True
                 return
 
             text_detector = SubtitleDetector() if cfg['skip_text'] else None
@@ -116,6 +127,7 @@ class ProcessingThread(QThread):
                     self.log_message.emit(f"Quality analyzer not available: {e}")
 
             if not self._is_running:
+                _stopped = True
                 return
 
             # Captioner
@@ -183,6 +195,7 @@ class ProcessingThread(QThread):
                             captioner.enable_wd14 = False
 
                     if not self._is_running:
+                        _stopped = True
                         return
 
                     # Log final captioning status
@@ -203,6 +216,7 @@ class ProcessingThread(QThread):
                 self.log_message.emit("📝 Auto-captioning: disabled (enable in Captioning settings)")
 
             if not self._is_running:
+                _stopped = True
                 return
 
             # Create processor — pull batch_size and jpeg_quality from
@@ -228,7 +242,7 @@ class ProcessingThread(QThread):
             self.log_message.emit("All models loaded, processing started...")
 
             # Process
-            stats = self.processor.process_all_videos(
+            result = self.processor.process_all_videos(
                 frame_interval=cfg['frame_interval'],
                 skip_text=cfg['skip_text'],
                 progress_callback=self.progress_callback,
@@ -241,26 +255,30 @@ class ProcessingThread(QThread):
             )
 
             if not self._is_running:
-                # Stopped by user - emit stopped signal (only once)
-                if not self._finished_emitted:
-                    self._finished_emitted = True
-                    self.finished.emit({'stopped': True, 'total_frames_saved': 0})
+                _stopped = True
             else:
-                # Normal completion
-                if not self._finished_emitted:
-                    self._finished_emitted = True
-                    self.finished.emit(stats)
+                _stats = result
 
         except Exception as e:
+            _err = e
+
+        finally:
+            # ALWAYS cleanup first — GPU/model release happens here.
+            # Only emit signals after cleanup so the main thread never
+            # calls deleteLater() while this thread is still doing work.
+            self._cleanup()
+
             if not self._finished_emitted:
                 self._finished_emitted = True
-                self.error.emit(str(e))
-        finally:
-            self._cleanup()
-            # Safety net: if stopped during model loading (early return), emit finished
-            if not self._is_running and not self._finished_emitted:
-                self._finished_emitted = True
-                self.finished.emit({'stopped': True, 'total_frames_saved': 0})
+                if _err is not None:
+                    self.error.emit(str(_err))
+                elif _stopped or not self._is_running:
+                    self.processing_finished.emit({'stopped': True, 'total_frames_saved': 0})
+                elif _stats is not None:
+                    self.processing_finished.emit(_stats)
+                else:
+                    # Stopped during model loading (early return path)
+                    self.processing_finished.emit({'stopped': True, 'total_frames_saved': 0})
 
     def _cleanup(self):
         """Release models and free GPU memory"""
@@ -1473,27 +1491,29 @@ class VideoSmartCropperUI(QMainWindow):
         )
     
     def _cleanup_processing_thread(self):
-        """Disconnect signals and schedule deletion of the current processing thread"""
+        """Disconnect signals and schedule deletion of the current processing thread."""
         if self.processing_thread is not None:
+            t = self.processing_thread
+            self.processing_thread = None  # clear ref first so stale signals are ignored
             try:
-                self.processing_thread.progress_update.disconnect(self.on_progress)
-                self.processing_thread.log_message.disconnect(self.log)
-                self.processing_thread.finished.disconnect(self.on_finished)
-                self.processing_thread.error.disconnect(self.on_error)
-                self.processing_thread.frame_saved.disconnect(self._on_preview_frame)
+                t.progress_update.disconnect(self.on_progress)
+                t.log_message.disconnect(self.log)
+                t.processing_finished.disconnect(self.on_finished)
+                t.error.disconnect(self.on_error)
+                t.frame_saved.disconnect(self._on_preview_frame)
             except (TypeError, RuntimeError):
-                pass  # Already disconnected
-            # Only deleteLater if thread is not running to avoid crash
-            if not self.processing_thread.isRunning():
-                self.processing_thread.deleteLater()
+                pass
+            if not t.isRunning():
+                t.deleteLater()
             else:
-                # Thread still alive - connect finished to deleteLater so it cleans up when done
+                # Thread still alive (in final cleanup after emitting signal).
+                # Connect QThread's built-in finished() — NOT our custom signal —
+                # so deleteLater() fires safely when run() fully returns.
+                # Qt keeps the C++ object alive until then.
                 try:
-                    self.processing_thread.finished.connect(
-                        self.processing_thread.deleteLater)
+                    t.finished.connect(t.deleteLater)
                 except (TypeError, RuntimeError):
                     pass
-            self.processing_thread = None
 
     def toggle_pause(self):
         """Toggle pause/resume on the processing thread."""
@@ -1525,6 +1545,15 @@ class VideoSmartCropperUI(QMainWindow):
     def stop_processing(self):
         """Stop video processing. Immediately re-enables the Start button so
         the user can restart with the same file without reselecting."""
+        try:
+            self._stop_processing_impl()
+        except Exception as _e:
+            import traceback, datetime
+            with open('crash_log.txt', 'a', encoding='utf-8', errors='replace') as _f:
+                _f.write(f'\n[{datetime.datetime.now()}] stop_processing CRASH:\n')
+                traceback.print_exc(file=_f)
+
+    def _stop_processing_impl(self):
         if self.processing_thread and self.processing_thread.isRunning():
             self.log(get_text('log_stopping', self.current_lang))
             self.processing_thread.stop()
@@ -1567,11 +1596,12 @@ class VideoSmartCropperUI(QMainWindow):
             shake_widget(self.drop_zone)
             return
 
-        # If a previous thread is still alive (graceful stop pending), wait
-        # briefly so we don't start two processing pipelines at once.
+        # If a previous thread is still alive (stop pending), signal it and
+        # clean up non-blockingly. _cleanup_processing_thread() wires up
+        # QThread.finished → deleteLater so the old thread self-destructs
+        # when its run() returns — no blocking wait on the main thread.
         if self.processing_thread and self.processing_thread.isRunning():
             self.processing_thread.stop()
-            self.processing_thread.safe_wait(3000)
         self._cleanup_processing_thread()
 
         # Reset progress state for a fresh run
@@ -1655,7 +1685,7 @@ class VideoSmartCropperUI(QMainWindow):
         self.processing_thread = ProcessingThread(config)
         self.processing_thread.progress_update.connect(self.on_progress)
         self.processing_thread.log_message.connect(self.log)
-        self.processing_thread.finished.connect(self.on_finished)
+        self.processing_thread.processing_finished.connect(self.on_finished)
         self.processing_thread.error.connect(self.on_error)
         self.processing_thread.frame_saved.connect(self._on_preview_frame)
         self.processing_thread.start()
@@ -1690,6 +1720,15 @@ class VideoSmartCropperUI(QMainWindow):
 
     def on_progress(self, progress: float, stats: dict):
         """Update progress"""
+        try:
+            self._on_progress_impl(progress, stats)
+        except Exception as _e:
+            import traceback, datetime
+            with open('crash_log.txt', 'a', encoding='utf-8', errors='replace') as _f:
+                _f.write(f'\n[{datetime.datetime.now()}] on_progress CRASH:\n')
+                traceback.print_exc(file=_f)
+
+    def _on_progress_impl(self, progress: float, stats: dict):
         progress_smooth(self.progress_bar, int(progress), duration=160)
         # The skip button gets disabled while the "skip" request is
         # in-flight; as soon as we see a progress tick again it means
@@ -1705,14 +1744,27 @@ class VideoSmartCropperUI(QMainWindow):
         self._bump_stat('saved', int(stats.get('saved_frames', 0)))
 
         # Update log with stats
-        if stats['processed_frames'] % 10 == 0:  # Update every 10 frames
+        processed = stats.get('processed_frames', 0)
+        if processed % 10 == 0:
             self.log(get_text('log_progress', self.current_lang).format(
-                progress, stats['saved_frames'], stats['person_frames'],
-                stats['animal_frames'], stats['object_frames']
+                progress,
+                stats.get('saved_frames', 0),
+                stats.get('person_frames', 0),
+                stats.get('animal_frames', 0),
+                stats.get('object_frames', 0),
             ))
     
     def on_finished(self, stats: dict):
         """Processing finished"""
+        try:
+            self._on_finished_impl(stats)
+        except Exception as _e:
+            import traceback, datetime
+            with open('crash_log.txt', 'a', encoding='utf-8', errors='replace') as _f:
+                _f.write(f'\n[{datetime.datetime.now()}] on_finished CRASH:\n')
+                traceback.print_exc(file=_f)
+
+    def _on_finished_impl(self, stats: dict):
         # Guard against stale signal from an old / already-cleaned-up thread.
         # After stop_processing() re-enables the Start button the user may have
         # already pressed Start again, reassigning self.processing_thread.
@@ -1757,12 +1809,12 @@ class VideoSmartCropperUI(QMainWindow):
                     self.log(f"   {vname}: {', '.join(extra)}")
         else:
             # Single video - show detailed stats
-            self.log(get_text('log_total', self.current_lang).format(stats['saved_frames']))
-            self.log(get_text('log_persons', self.current_lang).format(stats['person_frames']))
-            self.log(get_text('log_animals', self.current_lang).format(stats['animal_frames']))
-            self.log(get_text('log_objects', self.current_lang).format(stats['object_frames']))
-            self.log(get_text('log_skipped_text', self.current_lang).format(stats['skipped_text']))
-            self.log(get_text('log_skipped_none', self.current_lang).format(stats['skipped_no_detection']))
+            self.log(get_text('log_total', self.current_lang).format(stats.get('saved_frames', 0)))
+            self.log(get_text('log_persons', self.current_lang).format(stats.get('person_frames', 0)))
+            self.log(get_text('log_animals', self.current_lang).format(stats.get('animal_frames', 0)))
+            self.log(get_text('log_objects', self.current_lang).format(stats.get('object_frames', 0)))
+            self.log(get_text('log_skipped_text', self.current_lang).format(stats.get('skipped_text', 0)))
+            self.log(get_text('log_skipped_none', self.current_lang).format(stats.get('skipped_no_detection', 0)))
             # V2.0 stats
             if stats.get('skipped_quality', 0) > 0:
                 self.log(f"🔍 Skipped (quality): {stats['skipped_quality']}")
@@ -1810,6 +1862,15 @@ class VideoSmartCropperUI(QMainWindow):
 
     def on_error(self, error_msg: str):
         """Handle error"""
+        try:
+            self._on_error_impl(error_msg)
+        except Exception as _e:
+            import traceback, datetime
+            with open('crash_log.txt', 'a', encoding='utf-8', errors='replace') as _f:
+                _f.write(f'\n[{datetime.datetime.now()}] on_error CRASH:\n')
+                traceback.print_exc(file=_f)
+
+    def _on_error_impl(self, error_msg: str):
         self.log(get_text('log_error', self.current_lang).format(error_msg))
         self._set_status('error')
         if hasattr(self, '_progress_glow'):

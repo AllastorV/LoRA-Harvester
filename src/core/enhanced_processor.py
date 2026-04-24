@@ -39,7 +39,7 @@ class AsyncFrameSaver:
     Uses a queue and background thread for saving
     """
     
-    def __init__(self, num_workers: int = 2, jpeg_quality: int = 95):
+    def __init__(self, num_workers: int = 4, jpeg_quality: int = 95):
         self.num_workers = num_workers
         self.jpeg_quality = jpeg_quality
         self.queue: Queue = Queue(maxsize=100)
@@ -249,9 +249,9 @@ class EnhancedVideoProcessor:
             min_scene_frames=10
         ) if enable_scene_detection else None
         
-        # Async saver
+        # Async saver — 4 workers for better write throughput
         self.async_saver = AsyncFrameSaver(
-            num_workers=2,
+            num_workers=4,
             jpeg_quality=jpeg_quality
         )
         

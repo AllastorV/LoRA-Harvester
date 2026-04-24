@@ -409,14 +409,17 @@ class StatusDot(QWidget):
         target = QColor(self.COLORS.get(state, self.COLORS['idle']))
 
         # Smooth colour morph
-        if self._color_anim:
-            self._color_anim.stop()
+        if self._color_anim is not None:
+            try:
+                self._color_anim.stop()
+            except RuntimeError:
+                pass
         self._color_anim = QVariantAnimation(self)
         self._color_anim.setDuration(300)
         self._color_anim.setStartValue(self._color)
         self._color_anim.setEndValue(target)
         self._color_anim.valueChanged.connect(self._set_color)
-        self._color_anim.start(QAbstractAnimation.DeleteWhenStopped)
+        self._color_anim.start()  # no DeleteWhenStopped — parent=self keeps C++ object alive
 
         # Stop old pulse
         if self._pulse_anim:

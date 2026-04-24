@@ -5,6 +5,8 @@ AI-Powered Dataset Collection Tool for LoRA Training
 
 import sys
 import os
+import traceback
+import datetime
 
 # Force UTF-8 output so emoji/Turkish chars don't crash on Windows console
 if hasattr(sys.stdout, 'reconfigure'):
@@ -13,6 +15,21 @@ if hasattr(sys.stdout, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
+
+# Crash log — writes every unhandled Python exception to crash_log.txt
+_CRASH_LOG = os.path.join(os.path.dirname(__file__), 'crash_log.txt')
+
+def _crash_handler(exc_type, exc_value, exc_traceback):
+    ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        with open(_CRASH_LOG, 'a', encoding='utf-8') as f:
+            f.write(f'\n{"="*60}\n{ts}\n')
+            traceback.print_exception(exc_type, exc_value, exc_traceback, file=f)
+    except Exception:
+        pass
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+sys.excepthook = _crash_handler
 
 # Windows: set unique App ID so taskbar shows our icon instead of Python's
 if sys.platform == 'win32':
