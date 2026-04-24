@@ -5,37 +5,34 @@ echo    LoRA-Harvester - Video Smart Cropper
 echo ============================================
 echo.
 
-REM Find Python
+REM ── Try venv first ───────────────────────────
+if exist "venv\Scripts\python.exe" (
+    set PYTHON_CMD=venv\Scripts\python.exe
+    goto :run
+)
+
+REM ── Fall back to system Python ───────────────
 set PYTHON_CMD=
-for %%p in (python python3 python.exe) do (
-    where %%p >nul 2>&1 && set PYTHON_CMD=%%p && goto :found
+for %%p in (python python3) do (
+    where %%p >nul 2>&1 && set PYTHON_CMD=%%p && goto :run
 )
 
-:found
-if "%PYTHON_CMD%"=="" (
-    echo [ERROR] Python not found! Please install Python 3.10+
-    pause
-    exit /b 1
-)
+echo [ERROR] Python not found! Install Python 3.10+ or run install.bat first.
+pause
+exit /b 1
 
-echo [*] Using: %PYTHON_CMD%
-echo [*] Checking dependencies...
-
-REM Check PyQt5
-%PYTHON_CMD% -c "import PyQt5" 2>nul
-if errorlevel 1 (
-    echo [*] Installing missing dependencies...
-    %PYTHON_CMD% -m pip install -r requirements.txt
-)
-
-echo [*] Starting application...
+:run
+echo [*] Python: %PYTHON_CMD%
+echo [*] Starting...
 echo.
 
-REM Use pythonw if available (truly windowless), otherwise minimize window
-where pythonw >nul 2>&1
-if not errorlevel 1 (
-    start "" pythonw main.py
-) else (
-    start "" /MIN %PYTHON_CMD% main.py
+%PYTHON_CMD% main.py
+
+REM If Python exits with an error code, keep window open so user can read the message
+if errorlevel 1 (
+    echo.
+    echo ============================================
+    echo [ERROR] Application crashed - see above
+    echo ============================================
+    pause
 )
-exit

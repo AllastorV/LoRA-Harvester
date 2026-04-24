@@ -2,29 +2,39 @@
 ' Launches the app without showing a CMD/console window
 Option Explicit
 
-Dim oShell, sDir, sCmd
+Dim oShell, sDir, sRoot, sCmd, sPython
 
 Set oShell = CreateObject("WScript.Shell")
 
-' Get the directory of this script
-sDir = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
+' Script is at project root — use its own directory as working dir
+sRoot = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
+oShell.CurrentDirectory = sRoot
 
-' Set working directory
-oShell.CurrentDirectory = sDir
+' Prefer venv pythonw (truly windowless), fall back to system python
+Dim sVenvPyw
+sVenvPyw = sRoot & "venv\Scripts\pythonw.exe"
 
-' Build command: try pythonw first (truly windowless), fallback to python
-Dim sPython
-sPython = "pythonw"
-On Error Resume Next
-oShell.Run "pythonw --version", 0, True
-If Err.Number <> 0 Then
-    sPython = "python"
+Dim oFSO
+Set oFSO = CreateObject("Scripting.FileSystemObject")
+
+If oFSO.FileExists(sVenvPyw) Then
+    sPython = """" & sVenvPyw & """"
+Else
+    ' Try system pythonw
+    On Error Resume Next
+    oShell.Run "pythonw --version", 0, True
+    If Err.Number = 0 Then
+        sPython = "pythonw"
+    Else
+        sPython = "python"
+    End If
+    On Error GoTo 0
 End If
-On Error GoTo 0
 
-sCmd = sPython & " """ & sDir & "main.py"""
+sCmd = sPython & " """ & sRoot & "main.py"""
 
-' WindowStyle=0 = hidden, bWaitOnReturn=False = non-blocking
+' WindowStyle=0 = hidden window, bWaitOnReturn=False = non-blocking
 oShell.Run sCmd, 0, False
 
+Set oFSO = Nothing
 Set oShell = Nothing

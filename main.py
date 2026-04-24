@@ -6,6 +6,14 @@ AI-Powered Dataset Collection Tool for LoRA Training
 import sys
 import os
 
+# Force UTF-8 output so emoji/Turkish chars don't crash on Windows console
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # Windows: set unique App ID so taskbar shows our icon instead of Python's
 if sys.platform == 'win32':
     try:

@@ -1,6 +1,6 @@
 """
 character_sort.py — Standalone Character Recognition & Sorting Tool
-Part of LoRA-Harvester v2.0
+Part of LoRA-Harvester v3.0
 
 Sorts images by character using InsightFace face recognition.
 
@@ -91,20 +91,31 @@ Output structure:
     )
 
     # ── Matching ──────────────────────────────────────────────────────────────
+    # NOTE: defaults are None so config.yaml values take effect when the
+    # flag is not supplied. Actual fallback defaults are applied below.
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.45,
+        default=None,
         metavar="FLOAT",
         help="Cosine distance threshold for reference matching (default: 0.45). "
              "Lower = stricter (fewer false positives). Range: 0.2-0.7",
+    )
+    parser.add_argument(
+        "--match-margin",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help="Minimum distance gap between best and runner-up reference "
+             "(default: 0.05). Lower = more aggressive matching of similar "
+             "characters. Set to 0 to disable the ambiguity check.",
     )
 
     # ── Clustering ────────────────────────────────────────────────────────────
     parser.add_argument(
         "--cluster-eps",
         type=float,
-        default=0.6,
+        default=None,
         metavar="FLOAT",
         help="DBSCAN eps for clustering unknowns (default: 0.6). "
              "Lower = smaller/tighter clusters.",
@@ -112,7 +123,7 @@ Output structure:
     parser.add_argument(
         "--cluster-min",
         type=int,
-        default=2,
+        default=None,
         metavar="INT",
         help="Minimum images to form a cluster (default: 2). "
              "Images below this form 'unknown' group.",
@@ -125,9 +136,9 @@ Output structure:
     parser.add_argument(
         "--max-characters",
         type=int,
-        default=1,
+        default=6,
         metavar="INT",
-        help="Maximum character folders to create (1-6, default: 1). "
+        help="Maximum character folders to create (1-6, default: 6). "
              "The largest groups are kept; smaller ones are merged into other/.",
     )
 
@@ -146,6 +157,33 @@ Output structure:
         action="store_true",
         help="Run on CPU (slower but no GPU required)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        metavar="INT",
+        help="Number of background threads for parallel image decoding "
+             "(default: 4). Set to 1 to disable prefetching.",
+    )
+
+    # ── Cache ─────────────────────────────────────────────────────────────────
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable the persistent embedding cache (re-runs will be slow).",
+    )
+    parser.add_argument(
+        "--cache-path",
+        default=None,
+        metavar="PATH",
+        help="Path to the embedding cache SQLite file. "
+             "Default: <input_dir>/.lora_harvester_cache.db",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Delete the embedding cache before running.",
+    )
 
     # ── File handling ─────────────────────────────────────────────────────────
     parser.add_argument(
@@ -162,7 +200,7 @@ Output structure:
     # ── Misc ──────────────────────────────────────────────────────────────────
     parser.add_argument(
         "--config",
-        default=os.path.join(_PROJECT_ROOT, "config.yaml"),
+        default=os.path.join(_PROJECT_ROOT, "config/config.yaml"),
         help="Path to config.yaml (default: config.yaml)",
     )
     parser.add_argument(
@@ -192,20 +230,40 @@ Output structure:
         except Exception:
             pass
 
-    # Config overrides (CLI takes precedence)
-    threshold = args.threshold
-    cluster_eps = args.cluster_eps
-    cluster_min = args.cluster_min
+    # Config overrides — precedence: CLI flag > config.yaml > hard-coded default.
+    # Because defaults for the CLI flags are None, we can unambiguously tell
+    # whether the user explicitly passed a value.
+    threshold = (
+        args.threshold
+        if args.threshold is not None
+        else config_char.get('similarity_threshold', 0.45)
+    )
+    match_margin = (
+        args.match_margin
+        if args.match_margin is not None
+        else config_char.get('match_margin', 0.05)
+    )
+    cluster_eps = (
+        args.cluster_eps
+        if args.cluster_eps is not None
+        else config_char.get('cluster_eps', 0.6)
+    )
+    cluster_min = (
+        args.cluster_min
+        if args.cluster_min is not None
+        else config_char.get('cluster_min_samples', 2)
+    )
     use_gpu = not args.no_gpu
+    num_workers = (
+        args.workers
+        if args.workers is not None
+        else config_char.get('num_workers', 4)
+    )
+    use_cache = not args.no_cache and config_char.get('use_cache', True)
+    cache_path = args.cache_path or config_char.get('cache_path')
+    # CLI --model only overrides config when it differs from the argparse default
     model_name = args.model
-
-    if not args.threshold and config_char.get('similarity_threshold'):
-        threshold = config_char['similarity_threshold']
-    if not args.cluster_eps and config_char.get('cluster_eps'):
-        cluster_eps = config_char['cluster_eps']
-    if not args.cluster_min and config_char.get('cluster_min_samples'):
-        cluster_min = config_char['cluster_min_samples']
-    if config_char.get('model'):
+    if model_name == "buffalo_l" and config_char.get('model'):
         model_name = config_char['model']
 
     # ── Print header ──────────────────────────────────────────────────────────
@@ -216,10 +274,12 @@ Output structure:
     print(f"📁 Output  : {args.output or '<input>/_sorted/'}")
     print(f"🎯 Model   : {model_name}")
     print(f"📚 References: {args.references or 'None (auto-cluster only)'}")
-    print(f"🔍 Threshold : {threshold}")
+    print(f"🔍 Threshold : {threshold}  (margin: {match_margin})")
     print(f"🔢 Max chars : {args.max_characters}")
     print(f"🔗 Cluster eps: {cluster_eps}  min: {cluster_min}")
-    print(f"💻 Device  : {'GPU' if use_gpu else 'CPU'}")
+    print(f"💻 Device  : {'GPU' if use_gpu else 'CPU'}  workers: {num_workers}")
+    print(f"💾 Cache   : {'on' if use_cache else 'off'}"
+          + (f"  ({cache_path})" if use_cache and cache_path else ""))
     print(f"📋 Action  : {'Copy' if args.copy else 'Move'}")
     print("=" * 60)
 
@@ -266,12 +326,33 @@ Output structure:
     recognizer = CharacterRecognizer(
         reference_dir=args.references,
         similarity_threshold=threshold,
+        match_margin=match_margin,
         cluster_eps=effective_cluster_eps,
         cluster_min_samples=effective_cluster_min,
         use_gpu=use_gpu,
         model_name=model_name,
         progress_callback=progress,
+        cache_path=cache_path,
+        use_cache=use_cache,
+        num_workers=num_workers,
     )
+
+    # Clear cache if requested — doing it here (after instantiation but
+    # before load_references) avoids a race where another process opens the
+    # DB between unlink and recreate.
+    if args.clear_cache:
+        from pathlib import Path as _Path
+        candidates = [
+            _Path(cache_path) if cache_path else None,
+            _Path(args.input) / ".lora_harvester_cache.db",
+        ]
+        for c in candidates:
+            if c and c.exists():
+                try:
+                    c.unlink()
+                    print(f"🗑  Cleared cache: {c}")
+                except OSError as e:
+                    print(f"⚠️  Could not delete cache {c}: {e}")
 
     # ── Load references ───────────────────────────────────────────────────────
     if args.references:
@@ -298,12 +379,16 @@ Output structure:
         )
     except KeyboardInterrupt:
         print("\n\n⏹️  Interrupted by user")
+        recognizer.close_cache()
         sys.exit(0)
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
         traceback.print_exc()
+        recognizer.close_cache()
         sys.exit(1)
+    # Normal path — close cache so SQLite flushes WAL before we exit
+    recognizer.close_cache()
 
     if not stats:
         print("⚠️  No images were processed.")

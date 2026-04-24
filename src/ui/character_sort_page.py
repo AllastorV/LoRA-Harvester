@@ -1,5 +1,5 @@
 """
-Character Sort Page for LoRA-Harvester v2.1
+Character Sort Page for LoRA-Harvester v3.0
 Identifies characters by face and organises frames into per-character folders.
 Works on any existing image folder — fully independent from video processing.
 """
@@ -61,11 +61,15 @@ class CharacterSortThread(QThread):
             recognizer = CharacterRecognizer(
                 reference_dir=self.reference_dir if self.reference_dir else None,
                 similarity_threshold=s.get('threshold', 0.45),
+                match_margin=s.get('match_margin', 0.05),
                 cluster_eps=cluster_eps,
                 cluster_min_samples=cluster_min,
                 use_gpu=s.get('use_gpu', True),
                 model_name=s.get('model', 'buffalo_l'),
                 progress_callback=progress_cb,
+                num_workers=s.get('num_workers', 4),
+                use_cache=s.get('use_cache', True),
+                cache_path=s.get('cache_path'),
             )
 
             if self.reference_dir:
@@ -76,13 +80,19 @@ class CharacterSortThread(QThread):
 
             self.log_msg.emit("🔄 Scanning images...")
 
-            stats = recognizer.sort_directory(
-                input_dir=self.input_dir,
-                output_dir=self.output_dir if self.output_dir else None,
-                copy=s.get('copy_files', False),
-                recursive=s.get('recursive', False),
-                max_characters=s.get('max_characters', 1),
-            )
+            try:
+                stats = recognizer.sort_directory(
+                    input_dir=self.input_dir,
+                    output_dir=self.output_dir if self.output_dir else None,
+                    copy=s.get('copy_files', False),
+                    recursive=s.get('recursive', False),
+                    max_characters=s.get('max_characters', 6),
+                    max_per_character=s.get('max_per_character', 0),
+                )
+            finally:
+                # Always release the SQLite cache so WAL is flushed before
+                # this worker thread terminates.
+                recognizer.close_cache()
 
             if self._running:
                 self.finished.emit(stats)
@@ -185,17 +195,7 @@ class CharacterSortPage(QWidget):
         layout.setContentsMargins(30, 20, 30, 20)
         self.setLayout(layout)
 
-        # Tooltip style
-        self.setStyleSheet(f"""
-            QToolTip {{
-                background-color: {theme.BG_DARK};
-                color: {theme.TEXT_PRIMARY};
-                border: 1px solid {theme.ORANGE};
-                padding: 8px;
-                border-radius: 4px;
-                font-size: 18px;
-            }}
-        """)
+        # Tooltip style handled by global theme
 
         # Title
         self.title_lbl = QLabel(get_text('char_sort_title', self.lang))
@@ -414,13 +414,13 @@ class CharacterSortPage(QWidget):
         self.max_char_slider = QSlider(Qt.Horizontal)
         self.max_char_slider.setMinimum(1)
         self.max_char_slider.setMaximum(6)
-        self.max_char_slider.setValue(1)
+        self.max_char_slider.setValue(6)
         self.max_char_slider.setTickPosition(QSlider.TicksBelow)
         self.max_char_slider.setTickInterval(1)
         self.max_char_slider.setFixedWidth(180)
         self.max_char_slider.setStyleSheet(theme.slider())
 
-        self.max_char_value_lbl = QLabel("1")
+        self.max_char_value_lbl = QLabel("6")
         self.max_char_value_lbl.setFixedWidth(20)
         self.max_char_value_lbl.setStyleSheet(theme.label_value())
         self.max_char_slider.valueChanged.connect(
@@ -429,7 +429,8 @@ class CharacterSortPage(QWidget):
 
         # Tick labels
         ticks_lbl = QLabel("1  2  3  4  5  6")
-        ticks_lbl.setStyleSheet(f"color: #888; font-size: 10px;")
+        ticks_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)};")
+        self._ticks_lbl = ticks_lbl
 
         row_max.addWidget(self.max_char_lbl)
         row_max.addWidget(self.max_char_info)
@@ -439,6 +440,26 @@ class CharacterSortPage(QWidget):
         row_max.addWidget(ticks_lbl)
         row_max.addStretch()
         lay.addLayout(row_max)
+
+        # Row 2b: max per character (quality-ranked top-N trim)
+        row_topn = QHBoxLayout()
+        self.topn_lbl = QLabel(get_text('char_max_per_char', self.lang))
+        self.topn_lbl.setStyleSheet(theme.label_frame())
+        self.topn_info = QLabel("ℹ️")
+        self.topn_info.setStyleSheet(theme.info_icon_frame())
+        self.topn_info.setToolTip(get_text('char_max_per_char_tooltip', self.lang))
+        self.topn_info.setCursor(Qt.WhatsThisCursor)
+        self.topn_spin = QSpinBox()
+        self.topn_spin.setMinimum(0)
+        self.topn_spin.setMaximum(9999)
+        self.topn_spin.setValue(0)
+        self.topn_spin.setSpecialValueText("off")
+        self.topn_spin.setStyleSheet(theme.spinbox() if hasattr(theme, 'spinbox') else "")
+        row_topn.addWidget(self.topn_lbl)
+        row_topn.addWidget(self.topn_info)
+        row_topn.addWidget(self.topn_spin)
+        row_topn.addStretch()
+        lay.addLayout(row_topn)
 
         # Row 3: checkboxes
         row3 = QHBoxLayout()
@@ -599,6 +620,7 @@ class CharacterSortPage(QWidget):
             'recursive': self.recursive_cb.isChecked(),
             'use_gpu': self.gpu_cb.isChecked(),
             'max_characters': self.max_char_slider.value(),
+            'max_per_character': self.topn_spin.value(),
         }
 
     # ─── Image counting ───────────────────────────────────────────────────────
@@ -755,6 +777,8 @@ class CharacterSortPage(QWidget):
         self.min_info.setToolTip(get_text('char_cluster_min_tooltip', lang))
         self.max_char_lbl.setText(get_text('char_max_characters', lang))
         self.max_char_info.setToolTip(get_text('char_max_characters_tooltip', lang))
+        self.topn_lbl.setText(get_text('char_max_per_char', lang))
+        self.topn_info.setToolTip(get_text('char_max_per_char_tooltip', lang))
 
         # Checkboxes + tooltips
         self.no_cluster_cb.setText(get_text('char_no_cluster', lang))
@@ -779,3 +803,89 @@ class CharacterSortPage(QWidget):
             self.ref_drop.get_label().setText(get_text('char_drag_ref', lang))
         if not self.output_folder:
             self.out_drop.get_label().setText(get_text('char_drag_output', lang))
+
+    # ─── Theme ────────────────────────────────────────────────────────────────
+
+    def refresh_styles(self):
+        """Re-apply all stylesheets after a theme change."""
+        # Title + subtitle
+        self.title_lbl.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
+        self.subtitle_lbl.setStyleSheet(theme.label_muted())
+        self.log_text.setStyleSheet(theme.log_area())
+
+        # Step cards (the three QFrame children built via _build_*_step)
+        for frame in self.findChildren(QFrame):
+            ss = frame.styleSheet()
+            if "border-radius: 10px" in ss:
+                frame.setStyleSheet(theme.card_frame())
+
+        # Step titles
+        self.step1_title.setStyleSheet(theme.label_section())
+        self.step2_title.setStyleSheet(theme.label_section())
+        self.step3_title.setStyleSheet(theme.label_section())
+
+        # Folder rows
+        self.input_lbl.setStyleSheet(theme.label_default())
+        self.browse_input_btn.setStyleSheet(theme.btn_browse())
+        self.ref_lbl.setStyleSheet(theme.label_default())
+        self.browse_ref_btn.setStyleSheet(theme.btn_browse())
+        self.clear_ref_btn.setStyleSheet(theme.btn_danger())
+        self.out_lbl.setStyleSheet(theme.label_default())
+        self.browse_out_btn.setStyleSheet(theme.btn_browse())
+        self.clear_out_btn.setStyleSheet(theme.btn_danger())
+
+        # Drop zones — preserve state
+        if self.input_folder:
+            self.input_drop.setStyleSheet(theme.drop_zone_frame_success())
+            self.input_drop.get_label().setStyleSheet(theme.label_success())
+        else:
+            self.input_drop.setStyleSheet(theme.drop_zone_frame_default())
+            self.input_drop.get_label().setStyleSheet(theme.label_transparent())
+
+        if self.ref_folder:
+            self.ref_drop.setStyleSheet(theme.drop_zone_frame_success())
+            self.ref_drop.get_label().setStyleSheet(theme.label_success())
+            self.ref_status_lbl.setStyleSheet(theme.label_success())
+        else:
+            self.ref_drop.setStyleSheet(theme.drop_zone_frame_default())
+            self.ref_drop.get_label().setStyleSheet(theme.label_transparent())
+            self.ref_status_lbl.setStyleSheet(theme.label_muted())
+
+        if self.output_folder:
+            self.out_drop.setStyleSheet(theme.drop_zone_frame_success())
+            self.out_drop.get_label().setStyleSheet(theme.label_success())
+            self.out_status_lbl.setStyleSheet(theme.label_success())
+        else:
+            self.out_drop.setStyleSheet(theme.drop_zone_frame_default())
+            self.out_drop.get_label().setStyleSheet(theme.label_transparent())
+            self.out_status_lbl.setStyleSheet(theme.label_muted())
+
+        self.input_count_lbl.setStyleSheet(theme.label_success())
+
+        # Settings row labels, spinboxes, combos
+        self.model_lbl.setStyleSheet(theme.label_frame())
+        self.model_combo.setStyleSheet(theme.combo())
+        self.thresh_lbl.setStyleSheet(theme.label_frame())
+        self.thresh_lbl_info.setStyleSheet(theme.info_icon_frame())
+        self.thresh_spin.setStyleSheet(theme.spinbox())
+        self.eps_lbl.setStyleSheet(theme.label_frame())
+        self.eps_info.setStyleSheet(theme.info_icon_frame())
+        self.eps_spin.setStyleSheet(theme.spinbox())
+        self.min_lbl.setStyleSheet(theme.label_frame())
+        self.min_info.setStyleSheet(theme.info_icon_frame())
+        self.min_spin.setStyleSheet(theme.spinbox())
+        self.max_char_lbl.setStyleSheet(theme.label_frame())
+        self.max_char_info.setStyleSheet(theme.info_icon_frame())
+        self.max_char_slider.setStyleSheet(theme.slider())
+        self.max_char_value_lbl.setStyleSheet(theme.label_value())
+        self._ticks_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)};"
+        )
+        self.topn_lbl.setStyleSheet(theme.label_frame())
+        self.topn_info.setStyleSheet(theme.info_icon_frame())
+        self.topn_spin.setStyleSheet(theme.spinbox())
+
+        # Step 3
+        self.start_btn.setStyleSheet(theme.btn_primary())
+        self.stop_btn.setStyleSheet(theme.btn_danger())
+        self.progress_bar.setStyleSheet(theme.progress_bar())

@@ -32,6 +32,12 @@ pip install -r requirements.txt
 
 echo.
 echo ================================================
+echo Downloading default models...
+echo ================================================
+python "%~dp0scripts\download_models.py"
+
+echo.
+echo ================================================
 echo Installation Complete!
 echo ================================================
 echo.
@@ -41,6 +47,6 @@ echo 2. Run the app: python main.py
 echo.
 echo For CLI mode: python cli.py --help
 echo.
-echo Note: For GPU support, ensure you have CUDA installed
+echo Note: For GPU support run install_gpu.bat
 echo ================================================
 pause

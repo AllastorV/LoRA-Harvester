@@ -43,7 +43,21 @@ class ObjectDetector:
             )
 
         # Load YOLO model
-        self.model = _YOLO(model_size)
+        from src.core.model_paths import yolo_model_path
+        _path = yolo_model_path(model_size)
+        # Pass absolute path if file already exists locally, else let ultralytics download it
+        self.model = _YOLO(str(_path) if _path.exists() else model_size)
+        # Move the downloaded file to models/yolo/ for future runs
+        if not _path.exists():
+            import shutil
+            _downloaded = next(
+                (p for p in [
+                    __import__('pathlib').Path(model_size),
+                    __import__('pathlib').Path.home() / '.ultralytics' / 'assets' / model_size,
+                ] if p.exists()), None
+            )
+            if _downloaded:
+                shutil.copy2(str(_downloaded), str(_path))
         self.model.to(self.device)
 
         # Warm up the model

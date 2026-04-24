@@ -20,6 +20,11 @@ TRANSLATIONS = {
         'browse_multiple_btn': '📁+ Add Multiple Videos',
         'clear_videos_btn': '🗑️ Clear List',
         'start_btn': '🚀 Start Processing',
+        'pause_btn': '⏸ Pause',
+        'resume_btn': '▶ Resume',
+        'pause_btn_tooltip': 'Pause processing. The current frame finishes, then processing halts until you resume.',
+        'skip_btn': '⏭ Skip Current',
+        'skip_btn_tooltip': 'Abandon the video that is currently being processed and continue with the next one in the batch.',
         'stop_btn': '⏹ Stop Processing',
         'open_output_btn': '📂 Open Output Folder',
         
@@ -32,7 +37,7 @@ TRANSLATIONS = {
         'confidence': 'Detection Confidence:',
         'confidence_tooltip': 'Minimum confidence for object detection (10-95%). Higher = stricter',
         'ensemble_mode': '🤖 Enable Ensemble Mode',
-        'ensemble_mode_tooltip': 'Uses 3 AI models (YOLO + DETR + Faster R-CNN) for higher accuracy',
+        'ensemble_mode_tooltip': 'Enable ensemble detection mode with NMS post-processing',
         'skip_subtitle': 'Skip frames with subtitles/text',
         'skip_subtitle_tooltip': 'Automatically skip frames containing text or subtitles',
         'turbo_mode': '⚡ Turbo Mode',
@@ -64,6 +69,33 @@ TRANSLATIONS = {
         'log_processing': '🎬 Starting video processing...',
         'log_turbo': '⚡ Turbo mode activated (batch processing)',
         'log_stopping': '⏹️  Stopping processing...',
+        'log_skipping_current': '⏭️  Skipping current video, moving to next...',
+        'log_paused': '⏸  Processing paused',
+        'log_resumed': '▶  Processing resumed',
+        'trim_label': '✂ Video Trim:',
+        'trim_tooltip': 'Skip the first / last N seconds of every video in the batch. Useful for trimming uniform intros or outros from a folder of episodes.',
+        'trim_start': 'Start skip:',
+        'trim_end': 'End skip:',
+        'preview_title': 'Live Preview',
+        'ce_load_folder': '📂 Load Image Folder',
+        'ce_save_all': '💾 Save All',
+        'ce_add_tag': '+ Add Tag to All',
+        'ce_remove_tag': '- Remove Tag from All',
+        'ce_replace_tag': '↔ Replace Tag',
+        'ce_no_images': 'No images loaded. Load a folder first.',
+        'ce_saved': 'All captions saved',
+        'ce_loaded': 'Loaded {0} images with {1} existing captions',
+        'ce_select_folder': 'Select Image Folder',
+        'ce_add_tag_title': 'Add Tag',
+        'ce_add_tag_prompt': 'Tag to add to all captions:',
+        'ce_add_tag_result': "Added '{0}' to {1} captions",
+        'ce_remove_tag_title': 'Remove Tag',
+        'ce_remove_tag_prompt': 'Tag to remove from all captions:',
+        'ce_remove_tag_result': "Removed '{0}' from {1} captions",
+        'ce_replace_tag_title': 'Replace Tag',
+        'ce_replace_find_prompt': 'Tag to find:',
+        'ce_replace_with_prompt': "Replace '{0}' with:",
+        'ce_replace_tag_result': "Replaced '{0}' → '{1}' in {2} captions",
         'log_progress': '📊 Progress: {:.1f}% | Saved: {} | Persons: {} | Animals: {} | Objects: {}',
         'log_complete': '🎉 PROCESSING COMPLETE!',
         'log_total': '📁 Total saved: {} frames',
@@ -102,16 +134,10 @@ TRANSLATIONS = {
         'caption_enabled': 'Enable Auto Captioning',
         'caption_enabled_tooltip': 'Generate captions/tags for saved frames',
         'caption_mode': 'Caption Mode:',
-        'caption_mode_tooltip': 'How to combine BLIP and WD14 outputs',
+        'caption_mode_tooltip': 'Caption output mode (WD14 tags)',
         'caption_modes': {
             'tags_only': 'Tags Only (WD14)',
-            'blip_only': 'BLIP Only',
-            'blip_first': 'BLIP + Tags',
-            'tags_first': 'Tags + BLIP',
-            'combined': 'Combined'
         },
-        'blip_enabled': 'BLIP (Natural Language)',
-        'blip_model': 'BLIP Model:',
         'wd14_enabled': 'WD14/Danbooru Tags',
         'wd14_model': 'WD14 Model:',
         
@@ -145,17 +171,14 @@ TRANSLATIONS = {
         'caption_prefix': 'Caption Prefix:',
         'caption_suffix': 'Caption Suffix:',
         'save_json': 'Save Detailed JSON',
-        'use_blip': 'BLIP Caption',
         'use_wd14': 'WD14/Danbooru Tags',
-        
+
         # Tooltips for Captioning Page
-        'mode_tooltip': 'tags_only: Only Danbooru tags\nblip_first: BLIP description + tags\ntags_first: Tags + BLIP description\ncombined: Merge both intelligently',
+        'mode_tooltip': 'tags_only: Only Danbooru tags from WD14 tagger',
         'trigger_tooltip': 'This word is added to the beginning of every caption. Used for LoRA training (e.g., "sks person", "ohwx style")',
         'max_tags_tooltip': 'Maximum number of tags to include in the caption. More tags = more detail but longer captions',
         'confidence_tooltip': 'Minimum confidence threshold for tags (0.1-0.9). Higher = fewer but more accurate tags',
         'negative_tooltip': 'Tags to exclude from captions. Separate with commas. Example: watermark, signature, text',
-        'blip_tooltip': 'BLIP generates natural language descriptions of images. Good for style and scene description',
-        'blip_model_tooltip': 'base: Faster, less detail\nlarge: Slower, more detailed descriptions',
         'wd14_tooltip': 'WD14/Danbooru generates anime-style tags. Great for character features, poses, clothing',
         'wd14_model_tooltip': 'swinv2-v3: Best accuracy, recommended\nconvnext-v3: Fast & accurate, good balance\nvit-v3: Standard ViT architecture\nmoat-v2: High precision, older version\nswinv2-v2: Legacy model, stable',
         'keep_char_tooltip': 'Keep character name tags like "hatsune_miku", "naruto". Useful for character LoRAs',
@@ -171,10 +194,10 @@ TRANSLATIONS = {
         'checkpoint_resume': 'Resume',
         'checkpoint_restart': 'Start Fresh',
         
-        # Page Navigation (NEW v2.0)
-        'page_video_processing': '🎬 Video Processing',
-        'page_captioning': '🏷️ Image Captioning',
-        'page_character_sort': '🎭 Character Sort',
+        # Page Navigation (NEW v2.0) — emojis live in update_ui_texts()
+        'page_video_processing': 'Video Processing',
+        'page_caption_studio': 'Caption Studio',
+        'page_character_sort': 'Character Sort',
 
         # Character Sort Page (NEW v2.1)
         'char_sort_title': '🎭 Character Recognition & Sorting',
@@ -215,6 +238,67 @@ TRANSLATIONS = {
         'char_clustered': 'Auto-clustered',
         'char_max_characters': 'Max Characters:',
         'char_max_characters_tooltip': 'Maximum number of character folders to create (1–6).\nThe largest groups are kept; smaller ones are merged into other/.\nDefault: 1',
+        'char_max_per_char': 'Max per character:',
+        'char_max_per_char_tooltip': 'Keep only the N sharpest (highest quality) images per character.\n0 = no limit (keep all). Excess images go to trimmed/.',
+
+        # Topbar status indicator
+        'status_idle': 'Ready',
+        'status_processing': 'Processing…',
+        'status_paused': 'Paused',
+        'status_done': 'Complete',
+        'status_error': 'Error',
+
+        # Stat cards (below progress bar)
+        'stat_queued': 'Queued',
+        'stat_extracted': 'Extracted',
+        'stat_saved': 'Saved',
+
+        # Toast messages
+        'toast_files_added': '{} file(s) added to queue',
+        'toast_processing_started': 'Processing started',
+        'toast_processing_done': 'Done · {} frames saved',
+        'toast_processing_error': 'Error: {}',
+        'toast_paused': 'Paused',
+        'toast_resumed': 'Resumed',
+        'toast_stopped': 'Stopped by user',
+
+        # Resource Settings Drawer
+        'res_menu_btn': '⚙️ Resources',
+        'res_menu_tooltip': 'Adjust GPU, CPU, memory and performance settings',
+        'res_title': 'Resource Settings',
+        'res_subtitle': 'Tune system resources and performance options for your hardware.',
+        'res_section_gpu': 'GPU',
+        'res_gpu_enabled': 'Use GPU (CUDA)',
+        'res_fp16': 'FP16 / Mixed Precision',
+        'res_gpu_mem_limit': 'VRAM Limit',
+        'res_section_batch': 'Batch / Throughput',
+        'res_batch_size': 'Batch Size',
+        'res_prefetch_frames': 'Prefetch Frames',
+        'res_section_cpu': 'CPU / Threads',
+        'res_cpu_threads': 'CPU Threads',
+        'res_decode_workers': 'Decode Workers',
+        'res_section_memory': 'Memory',
+        'res_ram_limit': 'RAM Limit',
+        'res_section_misc': 'Misc Performance',
+        'res_async_save': 'Async File Save',
+        'res_auto_gc': 'Auto Garbage Collection',
+        'res_jpeg_quality': 'JPEG Quality',
+        'res_reset': 'Reset Defaults',
+        'res_apply': 'Apply Save',
+        # Resource Settings Tooltips
+        'res_gpu_enabled_tooltip': 'Enable CUDA GPU acceleration for AI model inference. Requires an NVIDIA GPU with CUDA support.',
+        'res_fp16_tooltip': 'Use half-precision floating point for faster inference and lower VRAM usage. Recommended for most GPUs.',
+        'res_gpu_mem_limit_tooltip': 'Maximum percentage of GPU VRAM to use. Lower this if you get out-of-memory errors.',
+        'res_batch_size_tooltip': 'Number of frames processed simultaneously. Higher = faster but uses more memory.',
+        'res_prefetch_frames_tooltip': 'Number of frames to decode ahead of time. Higher = smoother processing but more RAM usage.',
+        'res_cpu_threads_tooltip': 'Number of CPU threads for parallel processing. Usually best at 2–4 for most systems.',
+        'res_decode_workers_tooltip': 'Number of parallel video decode workers. More workers = faster frame extraction.',
+        'res_ram_limit_tooltip': 'Maximum RAM usage in MB. Processing pauses if this limit is reached.',
+        'res_async_save_tooltip': 'Save files asynchronously in the background. Faster processing but slightly more memory usage.',
+        'res_auto_gc_tooltip': 'Automatically free unused memory during processing. Reduces peak memory at a small speed cost.',
+        'res_jpeg_quality_tooltip': 'JPEG compression quality for saved frames (50–100). Higher = better quality but larger files.',
+        'res_light_mode_tooltip': 'Switch between dark and light interface theme. Changes apply after clicking "Apply Save".',
+        'res_font_scale_tooltip': 'Scale all text in the interface (80%–140%). Useful for high-DPI displays or accessibility.',
 
         # Standalone Captioning Page (NEW v2.0)
         'captioning_standalone_title': '🏷️ Standalone Image Captioning',
@@ -235,8 +319,94 @@ TRANSLATIONS = {
         'step1_select_folder': '📁 Step 1: Select Folder',
         'step2_settings': '⚙️ Step 2: Settings',
         'step3_start': '🚀 Step 3: Start',
+
+        # Caption Studio
+        'caption_studio_title': '🏷️✏️ Caption Studio',
+        'caption_studio_subtitle': 'Generate and edit captions in one place — with Danbooru autocomplete',
+        'caption_studio_tab_generate': 'Generate',
+        'caption_studio_tab_edit': 'Edit',
+
+        # Caption Studio — Quality Presets
+        'preset_label': 'Tagging Quality:',
+        'preset_tooltip': (
+            'Quality preset automatically selects the best WD14 model and confidence '
+            'threshold for your goal. Tag count is always set by you.\n\n'
+            'High Accuracy — SwinV2-v3, conf 0.30 (slowest, most detail)\n'
+            'Balanced — ConvNeXt-v3, conf 0.35 (recommended default)\n'
+            'High Speed — ViT-v3, conf 0.40 (fastest, key tags only)\n'
+            'Custom — pick your own model and values'
+        ),
+        'preset_high_accuracy': '🎯 High Accuracy',
+        'preset_balanced': '⚖️ Balanced (Recommended)',
+        'preset_high_speed': '⚡ High Speed',
+        'preset_custom': '🛠️ Custom',
+
+        # Caption Studio — Suffix tags
+        'caption_suffix_label': 'Suffix Tags:',
+        'caption_suffix_tooltip': (
+            'Tags appended to the END of every caption (like a trigger word, but at the end).\n'
+            'Example: "masterpiece, best quality" — useful for enforcing quality tokens.'
+        ),
+
+        # Caption Studio — Captioning Mode (Florence-2)
+        'caption_mode_label': 'Captioning Mode:',
+        'caption_mode_tooltip': (
+            'Select how captions are generated:\n\n'
+            'Danbooru Tags — WD14 tagger produces comma-separated tags (anime/illustration)\n'
+            'Florence-2 NLP — Natural language description via Florence-2 (realistic/photos)\n'
+            'Combined — Florence-2 description followed by WD14 tags'
+        ),
+        'caption_mode_tags': '🏷️ Tag Only (WD14)',
+        'caption_mode_tag_first': '🏷️📝 Tag First (Tags → NLP)',
+        'caption_mode_tag_first_tooltip': 'WD14 tags on line 1, Florence-2 caption on line 2',
+        'caption_mode_nlp': '📝 Natural Language (Florence-2)',
+        'caption_mode_combined': '🏷️📝 Combined (NLP + Tags)',
+        'florence2_model_label': 'Florence-2 Model:',
+        'florence2_task_short': 'Short Caption',
+        'florence2_task_detailed': 'Detailed Caption',
+        'florence2_task_more': 'Very Detailed Caption',
+
+        # Tag Frequency Analyzer — emoji lives in update_ui_texts()
+        'page_tag_frequency': 'Tag Frequency',
+        'tag_freq_title': '🏷️ Tag Frequency Analyzer',
+        'tag_freq_subtitle': 'Scan caption files, analyze tag frequencies, and bulk-remove unwanted tags',
+        'tag_freq_load': '📂 Load Folder',
+        'tag_freq_apply_bl': '🗑️ Apply Blacklist',
+        'tag_freq_filter': 'Filter tags...',
+        'tag_freq_col_tag': 'Tag',
+        'tag_freq_col_count': 'Count',
+        'tag_freq_col_pct': '%',
+        'tag_freq_bl_title': 'Blacklist',
+        'tag_freq_bl_hint': 'Add tags below (one per line) to remove them from all caption files when you click Apply Blacklist.',
+        'tag_freq_add_selected': '⬅ Add Selected',
+        'tag_freq_no_data': 'No data loaded. Click "Load Folder" to scan caption files.',
+        'tag_freq_select_folder': 'Select Captions Folder',
+        'tag_freq_loaded': '✅ {} files scanned — {} unique tags — {} total occurrences',
+        'tag_freq_bl_applied': '🗑️ Removed {} tag occurrences from {} files',
+        # Tag Frequency Tooltips
+        'tag_freq_load_tooltip': 'Select a folder containing .txt caption files to scan and analyze tag frequencies.',
+        'tag_freq_apply_bl_tooltip': 'Remove all blacklisted tags from every caption file in the loaded folder. This modifies files on disk!',
+        'tag_freq_filter_tooltip': 'Type to filter the tag table. Only matching tags will be shown.',
+        'tag_freq_add_selected_tooltip': 'Add the currently selected tags from the table to the blacklist editor.',
+
+        # Resource Settings - Theme / UI
+        'res_section_theme': 'Theme / UI',
+        'res_light_mode': 'Light Mode',
+        'res_font_scale': 'Font Scale',
+        'res_accent_color': 'Accent Color',
+        'res_accent_custom': 'Custom color...',
+        'res_section_lang': 'Language',
+
+        # System Usage Monitor
+        'sys_monitor_title': 'System Monitor',
+        'sys_cpu': 'CPU',
+        'sys_ram': 'RAM',
+        'sys_gpu': 'GPU',
+        'sys_vram': 'VRAM',
+        'sys_gpu_not_available': 'No CUDA GPU',
+        'sys_used_of': '{used} / {total}',
     },
-    
+
     'tr': {
         # Main window
         'app_title': 'LoRA-Harvester',
@@ -253,6 +423,11 @@ TRANSLATIONS = {
         'browse_multiple_btn': '📁+ Çoklu Video Ekle',
         'clear_videos_btn': '🗑️ Listeyi Temizle',
         'start_btn': '🚀 İşlemi Başlat',
+        'pause_btn': '⏸ Duraklat',
+        'resume_btn': '▶ Devam Et',
+        'pause_btn_tooltip': 'İşlemi duraklat. Mevcut kare biter, sonra devam edene kadar bekler.',
+        'skip_btn': '⏭ Mevcudu Atla',
+        'skip_btn_tooltip': 'Şu an işlenen videoyu bırakıp sıradaki videoya geç.',
         'stop_btn': '⏹ İşlemi Durdur',
         'open_output_btn': '📂 Çıktı Klasörünü Aç',
         
@@ -265,7 +440,7 @@ TRANSLATIONS = {
         'confidence': 'Tespit Güveni:',
         'confidence_tooltip': 'Nesne tespiti için minimum güven (%10-95). Yüksek = daha katı',
         'ensemble_mode': '🤖 Topluluk Modu Aktif',
-        'ensemble_mode_tooltip': '3 yapay zeka modeli (YOLO + DETR + Faster R-CNN) kullanarak daha yüksek doğruluk',
+        'ensemble_mode_tooltip': 'NMS son-işleme ile topluluk algılama modunu etkinleştir',
         'skip_subtitle': 'Altyazılı kareleri atla',
         'skip_subtitle_tooltip': 'Metin veya altyazı içeren kareleri otomatik atla',
         'turbo_mode': '⚡ Turbo Modu',
@@ -297,6 +472,33 @@ TRANSLATIONS = {
         'log_processing': '🎬 Video işleme başlatılıyor...',
         'log_turbo': '⚡ Turbo modu aktif (toplu işleme)',
         'log_stopping': '⏹️  İşlem durduruluyor...',
+        'log_skipping_current': '⏭️  Mevcut video atlanıyor, sıradakine geçiliyor...',
+        'log_paused': '⏸  İşlem duraklatıldı',
+        'log_resumed': '▶  İşlem devam ediyor',
+        'trim_label': '✂ Video Kırpma:',
+        'trim_tooltip': 'Batch\'teki her videonun ilk/son N saniyesini atla. Bölüm serilerinin tekrarlayan intro/outro\'larını kırpmak için idealdir.',
+        'trim_start': 'Baş atla:',
+        'trim_end': 'Son atla:',
+        'preview_title': 'Canlı Önizleme',
+        'ce_load_folder': '📂 Görsel Klasörü Yükle',
+        'ce_save_all': '💾 Tümünü Kaydet',
+        'ce_add_tag': '+ Tümüne Etiket Ekle',
+        'ce_remove_tag': '- Tümünden Etiket Sil',
+        'ce_replace_tag': '↔ Etiket Değiştir',
+        'ce_no_images': 'Görsel yüklenmedi. Önce bir klasör yükleyin.',
+        'ce_saved': 'Tüm altyazılar kaydedildi',
+        'ce_loaded': '{0} görsel ve {1} mevcut altyazı yüklendi',
+        'ce_select_folder': 'Görsel Klasörü Seç',
+        'ce_add_tag_title': 'Etiket Ekle',
+        'ce_add_tag_prompt': 'Tüm altyazılara eklenecek etiket:',
+        'ce_add_tag_result': "'{0}' etiketi {1} altyazıya eklendi",
+        'ce_remove_tag_title': 'Etiket Sil',
+        'ce_remove_tag_prompt': 'Tüm altyazılardan silinecek etiket:',
+        'ce_remove_tag_result': "'{0}' etiketi {1} altyazıdan silindi",
+        'ce_replace_tag_title': 'Etiket Değiştir',
+        'ce_replace_find_prompt': 'Bulunacak etiket:',
+        'ce_replace_with_prompt': "'{0}' yerine ne yazılsın:",
+        'ce_replace_tag_result': "'{0}' → '{1}' değişikliği {2} altyazıda yapıldı",
         'log_progress': '📊 İlerleme: {:.1f}% | Kaydedilen: {} | Kişiler: {} | Hayvanlar: {} | Nesneler: {}',
         'log_complete': '🎉 İŞLEM TAMAMLANDI!',
         'log_total': '📁 Toplam kaydedilen: {} kare',
@@ -335,16 +537,10 @@ TRANSLATIONS = {
         'caption_enabled': 'Otomatik Etiketleme Aktif',
         'caption_enabled_tooltip': 'Kaydedilen kareler için açıklama/etiket oluştur',
         'caption_mode': 'Etiket Modu:',
-        'caption_mode_tooltip': 'BLIP ve WD14 çıktılarını nasıl birleştireceğinizi seçin',
+        'caption_mode_tooltip': 'Etiket çıktı modu (WD14 etiketleri)',
         'caption_modes': {
             'tags_only': 'Sadece Etiketler (WD14)',
-            'blip_only': 'Sadece BLIP',
-            'blip_first': 'BLIP + Etiketler',
-            'tags_first': 'Etiketler + BLIP',
-            'combined': 'Birleşik'
         },
-        'blip_enabled': 'BLIP (Doğal Dil)',
-        'blip_model': 'BLIP Modeli:',
         'wd14_enabled': 'WD14/Danbooru Etiketleri',
         'wd14_model': 'WD14 Modeli:',
         
@@ -378,17 +574,14 @@ TRANSLATIONS = {
         'caption_prefix': 'Açıklama Öneki:',
         'caption_suffix': 'Açıklama Soneki:',
         'save_json': 'Detaylı JSON Kaydet',
-        'use_blip': 'BLIP Açıklama',
         'use_wd14': 'WD14/Danbooru Etiketler',
         
         # Tooltips for Captioning Page
-        'mode_tooltip': 'tags_only: Sadece Danbooru etiketleri\nblip_first: BLIP açıklama + etiketler\ntags_first: Etiketler + BLIP açıklama\ncombined: Her ikisini akıllıca birleştir',
+        'mode_tooltip': 'tags_only: Sadece WD14 Danbooru etiketleri',
         'trigger_tooltip': 'Bu kelime her açıklamanın başına eklenir. LoRA eğitimi için kullanılır (örn: "sks person", "ohwx style")',
         'max_tags_tooltip': 'Açıklamaya dahil edilecek maksimum etiket sayısı. Fazla etiket = daha detaylı ama uzun açıklama',
         'confidence_tooltip': 'Etiketler için minimum güven eşiği (0.1-0.9). Yüksek = daha az ama daha doğru etiket',
         'negative_tooltip': 'Açıklamalardan hariç tutulacak etiketler. Virgülle ayırın. Örnek: watermark, signature, text',
-        'blip_tooltip': 'BLIP görsellerin doğal dil açıklamalarını üretir. Stil ve sahne açıklaması için iyi',
-        'blip_model_tooltip': 'base: Daha hızlı, daha az detay\\nlarge: Daha yavaş, daha detaylı açıklamalar',
         'wd14_tooltip': 'WD14/Danbooru anime tarzı etiketler üretir. Karakter özellikleri, pozlar, kıyafetler için harika',
         'wd14_model_tooltip': 'swinv2-v3: En iyi doğruluk, önerilen\nconvnext-v3: Hızlı ve doğru, iyi denge\nvit-v3: Standart ViT mimarisi\nmoat-v2: Yüksek hassasiyet, eski versiyon\nswinv2-v2: Eski model, kararlı',
         'keep_char_tooltip': '"hatsune_miku", "naruto" gibi karakter isim etiketlerini koru. Karakter LoRA\'ları için faydalı',
@@ -404,10 +597,10 @@ TRANSLATIONS = {
         'checkpoint_resume': 'Devam Et',
         'checkpoint_restart': 'Baştan Başla',
         
-        # Page Navigation (NEW v2.0)
-        'page_video_processing': '🎬 Video İşleme',
-        'page_captioning': '🏷️ Görsel Etiketleme',
-        'page_character_sort': '🎭 Karakter Sırala',
+        # Page Navigation (NEW v2.0) — emojis live in update_ui_texts()
+        'page_video_processing': 'Video İşleme',
+        'page_caption_studio': 'Altyazı Stüdyosu',
+        'page_character_sort': 'Karakter Sırala',
 
         # Character Sort Page (NEW v2.1)
         'char_sort_title': '🎭 Karakter Tanıma & Sıralama',
@@ -448,6 +641,67 @@ TRANSLATIONS = {
         'char_clustered': 'Otomatik kümelendi',
         'char_max_characters': 'Maks Karakter:',
         'char_max_characters_tooltip': 'Oluşturulacak maksimum karakter klasörü sayısı (1–6).\nEn büyük gruplar korunur; küçükler other/ klasörüne taşınır.\nVarsayılan: 1',
+        'char_max_per_char': 'Karakter başı maks:',
+        'char_max_per_char_tooltip': 'Her karakter için yalnızca en keskin N görseli tut.\n0 = sınırsız (hepsini tut). Fazla görseller trimmed/ klasörüne gider.',
+
+        # Resource Settings Drawer
+        # Topbar status indicator
+        'status_idle': 'Hazır',
+        'status_processing': 'İşleniyor…',
+        'status_paused': 'Duraklatıldı',
+        'status_done': 'Tamamlandı',
+        'status_error': 'Hata',
+
+        # Stat cards (below progress bar)
+        'stat_queued': 'Sırada',
+        'stat_extracted': 'Çıkarıldı',
+        'stat_saved': 'Kaydedildi',
+
+        # Toast messages
+        'toast_files_added': '{} dosya kuyruğa eklendi',
+        'toast_processing_started': 'İşleme başladı',
+        'toast_processing_done': 'Bitti · {} kare kaydedildi',
+        'toast_processing_error': 'Hata: {}',
+        'toast_paused': 'Duraklatıldı',
+        'toast_resumed': 'Devam ediyor',
+        'toast_stopped': 'Kullanıcı tarafından durduruldu',
+
+        'res_menu_btn': '⚙️ Kaynaklar',
+        'res_menu_tooltip': 'GPU, CPU, bellek ve performans ayarlarını düzenle',
+        'res_title': 'Kaynak Ayarları',
+        'res_subtitle': 'Donanımınız için sistem kaynakları ve performans seçeneklerini ayarlayın.',
+        'res_section_gpu': 'GPU',
+        'res_gpu_enabled': 'GPU Kullan (CUDA)',
+        'res_fp16': 'FP16 / Karma Hassasiyet',
+        'res_gpu_mem_limit': 'VRAM Limiti',
+        'res_section_batch': 'Batch / Verimlilik',
+        'res_batch_size': 'Batch Boyutu',
+        'res_prefetch_frames': 'Ön Yükleme Kare',
+        'res_section_cpu': 'CPU / Thread',
+        'res_cpu_threads': 'CPU Thread',
+        'res_decode_workers': 'Decode Worker',
+        'res_section_memory': 'Bellek',
+        'res_ram_limit': 'RAM Limiti',
+        'res_section_misc': 'Diğer Performans',
+        'res_async_save': 'Asenkron Dosya Kaydetme',
+        'res_auto_gc': 'Otomatik Çöp Toplama',
+        'res_jpeg_quality': 'JPEG Kalitesi',
+        'res_reset': 'Varsayılana Sıfırla',
+        'res_apply': 'Uygula Kaydet',
+        # Resource Settings Tooltips
+        'res_gpu_enabled_tooltip': 'AI model çıkarımı için CUDA GPU hızlandırmayı etkinleştir. CUDA destekli NVIDIA GPU gerektirir.',
+        'res_fp16_tooltip': 'Daha hızlı çıkarım ve düşük VRAM kullanımı için yarı hassasiyet kullan. Çoğu GPU için önerilir.',
+        'res_gpu_mem_limit_tooltip': 'Kullanılacak maksimum GPU VRAM yüzdesi. Bellek yetersiz hatası alırsanız düşürün.',
+        'res_batch_size_tooltip': 'Aynı anda işlenen kare sayısı. Yüksek = daha hızlı ama daha fazla bellek kullanır.',
+        'res_prefetch_frames_tooltip': 'Önceden çözümlenecek kare sayısı. Yüksek = daha akıcı işleme ama daha fazla RAM.',
+        'res_cpu_threads_tooltip': 'Paralel işleme için CPU thread sayısı. Çoğu sistem için 2–4 idealdir.',
+        'res_decode_workers_tooltip': 'Paralel video çözümleme worker sayısı. Daha fazla worker = daha hızlı kare çıkarma.',
+        'res_ram_limit_tooltip': 'MB cinsinden maksimum RAM kullanımı. Bu limite ulaşılırsa işleme duraklar.',
+        'res_async_save_tooltip': 'Dosyaları arka planda asenkron kaydet. Daha hızlı işleme ama biraz daha fazla bellek.',
+        'res_auto_gc_tooltip': 'İşleme sırasında kullanılmayan belleği otomatik serbest bırak. Küçük bir hız maliyetiyle bellek kullanımını azaltır.',
+        'res_jpeg_quality_tooltip': 'Kaydedilen kareler için JPEG sıkıştırma kalitesi (50–100). Yüksek = daha iyi kalite ama daha büyük dosya.',
+        'res_light_mode_tooltip': 'Koyu ve açık arayüz teması arasında geçiş yap. "Uygula Kaydet"e tıkladıktan sonra uygulanır.',
+        'res_font_scale_tooltip': 'Arayüzdeki tüm metinleri ölçekle (%80–%140). Yüksek DPI ekranlar veya erişilebilirlik için kullanışlı.',
 
         # Standalone Captioning Page (NEW v2.0)
         'captioning_standalone_title': '🏷️ Bağımsız Görsel Etiketleme',
@@ -468,6 +722,92 @@ TRANSLATIONS = {
         'step1_select_folder': '📁 Adım 1: Klasör Seç',
         'step2_settings': '⚙️ Adım 2: Ayarlar',
         'step3_start': '🚀 Adım 3: Başlat',
+
+        # Caption Studio
+        'caption_studio_title': '🏷️✏️ Altyazı Stüdyosu',
+        'caption_studio_subtitle': 'Altyazıları tek sayfada oluştur ve düzenle — Danbooru otomatik tamamlama ile',
+        'caption_studio_tab_generate': 'Oluştur',
+        'caption_studio_tab_edit': 'Düzenle',
+
+        # Caption Studio — Kalite Önayarları
+        'preset_label': 'Etiketleme Kalitesi:',
+        'preset_tooltip': (
+            'Kalite önayarı; hedefinize göre en uygun WD14 modelini ve güven eşiğini '
+            'otomatik seçer. Etiket sayısı her zaman sizin kontrolünüzdedir.\n\n'
+            'Yüksek Doğruluk — SwinV2-v3, güven 0.30 (en yavaş, en ayrıntılı)\n'
+            'Dengeli — ConvNeXt-v3, güven 0.35 (önerilen varsayılan)\n'
+            'Yüksek Hız — ViT-v3, güven 0.40 (en hızlı, yalnız önemli etiketler)\n'
+            'Özel — modeli ve değerleri kendin seç'
+        ),
+        'preset_high_accuracy': '🎯 Yüksek Doğruluk',
+        'preset_balanced': '⚖️ Dengeli (Önerilen)',
+        'preset_high_speed': '⚡ Yüksek Hız',
+        'preset_custom': '🛠️ Özel',
+
+        # Caption Studio — Sonek etiketleri
+        'caption_suffix_label': 'Sonek Etiketler:',
+        'caption_suffix_tooltip': (
+            'Her açıklamanın SONUNA eklenen etiketler (tetikleyici kelime gibi ama sonda).\n'
+            'Örnek: "masterpiece, best quality" — kalite tokenlarını zorlamak için idealdir.'
+        ),
+
+        # Caption Studio — Etiketleme Modu (Florence-2)
+        'caption_mode_label': 'Etiketleme Modu:',
+        'caption_mode_tooltip': (
+            'Altyazıların nasıl oluşturulacağını seçin:\n\n'
+            'Danbooru Etiketleri — WD14 etiketleyici virgülle ayrılmış etiketler üretir (anime/illüstrasyon)\n'
+            'Florence-2 NLP — Florence-2 ile doğal dil açıklaması (gerçekçi/fotoğraf)\n'
+            'Birleşik — Florence-2 açıklaması + WD14 etiketleri birlikte'
+        ),
+        'caption_mode_tags': '🏷️ Yalnız Etiket (WD14)',
+        'caption_mode_tag_first': '🏷️📝 Etiket Önce (Etiket → NLP)',
+        'caption_mode_tag_first_tooltip': 'WD14 etiketleri 1. satırda, Florence-2 açıklaması 2. satırda',
+        'caption_mode_nlp': '📝 Doğal Dil (Florence-2)',
+        'caption_mode_combined': '🏷️📝 Birleşik (NLP + Etiketler)',
+        'florence2_model_label': 'Florence-2 Modeli:',
+        'florence2_task_short': 'Kısa Açıklama',
+        'florence2_task_detailed': 'Detaylı Açıklama',
+        'florence2_task_more': 'Çok Detaylı Açıklama',
+
+        # Tag Frequency Analyzer — emoji lives in update_ui_texts()
+        'page_tag_frequency': 'Etiket Sıklığı',
+        'tag_freq_title': '🏷️ Etiket Sıklığı Analizi',
+        'tag_freq_subtitle': 'Altyazı dosyalarını tara, etiket sıklıklarını analiz et ve istenmeyen etiketleri toplu sil',
+        'tag_freq_load': '📂 Klasör Yükle',
+        'tag_freq_apply_bl': '🗑️ Kara Listeyi Uygula',
+        'tag_freq_filter': 'Etiketleri filtrele...',
+        'tag_freq_col_tag': 'Etiket',
+        'tag_freq_col_count': 'Sayı',
+        'tag_freq_col_pct': '%',
+        'tag_freq_bl_title': 'Kara Liste',
+        'tag_freq_bl_hint': 'Aşağıya etiketleri ekleyin (satır başına bir tane). "Kara Listeyi Uygula"ya tıkladığınızda tüm altyazı dosyalarından silinir.',
+        'tag_freq_add_selected': '⬅ Seçileni Ekle',
+        'tag_freq_no_data': 'Veri yüklenmedi. Altyazı dosyalarını taramak için "Klasör Yükle"ye tıklayın.',
+        'tag_freq_select_folder': 'Altyazı Klasörü Seç',
+        'tag_freq_loaded': '✅ {} dosya tarandı — {} benzersiz etiket — {} toplam kullanım',
+        'tag_freq_bl_applied': '🗑️ {} etiket kullanımı {} dosyadan silindi',
+        # Tag Frequency Tooltips
+        'tag_freq_load_tooltip': '.txt altyazı dosyalarını taramak ve etiket sıklıklarını analiz etmek için bir klasör seçin.',
+        'tag_freq_apply_bl_tooltip': 'Yüklenen klasördeki tüm altyazı dosyalarından kara listedeki etiketleri sil. Dosyaları diskte değiştirir!',
+        'tag_freq_filter_tooltip': 'Etiket tablosunu filtrelemek için yazın. Sadece eşleşen etiketler gösterilir.',
+        'tag_freq_add_selected_tooltip': 'Tablodan seçili etiketleri kara liste düzenleyicisine ekle.',
+
+        # Resource Settings - Theme / UI
+        'res_section_theme': 'Tema / Arayüz',
+        'res_light_mode': 'Açık Mod',
+        'res_font_scale': 'Yazı Tipi Ölçeği',
+        'res_accent_color': 'Vurgu Rengi',
+        'res_accent_custom': 'Özel renk...',
+        'res_section_lang': 'Dil',
+
+        # System Usage Monitor
+        'sys_monitor_title': 'Sistem Monitörü',
+        'sys_cpu': 'CPU',
+        'sys_ram': 'RAM',
+        'sys_gpu': 'GPU',
+        'sys_vram': 'VRAM',
+        'sys_gpu_not_available': 'CUDA GPU yok',
+        'sys_used_of': '{used} / {total}',
     }
 }
 

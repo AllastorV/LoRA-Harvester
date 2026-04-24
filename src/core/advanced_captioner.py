@@ -1,7 +1,7 @@
 """
 Advanced Captioning Module for LoRA-Harvester
-Supports BLIP (natural language) and WD14/Danbooru (anime tags)
-With comprehensive tag management and filtering
+WD14/Danbooru tagging with comprehensive tag management and filtering.
+For natural-language captions, see Florence2Captioner.
 """
 
 # Ensure CUDA DLLs are discoverable for onnxruntime-gpu on Windows
@@ -105,132 +105,14 @@ class TagSettings:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
-@dataclass 
+@dataclass
 class CaptionResult:
     """Result from captioning"""
-    blip_caption: str = ""
     wd14_tags: List[Tuple[str, float]] = field(default_factory=list)
     final_caption: str = ""
     tag_count: int = 0
     filtered_tags: List[str] = field(default_factory=list)
     
-
-class BLIPCaptioner:
-    """
-    BLIP-based natural language captioning
-    Generates descriptive captions like "a woman with long brown hair"
-    """
-    
-    def __init__(self, 
-                 model_type: str = "blip-base",
-                 device: str = None):
-        """
-        Args:
-            model_type: "blip-base" or "blip-large"
-            device: cuda/cpu (auto-detect if None)
-        """
-        self.model_type = model_type
-        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
-        
-        self.processor = None
-        self.model = None
-        self._loaded = False
-        self._load_lock = threading.Lock()
-
-        logger.info("BLIP Captioner initialized (lazy loading) - model=%s device=%s", model_type, self.device)
-
-    def _load_model(self):
-        """Lazy load BLIP model (thread-safe)"""
-        if self._loaded:
-            return
-        with self._load_lock:
-            if self._loaded:  # Double-checked locking
-                return
-
-            logger.info("Loading BLIP model...")
-
-            try:
-                from transformers import BlipProcessor, BlipForConditionalGeneration
-
-                model_name = (
-                    "Salesforce/blip-image-captioning-large"
-                    if self.model_type == "blip-large"
-                    else "Salesforce/blip-image-captioning-base"
-                )
-
-                self.processor = BlipProcessor.from_pretrained(
-                    model_name,
-                    cache_dir=".cache/blip"
-                )
-
-                self.model = BlipForConditionalGeneration.from_pretrained(
-                    model_name,
-                    cache_dir=".cache/blip",
-                    torch_dtype=torch.float16 if self.device == 'cuda' else torch.float32
-                )
-                self.model.to(self.device)
-                self.model.eval()
-
-                self._loaded = True
-                logger.info("BLIP model loaded successfully")
-
-            except ImportError:
-                raise ImportError("transformers library required: pip install transformers")
-            except Exception as e:
-                raise RuntimeError(f"Failed to load BLIP: {e}")
-
-    def cleanup(self):
-        """Release model from memory"""
-        if self.model is not None:
-            del self.model
-            self.model = None
-        if self.processor is not None:
-            del self.processor
-            self.processor = None
-        self._loaded = False
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    
-    def generate(self, 
-                 image: Union[np.ndarray, object],
-                 max_length: int = 75,
-                 min_length: int = 5,
-                 num_beams: int = 4) -> str:
-        """
-        Generate caption for image
-        
-        Args:
-            image: OpenCV (BGR) or PIL image
-            max_length: Maximum caption length
-            min_length: Minimum caption length
-            num_beams: Beam search width
-            
-        Returns:
-            Generated caption string
-        """
-        if not self._loaded:
-            self._load_model()
-        
-        # Convert to PIL if needed
-        if isinstance(image, np.ndarray):
-            pil_image = _PIL_Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-        else:
-            pil_image = image
-
-        with torch.no_grad():
-            inputs = self.processor(pil_image, return_tensors="pt").to(self.device)
-            output = self.model.generate(
-                **inputs,
-                max_length=max_length,
-                min_length=min_length,
-                num_beams=num_beams,
-                early_stopping=True
-            )
-
-        caption = self.processor.decode(output[0], skip_special_tokens=True)
-        del inputs, output
-        return caption.strip()
-
 
 class WD14Tagger:
     """
@@ -305,17 +187,21 @@ class WD14Tagger:
                 else:
                     repo_id = f"SmilingWolf/{self.model_name}"
 
-                # Download model files
+                # Download model files into project-local models/wd14/
+                from src.core.model_paths import WD14_DIR, ensure_dirs
+                ensure_dirs()
+                _cache_dir = str(WD14_DIR)
+
                 model_path = hf_hub_download(
                     repo_id=repo_id,
                     filename="model.onnx",
-                    cache_dir=".cache/wd14"
+                    cache_dir=_cache_dir,
                 )
 
                 tags_path = hf_hub_download(
                     repo_id=repo_id,
                     filename="selected_tags.csv",
-                    cache_dir=".cache/wd14"
+                    cache_dir=_cache_dir,
                 )
 
                 # Load ONNX model with optimization
@@ -516,50 +402,33 @@ class WD14Tagger:
 
 class AdvancedCaptioner:
     """
-    Combined BLIP + WD14 captioner with advanced tag management
+    WD14 captioner with advanced tag management.
+    For natural-language captions, use Florence2Captioner.
     """
-    
+
     def __init__(self,
-                 blip_model: str = "blip-base",
                  wd14_model: str = "wd-v1-4-vit-tagger-v2",
                  tag_settings: TagSettings = None,
-                 enable_blip: bool = True,
                  enable_wd14: bool = True):
-        """
-        Initialize advanced captioner
-        
-        Args:
-            blip_model: BLIP model variant
-            wd14_model: WD14 model variant
-            tag_settings: Tag configuration settings
-            enable_blip: Enable BLIP captioning
-            enable_wd14: Enable WD14 tagging
-        """
         self.tag_settings = tag_settings or TagSettings()
-        self.enable_blip = enable_blip
         self.enable_wd14 = enable_wd14
-        
-        # Initialize captioners (lazy loaded)
-        self.blip = BLIPCaptioner(blip_model) if enable_blip else None
+
         self.wd14 = WD14Tagger(wd14_model) if enable_wd14 else None
-        
-        # Statistics
+
         self.stats = {
             'images_processed': 0,
             'tags_generated': 0,
-            'tags_filtered': 0
+            'tags_filtered': 0,
         }
-        
+
         logger.info(
-            "Advanced Captioner initialized - BLIP=%s WD14=%s trigger='%s' max_tags=%d neg_tags=%d",
-            enable_blip, enable_wd14, self.tag_settings.trigger_word,
-            self.tag_settings.max_tags, len(self.tag_settings.negative_tags)
+            "Advanced Captioner initialized - WD14=%s trigger='%s' max_tags=%d neg_tags=%d",
+            enable_wd14, self.tag_settings.trigger_word,
+            self.tag_settings.max_tags, len(self.tag_settings.negative_tags),
         )
 
     def cleanup(self):
         """Release all models from memory"""
-        if self.blip:
-            self.blip.cleanup()
         if self.wd14:
             self.wd14.cleanup()
         if torch.cuda.is_available():
@@ -730,21 +599,13 @@ class AdvancedCaptioner:
         return processed
     
     def format_caption(self,
-                       blip_caption: str = "",
                        tags: List[str] = None,
                        mode: str = "tags_only") -> str:
         """
-        Assemble the final caption string from BLIP text and/or WD14 tags.
+        Assemble the final caption string from WD14 tags.
 
         Order of assembly:
           [caption_prefix] [trigger_word] [body] [caption_suffix]
-
-        Body depends on *mode*:
-          tags_only  → tag1, tag2, …
-          blip_only  → BLIP sentence
-          blip_first → BLIP sentence, tag1, tag2, …
-          tags_first → tag1, tag2, …, BLIP sentence
-          combined   → same as blip_first
 
         Returns:
             Formatted caption string (never None).
@@ -753,20 +614,7 @@ class AdvancedCaptioner:
         tags = tags or []
         sep = settings.tag_separator
 
-        tags_str = sep.join(tags)
-        blip_str = blip_caption.strip() if blip_caption else ""
-
-        # Build body based on mode
-        if mode == "tags_only":
-            body = tags_str
-        elif mode == "blip_only":
-            body = blip_str
-        elif mode in ("blip_first", "combined"):
-            body = sep.join(p for p in (blip_str, tags_str) if p)
-        elif mode == "tags_first":
-            body = sep.join(p for p in (tags_str, blip_str) if p)
-        else:
-            body = tags_str  # safe fallback
+        body = sep.join(tags)
 
         # Prepend trigger word (trigger is a tag → use tag separator)
         if settings.trigger_word:
@@ -776,14 +624,14 @@ class AdvancedCaptioner:
             else:
                 body = tw
 
-        # Wrap with prefix / suffix (natural language → space-separated)
+        # Wrap with prefix / suffix using tag separator so commas stay consistent
         caption = body
         if settings.caption_prefix:
             pfx = settings.caption_prefix.strip()
-            caption = f"{pfx} {caption}" if caption else pfx
+            caption = f"{pfx}{sep}{caption}" if caption else pfx
         if settings.caption_suffix:
             sfx = settings.caption_suffix.strip()
-            caption = f"{caption} {sfx}" if caption else sfx
+            caption = f"{caption}{sep}{sfx}" if caption else sfx
 
         return caption.strip()
     
@@ -791,24 +639,18 @@ class AdvancedCaptioner:
                       image: Union[np.ndarray, object],
                       mode: str = "tags_only") -> CaptionResult:
         """
-        Generate caption for a single image.
-
-        Runs WD14 and/or BLIP depending on *mode* and enabled flags,
-        processes tags, and assembles the final caption.
+        Generate caption for a single image using WD14.
 
         Args:
             image: OpenCV BGR ndarray or PIL Image.
-            mode:  Caption mode (tags_only / blip_only / blip_first / tags_first / combined).
+            mode:  Caption mode (tags_only).
 
         Returns:
             Populated CaptionResult.
         """
         result = CaptionResult()
-        need_tags = mode != "blip_only"
-        need_blip = mode != "tags_only"
 
-        # ── WD14 tags ────────────────────────────────────────────────────
-        if need_tags and self.wd14 and self.enable_wd14:
+        if self.wd14 and self.enable_wd14:
             try:
                 raw_tags = self.wd14.predict(image, self.tag_settings.min_confidence)
                 result.wd14_tags = [(t, c) for t, c, _ in raw_tags]
@@ -817,22 +659,10 @@ class AdvancedCaptioner:
                 logger.debug("WD14: %d raw → %d processed tags", len(raw_tags), result.tag_count)
             except Exception as e:
                 logger.error("WD14 tagging failed: %s", e, exc_info=True)
-        elif need_tags and not self.enable_wd14:
+        elif not self.enable_wd14:
             logger.warning("WD14 tagging is disabled — no auto-tags will be generated")
 
-        # ── BLIP caption ─────────────────────────────────────────────────
-        if need_blip and self.blip and self.enable_blip:
-            try:
-                result.blip_caption = self.blip.generate(image)
-            except Exception as e:
-                logger.warning("BLIP captioning failed: %s", e)
-
-        # ── Assemble final caption ───────────────────────────────────────
-        result.final_caption = self.format_caption(
-            result.blip_caption,
-            result.filtered_tags,
-            mode
-        )
+        result.final_caption = self.format_caption(result.filtered_tags, mode)
 
         self.stats['images_processed'] += 1
         return result
@@ -924,7 +754,7 @@ class AdvancedCaptioner:
                     batch_tags = self.wd14.predict_batch(batch_images, self.tag_settings.min_confidence)
                 else:
                     batch_tags = [[] for _ in batch_images]
-                    if mode != "blip_only" and batch_start == 0:
+                    if batch_start == 0:
                         logger.warning("WD14 disabled — captions will have no auto-tags")
 
                 # Process each image result
@@ -942,20 +772,12 @@ class AdvancedCaptioner:
                         # Process tags
                         processed_tags = self.process_tags(raw_tags)
 
-                        if not processed_tags and mode != "blip_only" and self.enable_wd14:
+                        if not processed_tags and self.enable_wd14:
                             stats['zero_tags'] += 1
                             logger.debug("0 tags for %s (raw=%d)", img_path.name, len(raw_tags))
 
-                        # Generate BLIP caption if needed
-                        blip_caption = ""
-                        if self.blip and self.enable_blip and mode != "tags_only":
-                            try:
-                                blip_caption = self.blip.generate(batch_images[img_idx])
-                            except Exception as blip_err:
-                                logger.warning("BLIP error for %s: %s", img_path.name, blip_err)
-
                         # Format caption
-                        final_caption = self.format_caption(blip_caption, processed_tags, mode)
+                        final_caption = self.format_caption(processed_tags, mode)
 
                         # Save text caption
                         caption_path = img_path.with_suffix('.txt')
@@ -968,8 +790,7 @@ class AdvancedCaptioner:
                             json_data = {
                                 'tags': processed_tags,
                                 'tag_count': len(processed_tags),
-                                'blip_caption': blip_caption,
-                                'final_caption': final_caption
+                                'final_caption': final_caption,
                             }
                             with open(json_path, 'w', encoding='utf-8') as f:
                                 json.dump(json_data, f, indent=2, ensure_ascii=False)

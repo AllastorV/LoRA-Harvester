@@ -1,16 +1,14 @@
 """
-Advanced Settings Panel for LoRA-Harvester v2.0
+Advanced Settings Panel for LoRA-Harvester v3.0
 Contains Quality Analysis, Captioning, and Tag Settings UI components
 """
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
     QCheckBox, QSpinBox, QDoubleSpinBox, QLineEdit, QComboBox,
-    QTextEdit, QPushButton, QSlider, QTabWidget, QScrollArea,
-    QFrame, QGridLayout
+    QTextEdit,
 )
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont
 from typing import Dict
 from src.ui.translations import get_text
 from src.ui import theme
@@ -133,7 +131,7 @@ class QualitySettingsPanel(QGroupBox):
 
 
 class CaptioningSettingsPanel(QGroupBox):
-    """Captioning Settings Panel - BLIP + WD14"""
+    """Captioning Settings Panel - WD14 Tagger"""
     
     settings_changed = pyqtSignal()
     
@@ -163,42 +161,51 @@ class CaptioningSettingsPanel(QGroupBox):
         self.settings_widget.setVisible(False)
         settings_layout = QVBoxLayout(self.settings_widget)
 
-        # Caption mode
+        # Caption mode (tags / florence2 / combined)
         mode_layout = QHBoxLayout()
-        self.mode_label = QLabel(get_text('caption_mode', self.lang))
+        self.mode_label = QLabel(get_text('caption_mode_label', self.lang))
         self.mode_label.setStyleSheet(theme.label_default())
         self.mode_info = QLabel("ℹ️")
         self.mode_info.setStyleSheet(theme.info_icon_frame_compact())
         self.mode_info.setToolTip(get_text('caption_mode_tooltip', self.lang))
         self.mode_info.setCursor(Qt.WhatsThisCursor)
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems([
-            'tags_only', 'blip_only', 'blip_first', 'tags_first', 'combined'
-        ])
+        self.mode_combo.addItem(get_text('caption_mode_tags', self.lang), 'tags_only')
+        self.mode_combo.addItem(get_text('caption_mode_nlp', self.lang), 'florence2')
+        self.mode_combo.addItem(get_text('caption_mode_combined', self.lang), 'combined')
         self.mode_combo.setStyleSheet(self._combo_style())
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         mode_layout.addWidget(self.mode_label)
         mode_layout.addWidget(self.mode_info)
         mode_layout.addWidget(self.mode_combo)
         mode_layout.addStretch()
         settings_layout.addLayout(mode_layout)
 
-        # BLIP settings
-        blip_layout = QHBoxLayout()
-        self.blip_cb = QCheckBox(get_text('blip_enabled', self.lang))
-        self.blip_cb.setChecked(True)
-        self.blip_cb.setStyleSheet(theme.label_default())
-        self.blip_cb.setToolTip(get_text('blip_tooltip', self.lang))
-        self.blip_combo = QComboBox()
-        self.blip_combo.addItems(['blip-base', 'blip-large'])
-        self.blip_combo.setStyleSheet(self._combo_style())
-        self.blip_combo.setToolTip(get_text('blip_model_tooltip', self.lang))
-        blip_layout.addWidget(self.blip_cb)
-        blip_layout.addWidget(self.blip_combo)
-        blip_layout.addStretch()
-        settings_layout.addLayout(blip_layout)
+        # Quality preset (auto-selects WD14 model + confidence)
+        preset_layout = QHBoxLayout()
+        self.preset_label = QLabel(get_text('preset_label', self.lang))
+        self.preset_label.setStyleSheet(theme.label_default())
+        self.preset_info = QLabel("ℹ️")
+        self.preset_info.setStyleSheet(theme.info_icon_frame_compact())
+        self.preset_info.setToolTip(get_text('preset_tooltip', self.lang))
+        self.preset_info.setCursor(Qt.WhatsThisCursor)
+        self.preset_combo = QComboBox()
+        self.preset_combo.addItem(get_text('preset_high_accuracy', self.lang), 'high_accuracy')
+        self.preset_combo.addItem(get_text('preset_balanced', self.lang), 'balanced')
+        self.preset_combo.addItem(get_text('preset_high_speed', self.lang), 'high_speed')
+        self.preset_combo.addItem(get_text('preset_custom', self.lang), 'custom')
+        self.preset_combo.setStyleSheet(self._combo_style())
+        self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
+        preset_layout.addWidget(self.preset_label)
+        preset_layout.addWidget(self.preset_info)
+        preset_layout.addWidget(self.preset_combo)
+        preset_layout.addStretch()
+        settings_layout.addLayout(preset_layout)
 
-        # WD14 settings
-        wd14_layout = QHBoxLayout()
+        # WD14 settings (visible when mode uses WD14)
+        self.wd14_row = QWidget()
+        wd14_layout = QHBoxLayout(self.wd14_row)
+        wd14_layout.setContentsMargins(0, 0, 0, 0)
         self.wd14_cb = QCheckBox(get_text('wd14_enabled', self.lang))
         self.wd14_cb.setChecked(True)
         self.wd14_cb.setStyleSheet(theme.label_default())
@@ -216,10 +223,36 @@ class CaptioningSettingsPanel(QGroupBox):
         wd14_layout.addWidget(self.wd14_cb)
         wd14_layout.addWidget(self.wd14_combo)
         wd14_layout.addStretch()
-        settings_layout.addLayout(wd14_layout)
-        
+        settings_layout.addWidget(self.wd14_row)
+
+        # Florence-2 settings (visible when mode uses Florence-2)
+        self.f2_row = QWidget()
+        f2_layout = QHBoxLayout(self.f2_row)
+        f2_layout.setContentsMargins(0, 0, 0, 0)
+        self.f2_label = QLabel(get_text('florence2_model_label', self.lang))
+        self.f2_label.setStyleSheet(theme.label_default())
+        self.f2_combo = QComboBox()
+        self.f2_combo.addItem('Florence-2 Base (Fast)', 'florence-2-base')
+        self.f2_combo.addItem('Florence-2 Large (Accurate)', 'florence-2-large')
+        self.f2_combo.setStyleSheet(self._combo_style())
+        self.f2_task_combo = QComboBox()
+        self.f2_task_combo.addItem(get_text('florence2_task_detailed', self.lang), '<DETAILED_CAPTION>')
+        self.f2_task_combo.addItem(get_text('florence2_task_more', self.lang), '<MORE_DETAILED_CAPTION>')
+        self.f2_task_combo.addItem(get_text('florence2_task_short', self.lang), '<CAPTION>')
+        self.f2_task_combo.setStyleSheet(self._combo_style())
+        f2_layout.addWidget(self.f2_label)
+        f2_layout.addWidget(self.f2_combo)
+        f2_layout.addSpacing(10)
+        f2_layout.addWidget(self.f2_task_combo)
+        f2_layout.addStretch()
+        self.f2_row.setVisible(False)
+        settings_layout.addWidget(self.f2_row)
+
         layout.addWidget(self.settings_widget)
         self.setLayout(layout)
+        # Apply default preset (Balanced) so model gets synced
+        self.preset_combo.setCurrentIndex(1)
+        self._on_preset_changed(1)
     
     def _combo_style(self) -> str:
         return theme.combo_compact()
@@ -227,31 +260,85 @@ class CaptioningSettingsPanel(QGroupBox):
     def _on_enable_toggled(self, checked: bool):
         self.settings_widget.setVisible(checked)
         self.settings_changed.emit()
-    
+
+    # Preset → (wd14_model, min_confidence). Tag count is never touched.
+    _PRESETS = {
+        'high_accuracy': ('SmilingWolf/wd-swinv2-tagger-v3', 0.30),
+        'balanced':      ('SmilingWolf/wd-convnext-tagger-v3', 0.35),
+        'high_speed':    ('SmilingWolf/wd-vit-tagger-v3', 0.40),
+    }
+
+    def _on_mode_changed(self, index: int):
+        mode = self.mode_combo.itemData(index)
+        self.wd14_row.setVisible(mode in ('tags_only', 'combined'))
+        self.f2_row.setVisible(mode in ('florence2', 'combined'))
+        self.preset_label.setVisible(mode in ('tags_only', 'combined'))
+        self.preset_info.setVisible(mode in ('tags_only', 'combined'))
+        self.preset_combo.setVisible(mode in ('tags_only', 'combined'))
+        self.settings_changed.emit()
+
+    def _on_preset_changed(self, index: int):
+        key = self.preset_combo.itemData(index)
+        if key == 'custom' or key is None:
+            return
+        preset = self._PRESETS.get(key)
+        if not preset:
+            return
+        model, _conf = preset
+        idx = self.wd14_combo.findText(model)
+        if idx >= 0:
+            self.wd14_combo.setCurrentIndex(idx)
+        self.settings_changed.emit()
+
     def get_settings(self) -> Dict:
         return {
             'enabled': self.enable_cb.isChecked(),
-            'mode': self.mode_combo.currentText(),
-            'blip_enabled': self.blip_cb.isChecked(),
-            'blip_model': self.blip_combo.currentText(),
+            'mode': self.mode_combo.currentData() or 'tags_only',
             'wd14_enabled': self.wd14_cb.isChecked(),
-            'wd14_model': self.wd14_combo.currentText()
+            'wd14_model': self.wd14_combo.currentText(),
+            'florence2_model': self.f2_combo.currentData() or 'florence-2-base',
+            'florence2_task': self.f2_task_combo.currentData() or '<DETAILED_CAPTION>',
+            'min_confidence': self._PRESETS.get(
+                self.preset_combo.currentData() or 'balanced',
+                (None, 0.35))[1],
         }
-    
+
     def update_language(self, lang: str):
         """Update UI language"""
         self.lang = lang
         self.setTitle(get_text('caption_title', lang))
         self.enable_cb.setText(get_text('caption_enabled', lang))
         self.enable_cb.setToolTip(get_text('caption_enabled_tooltip', lang))
-        self.mode_label.setText(get_text('caption_mode', lang))
+        self.mode_label.setText(get_text('caption_mode_label', lang))
         self.mode_info.setToolTip(get_text('caption_mode_tooltip', lang))
-        self.blip_cb.setText(get_text('blip_enabled', lang))
-        self.blip_cb.setToolTip(get_text('blip_tooltip', lang))
-        self.blip_combo.setToolTip(get_text('blip_model_tooltip', lang))
+        mode_idx = self.mode_combo.currentIndex()
+        self.mode_combo.blockSignals(True)
+        self.mode_combo.setItemText(0, get_text('caption_mode_tags', lang))
+        self.mode_combo.setItemText(1, get_text('caption_mode_nlp', lang))
+        self.mode_combo.setItemText(2, get_text('caption_mode_combined', lang))
+        self.mode_combo.setCurrentIndex(mode_idx)
+        self.mode_combo.blockSignals(False)
+        self.preset_label.setText(get_text('preset_label', lang))
+        self.preset_info.setToolTip(get_text('preset_tooltip', lang))
+        preset_idx = self.preset_combo.currentIndex()
+        self.preset_combo.blockSignals(True)
+        self.preset_combo.setItemText(0, get_text('preset_high_accuracy', lang))
+        self.preset_combo.setItemText(1, get_text('preset_balanced', lang))
+        self.preset_combo.setItemText(2, get_text('preset_high_speed', lang))
+        self.preset_combo.setItemText(3, get_text('preset_custom', lang))
+        self.preset_combo.setCurrentIndex(preset_idx)
+        self.preset_combo.blockSignals(False)
         self.wd14_cb.setText(get_text('wd14_enabled', lang))
         self.wd14_cb.setToolTip(get_text('wd14_tooltip', lang))
         self.wd14_combo.setToolTip(get_text('wd14_model_tooltip', lang))
+        self.f2_label.setText(get_text('florence2_model_label', lang))
+        f2_task_idx = self.f2_task_combo.currentIndex()
+        self.f2_task_combo.blockSignals(True)
+        self.f2_task_combo.setItemText(0, get_text('florence2_task_detailed', lang))
+        self.f2_task_combo.setItemText(1, get_text('florence2_task_more', lang))
+        self.f2_task_combo.setItemText(2, get_text('florence2_task_short', lang))
+        self.f2_task_combo.setCurrentIndex(f2_task_idx)
+        self.f2_task_combo.blockSignals(False)
 
 
 class TagSettingsPanel(QGroupBox):
@@ -550,67 +637,3 @@ class TagSettingsPanel(QGroupBox):
         self.json_cb.setToolTip(get_text('json_tooltip', lang))
         self.prefix_label.setText(get_text('caption_prefix', lang))
         self.suffix_label.setText(get_text('caption_suffix', lang))
-
-
-class AdvancedSettingsDialog(QWidget):
-    """
-    Advanced Settings Dialog containing all v2.0 features
-    Can be embedded in main window or shown as separate dialog
-    """
-    
-    def __init__(self, lang: str = 'en', parent=None):
-        super().__init__(parent)
-        self.lang = lang
-        self.init_ui()
-    
-    def init_ui(self):
-        """Initialize UI"""
-        layout = QVBoxLayout()
-        layout.setSpacing(10)
-        
-        # Create tab widget for organized settings
-        self.tabs = QTabWidget()
-        self.tabs.setStyleSheet(theme.tab_widget())
-        
-        # Quality tab
-        quality_tab = QWidget()
-        quality_layout = QVBoxLayout(quality_tab)
-        self.quality_panel = QualitySettingsPanel(self.lang)
-        quality_layout.addWidget(self.quality_panel)
-        quality_layout.addStretch()
-        self.tabs.addTab(quality_tab, "🔍 Quality")
-        
-        # Captioning tab
-        caption_tab = QWidget()
-        caption_layout = QVBoxLayout(caption_tab)
-        self.caption_panel = CaptioningSettingsPanel(self.lang)
-        caption_layout.addWidget(self.caption_panel)
-        caption_layout.addStretch()
-        self.tabs.addTab(caption_tab, "📝 Captioning")
-        
-        # Tags tab
-        tags_tab = QWidget()
-        tags_scroll = QScrollArea()
-        tags_scroll.setWidgetResizable(True)
-        tags_scroll.setStyleSheet("QScrollArea { border: none; }")
-        self.tags_panel = TagSettingsPanel(self.lang)
-        tags_scroll.setWidget(self.tags_panel)
-        tags_layout = QVBoxLayout(tags_tab)
-        tags_layout.addWidget(tags_scroll)
-        self.tabs.addTab(tags_tab, "🏷️ Tags")
-        
-        layout.addWidget(self.tabs)
-        self.setLayout(layout)
-    
-    def get_all_settings(self) -> Dict:
-        """Get all settings from all panels"""
-        return {
-            'quality': self.quality_panel.get_settings(),
-            'captioning': self.caption_panel.get_settings(),
-            'tags': self.tags_panel.get_settings()
-        }
-    
-    def update_language(self, lang: str):
-        """Update UI language"""
-        self.lang = lang
-        # Would need to rebuild panels for full translation support

@@ -29,6 +29,12 @@ python scripts\check_gpu.py
 
 echo.
 echo ============================================================
+echo [*] Downloading default models...
+echo ============================================================
+python "%~dp0scripts\download_models.py"
+
+echo.
+echo ============================================================
 echo [OK] Installation complete!
 echo ============================================================
 echo.

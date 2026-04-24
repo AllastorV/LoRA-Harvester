@@ -1,31 +1,42 @@
 """
-Modern UI Module for LoRA-Harvester v2.0
+Modern UI Module for LoRA-Harvester v4.0
 AI-Powered Dataset Collection Tool with PyQt5 interface
-Now with Quality Analysis, BLIP + WD14 Captioning, and Advanced Tag Settings
-Featuring Page-based navigation: Video Processing + Standalone Captioning
+Sidebar-based navigation with live system monitor.
 """
 
 import sys
 import os
 import subprocess
+import threading
 from pathlib import Path
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QLabel, QSlider, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QPushButton, QLabel, QSlider,
                              QComboBox, QCheckBox, QProgressBar, QFileDialog,
-                             QTextEdit, QGroupBox, QSpinBox, QToolButton,
-                             QScrollArea, QStackedWidget, QFrame, QDesktopWidget)
+                             QTextEdit, QGroupBox, QSpinBox,
+                             QScrollArea, QStackedWidget, QFrame, QDesktopWidget,
+                             QSizePolicy, QLineEdit)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent, QFontMetrics
-from typing import Optional, List, Dict
+from PyQt5.QtGui import QFont, QIcon, QDragEnterEvent, QDropEvent
+from typing import List
 from src.ui.translations import get_text
 from src.ui import theme
+from src.ui.animations import (
+    animate_page_switch, fade_in, smooth_expand,
+    HoverLift, PulseEffect, NavIndicator, progress_smooth,
+    StatusDot, count_up, shake_widget, RippleButton, scale_pop,
+    ToastNotification, LoadingSpinner, SkeletonShimmer,
+    stagger_fade_in, glitch_effect, badge_bounce,
+    ProgressGlow, ShimmerLabel, SidebarPulse,
+)
 from src.ui.advanced_settings import (
-    QualitySettingsPanel, 
-    CaptioningSettingsPanel, 
+    QualitySettingsPanel,
+    CaptioningSettingsPanel,
     TagSettingsPanel
 )
-from src.ui.captioning_page import StandaloneCaptioningPage
+from src.ui.caption_studio_page import CaptionStudioPage
 from src.ui.character_sort_page import CharacterSortPage
+from src.ui.tag_frequency_page import TagFrequencyPage
+from src.ui.resource_settings import ResourceSettingsDrawer
 
 
 class ProcessingThread(QThread):
@@ -35,6 +46,9 @@ class ProcessingThread(QThread):
     log_message = pyqtSignal(str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
+    # Emitted right after a cropped frame is written to disk. Carries
+    # the absolute path as a string so the UI can load the thumbnail.
+    frame_saved = pyqtSignal(str)
 
     def __init__(self, config: dict):
         super().__init__()
@@ -42,6 +56,14 @@ class ProcessingThread(QThread):
         self._is_running = True
         self._finished_emitted = False
         self.processor = None
+        # One-shot "skip current video" signal. Set by ``skip()`` from the
+        # UI thread, read by the processor's inner loops, and cleared by
+        # the processor itself at the start of each new video.
+        self._skip_event = threading.Event()
+        # Pause/Resume. Inverted semantics for convenience: set() means
+        # "running", clear() means "paused". Starts set (= running).
+        self._pause_event = threading.Event()
+        self._pause_event.set()
 
     def run(self):
         """Initialize models and run video processing"""
@@ -98,15 +120,21 @@ class ProcessingThread(QThread):
 
             # Captioner
             captioner = None
-            caption_mode = cfg['caption_settings'].get('mode', 'tags_only')
-            if cfg['caption_settings']['enabled']:
+            florence2 = None
+            cs = cfg['caption_settings']
+            caption_mode = cs.get('mode', 'tags_only')
+            use_wd14 = caption_mode in ('tags_only', 'combined')
+            use_florence2 = caption_mode in ('florence2', 'combined')
+            if cs['enabled']:
                 try:
                     from src.core.advanced_captioner import AdvancedCaptioner, TagSettings
                     ts = cfg['tag_settings']
+                    # Prefer preset confidence from captioning panel, fall back to tag panel
+                    min_conf = cs.get('min_confidence') or ts['min_confidence']
                     tag_cfg = TagSettings(
                         trigger_word=ts['trigger_word'] or "",
                         max_tags=ts['max_tags'],
-                        min_confidence=ts['min_confidence'],
+                        min_confidence=min_conf,
                         negative_tags=ts['negative_tags'],
                         priority_tags=ts['priority_tags'],
                         keep_character_tags=ts['keep_character_tags'],
@@ -117,17 +145,24 @@ class ProcessingThread(QThread):
                         caption_prefix=ts['caption_prefix'] or "",
                         caption_suffix=ts['caption_suffix'] or "",
                     )
-                    cs = cfg['caption_settings']
                     captioner = AdvancedCaptioner(
-                        enable_blip=cs['blip_enabled'],
-                        enable_wd14=cs['wd14_enabled'],
-                        blip_model=cs['blip_model'],
+                        enable_wd14=cs['wd14_enabled'] and use_wd14,
                         wd14_model=cs['wd14_model'],
                         tag_settings=tag_cfg,
                     )
                 except Exception as e:
                     self.log_message.emit(f"Captioner init error: {e}")
                     captioner = None
+
+                if use_florence2:
+                    try:
+                        from src.core.florence2_captioner import Florence2Captioner
+                        florence2 = Florence2Captioner(
+                            model_type=cs.get('florence2_model', 'florence-2-base'))
+                        self.log_message.emit("✅ Florence-2 initialized")
+                    except Exception as e:
+                        self.log_message.emit(f"❌ Florence-2 init error: {e}")
+                        florence2 = None
 
                 # Pre-load models (errors disable the failed model)
                 if captioner:
@@ -150,32 +185,29 @@ class ProcessingThread(QThread):
                     if not self._is_running:
                         return
 
-                    if captioner.blip and captioner.enable_blip:
-                        try:
-                            self.log_message.emit("Loading BLIP model...")
-                            captioner.blip._load_model()
-                            self.log_message.emit("BLIP model loaded")
-                        except Exception as e:
-                            self.log_message.emit(f"BLIP FAILED: {e} - captioning disabled")
-                            captioner.enable_blip = False
-
                     # Log final captioning status
                     wd14_ok = captioner.wd14 and captioner.enable_wd14
-                    blip_ok = captioner.blip and captioner.enable_blip
+                    f2_ok = florence2 is not None
                     self.log_message.emit(
-                        f"📝 Captioning: mode={caption_mode} WD14={'ON' if wd14_ok else 'OFF'} BLIP={'ON' if blip_ok else 'OFF'}"
+                        f"📝 Captioning: mode={caption_mode} "
+                        f"WD14={'ON' if wd14_ok else 'OFF'} "
+                        f"Florence2={'ON' if f2_ok else 'OFF'}"
                     )
-                    # If no model is active, warn user
-                    if not wd14_ok and not blip_ok:
-                        self.log_message.emit("⚠️ Both captioning models disabled - no tags will be generated!")
+                    if caption_mode == 'tags_only' and not wd14_ok:
+                        self.log_message.emit("⚠️ WD14 disabled - no tags will be generated!")
                         captioner = None
+                    elif caption_mode == 'florence2' and not f2_ok:
+                        self.log_message.emit("⚠️ Florence-2 disabled - falling back to tags only")
+                        caption_mode = 'tags_only'
             else:
                 self.log_message.emit("📝 Auto-captioning: disabled (enable in Captioning settings)")
 
             if not self._is_running:
                 return
 
-            # Create processor
+            # Create processor — pull batch_size and jpeg_quality from
+            # the resource settings drawer instead of hard-coding them.
+            res = cfg.get('resource_settings', {})
             self.processor = UnifiedVideoProcessor(
                 video_paths=cfg['video_paths'],
                 output_dir="output",
@@ -183,11 +215,14 @@ class ProcessingThread(QThread):
                 text_detector=text_detector,
                 cropper=cropper,
                 use_turbo=cfg['use_turbo'],
-                batch_size=4,
+                batch_size=res.get('batch_size', 4),
                 quality_analyzer=quality_analyzer,
                 captioner=captioner,
                 caption_mode=caption_mode,
+                florence2=florence2,
+                florence2_task=cs.get('florence2_task', '<DETAILED_CAPTION>'),
                 log_callback=lambda msg: self.log_message.emit(msg),
+                jpeg_quality=res.get('jpeg_quality', 95),
             )
 
             self.log_message.emit("All models loaded, processing started...")
@@ -198,6 +233,11 @@ class ProcessingThread(QThread):
                 skip_text=cfg['skip_text'],
                 progress_callback=self.progress_callback,
                 stop_callback=self.should_stop,
+                skip_event=self._skip_event,
+                pause_event=self._pause_event,
+                start_skip_seconds=cfg.get('start_skip_seconds', 0.0),
+                end_skip_seconds=cfg.get('end_skip_seconds', 0.0),
+                frame_saved_callback=self._on_frame_saved,
             )
 
             if not self._is_running:
@@ -232,6 +272,9 @@ class ProcessingThread(QThread):
                 if hasattr(self.processor, 'captioner') and self.processor.captioner:
                     if hasattr(self.processor.captioner, 'cleanup'):
                         self.processor.captioner.cleanup()
+                if hasattr(self.processor, 'florence2') and self.processor.florence2:
+                    if hasattr(self.processor.florence2, 'cleanup'):
+                        self.processor.florence2.cleanup()
                 self.processor = None
             import torch
             if torch.cuda.is_available():
@@ -247,9 +290,35 @@ class ProcessingThread(QThread):
         """Check if processing should stop"""
         return not self._is_running
 
+    def _on_frame_saved(self, path: str):
+        """Called from the processor thread. Emit a signal so the UI can
+        load the thumbnail on the main thread."""
+        if self._is_running:
+            self.frame_saved.emit(path)
+
     def stop(self):
         """Stop processing gracefully"""
         self._is_running = False
+        # Wake up any loop that's blocked on pause or skip.
+        self._pause_event.set()
+        self._skip_event.set()
+
+    def toggle_pause(self) -> bool:
+        """Toggle pause/resume. Returns True if now paused."""
+        if self._pause_event.is_set():
+            self._pause_event.clear()
+            return True
+        else:
+            self._pause_event.set()
+            return False
+
+    def skip_current_video(self):
+        """
+        Abandon the currently processing video and continue with the next
+        one in the batch. Idempotent — setting the event twice has no
+        effect. The processor clears it before each new video starts.
+        """
+        self._skip_event.set()
 
     def safe_wait(self, timeout_ms=5000):
         """Wait for thread to finish with timeout, return True if finished"""
@@ -270,37 +339,62 @@ class DropZone(QLabel):
         self.setMinimumHeight(120)
         self.setStyleSheet(theme.drop_zone_default())
         self.setText("🎬 Drag & Drop Video File(s) Here\n(Supports multiple videos)\nor click 'Browse' button")
-    
+        self._pulse = None
+
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter"""
         if event.mimeData().hasUrls():
             event.accept()
             self.setStyleSheet(theme.drop_zone_active())
+            if self._pulse is None:
+                self._pulse = PulseEffect(self, min_opacity=0.70, duration=700)
+                self._pulse.start()
         else:
             event.ignore()
-    
+
     def dragLeaveEvent(self, event):
         """Handle drag leave"""
         self.setStyleSheet(theme.drop_zone_default())
+        if self._pulse:
+            self._pulse.stop()
+            self._pulse = None
     
+    _VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v'}
+
     def dropEvent(self, event: QDropEvent):
-        """Handle drop - supports multiple files"""
+        """Handle drop - supports video files, folders, and .txt list files"""
         self.setStyleSheet(theme.drop_zone_default())
-        
+        if self._pulse:
+            self._pulse.stop()
+            self._pulse = None
+
         files = [u.toLocalFile() for u in event.mimeData().urls()]
-        valid_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v']
-        
-        # Filter valid video files
-        video_files = [f for f in files if any(f.lower().endswith(ext) for ext in valid_extensions)]
-        
-        if video_files:
-            self.files_dropped.emit(video_files)
-            if len(video_files) == 1:
-                self.setText(f"✅ {Path(video_files[0]).name}")
-            else:
-                self.setText(f"✅ {len(video_files)} videos selected")
+
+        # Accept: video files, directories (recursive walk), and .txt list files.
+        # The actual resolution (folder scanning, .txt parsing) happens in
+        # on_files_dropped — here we just gate-keep obviously wrong drops.
+        accepted = [
+            f for f in files
+            if (Path(f).is_dir()
+                or Path(f).suffix.lower() in self._VIDEO_EXTENSIONS
+                or Path(f).suffix.lower() == '.txt')
+        ]
+
+        if accepted:
+            self.files_dropped.emit(accepted)
+            dirs  = [f for f in accepted if Path(f).is_dir()]
+            txts  = [f for f in accepted if Path(f).suffix.lower() == '.txt']
+            vids  = [f for f in accepted if Path(f).suffix.lower() in self._VIDEO_EXTENSIONS]
+            parts = []
+            if vids:
+                parts.append(f"{len(vids)} video(s)")
+            if dirs:
+                parts.append(f"{len(dirs)} folder(s)")
+            if txts:
+                parts.append(f"{len(txts)} list(s)")
+            self.setText(f"✅ {', '.join(parts)} dropped")
         else:
-            self.setText("❌ Invalid file type. Please drop video file(s).")
+            self.setText("❌ Invalid file type. Drop video file(s), folders, or .txt list.")
 
 
 class VideoSmartCropperUI(QMainWindow):
@@ -381,91 +475,181 @@ class VideoSmartCropperUI(QMainWindow):
             pass
     
     def init_ui(self):
-        """Initialize UI components"""
+        """Initialize UI components — sidebar + topbar + main content."""
         self.setWindowTitle(get_text('app_title', self.current_lang))
-        # Set window icon from assets (taskbar + title bar)
         _icon_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', 'assets'))
         for _icon_name in ('icon.ico', 'icon.png'):
             _icon_path = os.path.join(_icon_dir, _icon_name)
             if os.path.exists(_icon_path):
                 self.setWindowIcon(QIcon(_icon_path))
                 break
-        # Dark title bar on Windows
         if sys.platform == 'win32':
             self._enable_dark_title_bar(int(self.winId()))
-        
-        # Screen-relative sizing
+
         screen = QDesktopWidget().availableGeometry()
-        win_w = min(1000, int(screen.width() * 0.65))
-        win_h = min(850, int(screen.height() * 0.85))
+        win_w = min(1200, int(screen.width() * 0.75))
+        win_h = min(900, int(screen.height() * 0.88))
         self.resize(win_w, win_h)
-        # Centre on screen
         self.move((screen.width() - win_w) // 2,
                   (screen.height() - win_h) // 2)
-        
-        # Central widget
+
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
-        # Main layout
-        main_layout = QVBoxLayout()
-        central_widget.setLayout(main_layout)
-        
-        # ========== TOP BAR: Language + Page Navigation ==========
-        top_bar = QHBoxLayout()
-        
-        # Page navigation buttons
-        self.page_video_btn = QPushButton(get_text('page_video_processing', self.current_lang))
-        self.page_video_btn.setStyleSheet(self._page_btn_style(True))
-        self.page_video_btn.clicked.connect(lambda: self.switch_page(0))
+        root_layout = QHBoxLayout()
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        central_widget.setLayout(root_layout)
 
-        self.page_caption_btn = QPushButton(get_text('page_captioning', self.current_lang))
-        self.page_caption_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_caption_btn.clicked.connect(lambda: self.switch_page(1))
+        # ═══════════ LEFT SIDEBAR (240px) ═══════════
+        self._sidebar = QFrame()
+        self._sidebar.setFixedWidth(240)
+        self._sidebar.setStyleSheet(theme.sidebar_frame())
+        sidebar_lay = QVBoxLayout(self._sidebar)
+        sidebar_lay.setContentsMargins(12, 14, 12, 12)
+        sidebar_lay.setSpacing(4)
 
-        self.page_char_sort_btn = QPushButton(get_text('page_character_sort', self.current_lang))
-        self.page_char_sort_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_char_sort_btn.clicked.connect(lambda: self.switch_page(2))
+        # Brand — animated shimmer highlight travelling across the text
+        self._brand_label = ShimmerLabel(
+            "LoRA-Harvester",
+            base_color=theme.TEXT_PRIMARY,
+            highlight_color=theme.ORANGE_LIGHT,
+        )
+        self._brand_label.setStyleSheet(theme.sidebar_brand())
+        sidebar_lay.addWidget(self._brand_label)
+        # shimmer starts only when processing — driven by _set_status()
+        self._brand_sub = QLabel("v4.0 · Dataset Studio")
+        self._brand_sub.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent; margin-bottom: 14px;"
+        )
+        sidebar_lay.addWidget(self._brand_sub)
 
-        top_bar.addWidget(self.page_video_btn)
-        top_bar.addWidget(self.page_caption_btn)
-        top_bar.addWidget(self.page_char_sort_btn)
-        top_bar.addStretch()
-        
-        # Language selector
-        lang_label = QLabel("🌐")
-        lang_label.setFont(QFont('Arial', 14))
-        self.lang_combo = QComboBox()
-        self.lang_combo.addItems(['🇬🇧 English', '🇹🇷 Türkçe'])
-        self.lang_combo.setCurrentIndex(0)  # English default
-        self.lang_combo.setStyleSheet(theme.combo())
-        self.lang_combo.currentIndexChanged.connect(self.change_language)
-        top_bar.addWidget(lang_label)
-        top_bar.addWidget(self.lang_combo)
-        main_layout.addLayout(top_bar)
-        
-        # ========== STACKED WIDGET FOR PAGES ==========
+        # Section: WORKSPACE
+        ws_label = QLabel("WORKSPACE")
+        ws_label.setStyleSheet(theme.sidebar_section_label())
+        sidebar_lay.addWidget(ws_label)
+        sidebar_lay.addSpacing(4)
+        self._sidebar_section_labels = [ws_label]
+
+        self.page_video_btn = QPushButton("  🎬  Video Harvester")
+        self.page_caption_studio_btn = QPushButton("  🏷  Etiketleme")
+        self.page_char_sort_btn = QPushButton("  👥  Karakterler")
+
+        self._nav_buttons = [
+            self.page_video_btn,
+            self.page_caption_studio_btn,
+            self.page_char_sort_btn,
+        ]
+        for i, btn in enumerate(self._nav_buttons):
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(self._page_btn_style(i == 0))
+            btn.clicked.connect(lambda checked, idx=i: self.switch_page(idx))
+            sidebar_lay.addWidget(btn)
+
+        # Nav badge — count of queued files on the Video Harvester button
+        self._video_badge = QLabel("0", self.page_video_btn)
+        self._video_badge.setFixedSize(20, 20)
+        self._video_badge.setAlignment(Qt.AlignCenter)
+        self._video_badge.setStyleSheet(
+            f"background-color: {theme.ORANGE}; color: white; "
+            f"border-radius: 10px; font-size: {theme.fs(10)}; font-weight: 700;"
+        )
+        self._video_badge.hide()
+
+        sidebar_lay.addSpacing(10)
+
+        # Section: KÜTÜPHANE
+        lib_label = QLabel("KÜTÜPHANE")
+        lib_label.setStyleSheet(theme.sidebar_section_label())
+        sidebar_lay.addWidget(lib_label)
+        sidebar_lay.addSpacing(4)
+        self._sidebar_section_labels.append(lib_label)
+
+        self.page_tag_freq_btn = QPushButton("  📊  Etiket Sözlüğü")
+        self.page_tag_freq_btn.setCursor(Qt.PointingHandCursor)
+        self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(False))
+        self.page_tag_freq_btn.clicked.connect(lambda: self.switch_page(3))
+        sidebar_lay.addWidget(self.page_tag_freq_btn)
+        self._nav_buttons.append(self.page_tag_freq_btn)
+
+        # Sliding underline indicator for the active nav button
+        self._nav_indicator = NavIndicator(self._sidebar, color=theme.get_accent(), height=3)
+        QTimer.singleShot(0, lambda: self._nav_indicator.move_under(self._nav_buttons[0]))
+
+        sidebar_lay.addStretch()
+
+        root_layout.addWidget(self._sidebar)
+
+        # ═══════════ RIGHT AREA (topbar + content) ═══════════
+        right_area = QVBoxLayout()
+        right_area.setContentsMargins(0, 0, 0, 0)
+        right_area.setSpacing(0)
+
+        # ── TOPBAR (60px) ──
+        self._topbar = QFrame()
+        self._topbar.setFixedHeight(60)
+        self._topbar.setStyleSheet(theme.topbar_frame())
+        topbar_lay = QHBoxLayout(self._topbar)
+        topbar_lay.setContentsMargins(16, 0, 16, 0)
+        topbar_lay.setSpacing(12)
+
+        # System monitor (live CPU/RAM/GPU/VRAM pills)
+        from src.ui.resource_settings import SystemMonitorBar
+        self._topbar_monitor = SystemMonitorBar(self.current_lang, self._topbar)
+        topbar_lay.addWidget(self._topbar_monitor)
+
+        topbar_lay.addStretch()
+
+        # ── Status indicator (dot + label) ──
+        self._status_dot = StatusDot(self._topbar, size=10)
+        topbar_lay.addWidget(self._status_dot)
+        self._status_label = QLabel(get_text('status_idle', self.current_lang))
+        self._status_label.setStyleSheet(
+            f"background: transparent; color: {theme.TEXT_SECONDARY}; "
+            f"border: none; padding: 0 8px 0 4px; font-size: {theme.fs(11)}; "
+            f"font-weight: 600;"
+        )
+        topbar_lay.addWidget(self._status_label)
+
+        # GPU status badge
+        self._gpu_badge = QLabel()
+        self._gpu_badge.setStyleSheet(
+            f"background: transparent; color: {theme.TEXT_SECONDARY}; "
+            f"border: none; padding: 0 4px; font-size: {theme.fs(11)}; "
+            f"font-family: {theme.FONT_MONO}; font-weight: 600;"
+        )
+        self._update_gpu_badge()
+        topbar_lay.addWidget(self._gpu_badge)
+
+        # Settings button (opens resource drawer)
+        self.res_settings_btn = QPushButton("⚙")
+        self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
+        self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
+        self.res_settings_btn.setCursor(Qt.PointingHandCursor)
+        self.res_settings_btn.clicked.connect(self._toggle_resource_drawer)
+        topbar_lay.addWidget(self.res_settings_btn)
+
+        right_area.addWidget(self._topbar)
+        self._topbar_monitor.start()
+
+        # ── PAGE STACK ──
         self.page_stack = QStackedWidget()
-        
-        # Page 1: Video Processing (wrapped in scroll area)
+
         self.video_page = QWidget()
         self.setup_video_page()
-        
         video_scroll = QScrollArea()
         video_scroll.setWidgetResizable(True)
         video_scroll.setWidget(self.video_page)
         video_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(video_scroll)
-        
-        # Page 2: Standalone Captioning (wrapped in scroll area)
-        self.captioning_page = StandaloneCaptioningPage(self.current_lang)
-        caption_scroll = QScrollArea()
-        caption_scroll.setWidgetResizable(True)
-        caption_scroll.setWidget(self.captioning_page)
-        caption_scroll.setFrameShape(QFrame.NoFrame)
-        self.page_stack.addWidget(caption_scroll)
 
-        # Page 3: Character Sort
+        self.caption_studio_page = CaptionStudioPage(self.current_lang)
+        studio_scroll = QScrollArea()
+        studio_scroll.setWidgetResizable(True)
+        studio_scroll.setWidget(self.caption_studio_page)
+        studio_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_stack.addWidget(studio_scroll)
+
         self.char_sort_page = CharacterSortPage(self.current_lang)
         char_scroll = QScrollArea()
         char_scroll.setWidgetResizable(True)
@@ -473,71 +657,290 @@ class VideoSmartCropperUI(QMainWindow):
         char_scroll.setFrameShape(QFrame.NoFrame)
         self.page_stack.addWidget(char_scroll)
 
-        main_layout.addWidget(self.page_stack)
-        
-        # Apply unified dark theme (black/gray/orange)
+        self.tag_freq_page = TagFrequencyPage(self.current_lang)
+        tf_scroll = QScrollArea()
+        tf_scroll.setWidgetResizable(True)
+        tf_scroll.setWidget(self.tag_freq_page)
+        tf_scroll.setFrameShape(QFrame.NoFrame)
+        self.page_stack.addWidget(tf_scroll)
+
+        right_area.addWidget(self.page_stack, stretch=1)
+        right_container = QWidget()
+        right_container.setLayout(right_area)
+        root_layout.addWidget(right_container, stretch=1)
+
+        # ═══════════ RESOURCE SETTINGS DRAWER ═══════════
+        self._resource_drawer = ResourceSettingsDrawer(
+            lang=self.current_lang, parent=central_widget,
+        )
+        self._resource_drawer.settings_changed.connect(self._on_resource_settings_changed)
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems(['English', 'Türkçe'])
+        self.lang_combo.setCurrentIndex(0)
+        self.lang_combo.setStyleSheet(theme.combo())
+        self.lang_combo.currentIndexChanged.connect(self.change_language)
+        self._resource_drawer.embed_lang_combo(self.lang_combo)
+        self._resource_cfg = self._resource_drawer.get_settings()
+
         self.setStyleSheet(theme.global_stylesheet())
+
+        # Apply language-aware texts now that all widgets exist. Without
+        # this, init_ui leaves hard-coded Turkish strings visible until
+        # the user manually changes the language.
+        self.update_ui_texts()
     
-    def _page_btn_style(self, active: bool) -> str:
-        """Style for page navigation buttons"""
-        if active:
-            return theme.page_btn_active()
+    def _update_gpu_badge(self):
+        try:
+            import torch
+            if torch.cuda.is_available():
+                name = torch.cuda.get_device_properties(0).name
+                short = name.replace("NVIDIA ", "").replace("GeForce ", "")
+                self._gpu_badge.setText(f"● {short}")
+                self._gpu_badge.setStyleSheet(
+                    f"background: transparent; color: {theme.GREEN}; "
+                    f"border: none; padding: 0 4px; font-size: {theme.fs(11)}; "
+                    f"font-family: {theme.FONT_MONO}; font-weight: 600;"
+                )
+                return
+        except Exception:
+            pass
+        self._gpu_badge.setText("● CPU")
+        self._gpu_badge.setStyleSheet(
+            f"background: transparent; color: {theme.TEXT_MUTED}; "
+            f"border: none; padding: 0 4px; font-size: {theme.fs(11)}; "
+            f"font-family: {theme.FONT_MONO}; font-weight: 600;"
+        )
+
+    def _update_video_badge(self, count: int):
+        """Update the queue-count badge on the Video Harvester nav button."""
+        if not hasattr(self, '_video_badge'):
+            return
+        if count <= 0:
+            self._video_badge.hide()
+            return
+        self._video_badge.setText(str(count))
+        btn = self.page_video_btn
+        self._video_badge.move(btn.width() - 26, 6)
+        was_hidden = not self._video_badge.isVisible()
+        self._video_badge.show()
+        self._video_badge.raise_()
+        if not was_hidden:
+            badge_bounce(self._video_badge)
+
+    def _set_status(self, state: str):
+        """Sync status dot + label + sidebar pulse based on processing state."""
+        if hasattr(self, '_status_dot'):
+            self._status_dot.set_state(state)
+        key_map = {
+            'idle':       'status_idle',
+            'processing': 'status_processing',
+            'paused':     'status_paused',
+            'done':       'status_done',
+            'error':      'status_error',
+        }
+        if hasattr(self, '_status_label'):
+            self._status_label.setText(
+                get_text(key_map.get(state, 'status_idle'), self.current_lang)
+            )
+        if not hasattr(self, '_sidebar_pulse'):
+            self._sidebar_pulse = SidebarPulse(
+                self.page_video_btn, color=theme.get_accent(),
+            )
+        if state == 'processing':
+            self._sidebar_pulse.start()
         else:
-            return theme.page_btn_inactive()
-    
+            self._sidebar_pulse.stop()
+
+        # Title shimmer — animated only while actively processing
+        if hasattr(self, '_brand_label'):
+            if state == 'processing':
+                self._brand_label.start_shimmer()
+            else:
+                self._brand_label.stop_shimmer()
+
+    def _reset_stat(self, key: str):
+        """Reset a stat card's value label to '0' without animation."""
+        if not hasattr(self, '_stat_cards'):
+            return
+        card = self._stat_cards.get(key)
+        if card and 'value' in card:
+            card['value'].setText("0")
+
+    def _bump_stat(self, key: str, new_value: int):
+        """Animate a stat card's value up to new_value."""
+        if not hasattr(self, '_stat_cards'):
+            return
+        card = self._stat_cards.get(key)
+        if not card or 'value' not in card:
+            return
+        try:
+            cur = int(card['value'].text())
+        except (ValueError, TypeError):
+            cur = 0
+        if new_value == cur:
+            return
+        count_up(card['value'], cur, new_value)
+
+    def _page_btn_style(self, active: bool) -> str:
+        return theme.page_btn_active() if active else theme.page_btn_inactive()
+
     def _collapsible_btn_style(self, color: str = None) -> str:
-        """Style for collapsible panel buttons (unified orange)"""
         return theme.collapsible_btn()
-    
+
+    def _toggle_resource_drawer(self):
+        self._resource_drawer.toggle()
+
+    def _on_resource_settings_changed(self, data: dict):
+        """Slot: user clicked Apply in the resource drawer."""
+        self._resource_cfg = data
+        # Apply theme changes if mode, font scale, or accent color changed
+        new_mode = data.get("theme_mode", "dark")
+        new_scale = data.get("font_scale", 100) / 100.0
+        new_accent = data.get("accent", theme.get_accent())
+        mode_changed = new_mode != theme.get_mode()
+        scale_changed = abs(new_scale - theme.get_font_scale()) > 0.01
+        accent_changed = (new_accent or "").lower() != theme.get_accent().lower()
+        if mode_changed or scale_changed or accent_changed:
+            theme.set_theme(new_mode, new_scale, accent=new_accent)
+            self._refresh_all_styles()
+        self.log(get_text('res_apply', self.current_lang))
+
+    def _refresh_all_styles(self):
+        """Re-apply all stylesheets after a theme change."""
+        self.setStyleSheet(theme.global_stylesheet())
+
+        # Sidebar
+        self._sidebar.setStyleSheet(theme.sidebar_frame())
+        self._brand_label.setStyleSheet(theme.sidebar_brand())
+        self._brand_label.set_colors(theme.TEXT_PRIMARY, theme.ORANGE_LIGHT)
+        self._brand_sub.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent; margin-bottom: 14px;"
+        )
+        for lbl in self._sidebar_section_labels:
+            lbl.setStyleSheet(theme.sidebar_section_label())
+        current_idx = self.page_stack.currentIndex()
+        for i, btn in enumerate(self._nav_buttons):
+            btn.setStyleSheet(self._page_btn_style(i == current_idx))
+        if hasattr(self, '_nav_indicator'):
+            self._nav_indicator.set_color(theme.get_accent())
+
+        # Topbar
+        self._topbar.setStyleSheet(theme.topbar_frame())
+        self._update_gpu_badge()
+        if hasattr(self, '_topbar_monitor'):
+            self._topbar_monitor.refresh_styles()
+        self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
+        self._resource_drawer.refresh_styles()
+
+        # Video page widgets
+        self.title_label.setStyleSheet(theme.label_title())
+        self.subtitle_label.setStyleSheet(theme.label_muted())
+        self.drop_zone.setStyleSheet(theme.drop_zone_default())
+        self.browse_btn.setStyleSheet(theme.btn_browse())
+        self.settings_group.setStyleSheet(theme.group_box())
+        self.interval_slider.setStyleSheet(theme.slider())
+        self.interval_value_label.setStyleSheet(theme.label_value())
+        self.ratio_combo.setStyleSheet(theme.combo())
+        self.conf_spinbox.setStyleSheet(theme.spinbox())
+        self.padding_spinbox.setStyleSheet(theme.spinbox())
+        self.trim_start_spin.setStyleSheet(theme.spinbox())
+        self.trim_end_spin.setStyleSheet(theme.spinbox())
+        self.process_btn.setStyleSheet(theme.btn_action_start())
+        self.pause_btn.setStyleSheet(theme.btn_action_pause())
+        self.skip_btn.setStyleSheet(theme.btn_action_skip())
+        self.stop_btn.setStyleSheet(theme.btn_action_stop())
+        self.open_output_btn.setStyleSheet(theme.btn_secondary())
+        self.progress_bar.setStyleSheet(theme.progress_bar())
+        self.log_text.setStyleSheet(theme.log_area())
+        self.lang_combo.setStyleSheet(theme.combo())
+
+        # Collapsible buttons & panels
+        for btn in (self.quality_btn, self.caption_btn, self.tags_btn):
+            btn.setStyleSheet(self._collapsible_btn_style())
+        self.ensemble_group.setStyleSheet(theme.panel_group())
+        self.quality_panel.setStyleSheet(theme.panel_group())
+        self.caption_panel.setStyleSheet(theme.panel_group())
+        if hasattr(self, 'tags_panel'):
+            self.tags_panel.setStyleSheet(theme.panel_group())
+
+        # Sub-pages
+        for attr in (
+            'caption_studio_page', 'char_sort_page',
+            'tag_freq_page',
+        ):
+            page = getattr(self, attr, None)
+            if page is not None and hasattr(page, 'refresh_styles'):
+                try:
+                    page.refresh_styles()
+                except Exception as e:
+                    self.log(f"[theme] refresh_styles failed for {attr}: {e}")
+
+    def resizeEvent(self, event):
+        """Keep the resource drawer right-aligned when the window resizes."""
+        super().resizeEvent(event)
+        if hasattr(self, '_resource_drawer') and self._resource_drawer._is_open:
+            cw = self.centralWidget()
+            if cw:
+                self._resource_drawer.setGeometry(
+                    cw.width() - self._resource_drawer.DRAWER_WIDTH, 0,
+                    self._resource_drawer.DRAWER_WIDTH, cw.height(),
+                )
+        # Reposition video nav badge in top-right of the button
+        if hasattr(self, '_video_badge') and hasattr(self, 'page_video_btn'):
+            btn = self.page_video_btn
+            self._video_badge.move(btn.width() - 26, 6)
+
     def _toggle_panel(self, panel_name: str):
-        """Toggle visibility of collapsible panels"""
         panels = {
             'quality': (self.quality_btn, self.quality_panel),
             'caption': (self.caption_btn, self.caption_panel),
             'tags': (self.tags_btn, self.tags_panel)
         }
-        
         btn, panel = panels[panel_name]
         is_checked = btn.isChecked()
-        panel.setVisible(is_checked)
+        smooth_expand(panel, expand=is_checked, duration=220)
     
     def switch_page(self, index: int):
-        """Switch between pages"""
-        self.page_stack.setCurrentIndex(index)
-        self.page_video_btn.setStyleSheet(self._page_btn_style(index == 0))
-        self.page_caption_btn.setStyleSheet(self._page_btn_style(index == 1))
-        self.page_char_sort_btn.setStyleSheet(self._page_btn_style(index == 2))
+        old_idx = self.page_stack.currentIndex()
+        for i, btn in enumerate(self._nav_buttons):
+            btn.setStyleSheet(self._page_btn_style(i == index))
+        animate_page_switch(self.page_stack, old_idx, index, duration=220)
+        if hasattr(self, '_nav_indicator'):
+            self._nav_indicator.move_under(self._nav_buttons[index])
     
     def setup_video_page(self):
         """Setup video processing page"""
         layout = QVBoxLayout()
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
         self.video_page.setLayout(layout)
-        
-        # Title
+
+        # Title — left-aligned, SaaS style
         self.title_label = QLabel(get_text('title', self.current_lang))
-        self.title_label.setFont(QFont('Arial', 24, QFont.Bold))
-        self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet(theme.label_title())
         layout.addWidget(self.title_label)
-        
+
         # Subtitle
         self.subtitle_label = QLabel(get_text('subtitle', self.current_lang))
-        self.subtitle_label.setFont(QFont('Arial', 11))
-        self.subtitle_label.setAlignment(Qt.AlignCenter)
         self.subtitle_label.setStyleSheet(theme.label_muted())
         layout.addWidget(self.subtitle_label)
-        
-        # Drop zone
+
+        # Drop zone + browse on same row
+        drop_row = QHBoxLayout()
+        drop_row.setSpacing(10)
         self.drop_zone = DropZone()
-        self.drop_zone.files_dropped.connect(self.on_files_dropped)  # Updated signal
+        self.drop_zone.files_dropped.connect(self.on_files_dropped)
         self.update_drop_zone_text()
-        layout.addWidget(self.drop_zone)
-        
-        # Browse button
+        drop_row.addWidget(self.drop_zone, stretch=1)
+
         self.browse_btn = QPushButton(get_text('browse_btn', self.current_lang))
         self.browse_btn.setStyleSheet(theme.btn_browse())
+        self.browse_btn.setCursor(Qt.PointingHandCursor)
         self.browse_btn.clicked.connect(self.browse_video)
-        layout.addWidget(self.browse_btn)
+        self.browse_btn.setFixedWidth(180)
+        drop_row.addWidget(self.browse_btn, alignment=Qt.AlignTop)
+        layout.addLayout(drop_row)
         
         # Settings Group
         self.settings_group = QGroupBox(get_text('settings_title', self.current_lang))
@@ -570,7 +973,48 @@ class VideoSmartCropperUI(QMainWindow):
         interval_layout.addWidget(self.interval_slider)
         interval_layout.addWidget(self.interval_value_label)
         settings_layout.addLayout(interval_layout)
-        
+
+        # ── Batch-wide video trim (right below frame interval) ──
+        trim_layout = QHBoxLayout()
+        self.trim_label = QLabel(get_text('trim_label', self.current_lang))
+        self.trim_label.setStyleSheet(theme.label_default())
+        self.trim_help = QLabel("ℹ️")
+        self.trim_help.setStyleSheet(theme.info_icon())
+        self.trim_help.setToolTip(get_text('trim_tooltip', self.current_lang))
+        self.trim_help.setCursor(Qt.WhatsThisCursor)
+        self.trim_start_spin = QSpinBox()
+        self.trim_start_spin.setMinimum(0)
+        self.trim_start_spin.setMaximum(600)
+        self.trim_start_spin.setValue(0)
+        self.trim_start_spin.setSuffix(" s")
+        self.trim_start_spin.setMinimumWidth(90)
+        self.trim_start_spin.setKeyboardTracking(True)
+        self.trim_start_spin.setFocusPolicy(Qt.StrongFocus)
+        self.trim_start_spin.lineEdit().setReadOnly(False)
+        self.trim_start_spin.setStyleSheet(theme.spinbox())
+        self.trim_start_lbl = QLabel(get_text('trim_start', self.current_lang))
+        self.trim_start_lbl.setStyleSheet(theme.label_default())
+        self.trim_end_spin = QSpinBox()
+        self.trim_end_spin.setMinimum(0)
+        self.trim_end_spin.setMaximum(600)
+        self.trim_end_spin.setValue(0)
+        self.trim_end_spin.setSuffix(" s")
+        self.trim_end_spin.setMinimumWidth(90)
+        self.trim_end_spin.setKeyboardTracking(True)
+        self.trim_end_spin.setFocusPolicy(Qt.StrongFocus)
+        self.trim_end_spin.lineEdit().setReadOnly(False)
+        self.trim_end_spin.setStyleSheet(theme.spinbox())
+        self.trim_end_lbl = QLabel(get_text('trim_end', self.current_lang))
+        self.trim_end_lbl.setStyleSheet(theme.label_default())
+        trim_layout.addWidget(self.trim_label)
+        trim_layout.addWidget(self.trim_help)
+        trim_layout.addWidget(self.trim_start_lbl)
+        trim_layout.addWidget(self.trim_start_spin)
+        trim_layout.addWidget(self.trim_end_lbl)
+        trim_layout.addWidget(self.trim_end_spin)
+        trim_layout.addStretch()
+        settings_layout.addLayout(trim_layout)
+
         # Aspect ratio selector
         ratio_layout = QHBoxLayout()
         self.ratio_label = QLabel(get_text('output_format', self.current_lang))
@@ -612,7 +1056,7 @@ class VideoSmartCropperUI(QMainWindow):
         ensemble_layout_cb = QHBoxLayout()
         self.ensemble_cb = QCheckBox(get_text('ensemble_mode', self.current_lang))
         self.ensemble_cb.setChecked(False)
-        self.ensemble_cb.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {theme.ORANGE_LIGHT};")
+        self.ensemble_cb.setStyleSheet(f"font-size: {theme.fs(12)}; font-weight: bold; color: {theme.ORANGE_LIGHT};")
         self.ensemble_help = QLabel("ℹ️")
         self.ensemble_help.setStyleSheet(theme.info_icon())
         self.ensemble_help.setToolTip(get_text('ensemble_mode_tooltip', self.current_lang))
@@ -634,17 +1078,10 @@ class VideoSmartCropperUI(QMainWindow):
         self.models_label.setStyleSheet(theme.label_default())
         self.yolo_cb = QCheckBox("YOLOv8")
         self.yolo_cb.setChecked(True)
+        self.yolo_cb.setEnabled(False)  # Only model available
         self.yolo_cb.setStyleSheet(theme.label_default())
-        self.detr_cb = QCheckBox("DETR (Transformer)")
-        self.detr_cb.setChecked(True)
-        self.detr_cb.setStyleSheet(theme.label_default())
-        self.fasterrcnn_cb = QCheckBox("Faster R-CNN")
-        self.fasterrcnn_cb.setChecked(True)
-        self.fasterrcnn_cb.setStyleSheet(theme.label_default())
         models_layout.addWidget(self.models_label)
         models_layout.addWidget(self.yolo_cb)
-        models_layout.addWidget(self.detr_cb)
-        models_layout.addWidget(self.fasterrcnn_cb)
         models_layout.addStretch()
         ensemble_layout.addLayout(models_layout)
         
@@ -658,8 +1095,8 @@ class VideoSmartCropperUI(QMainWindow):
         self.voting_help.setCursor(Qt.WhatsThisCursor)
         self.voting_spinbox = QSpinBox()
         self.voting_spinbox.setMinimum(1)
-        self.voting_spinbox.setMaximum(3)
-        self.voting_spinbox.setValue(2)
+        self.voting_spinbox.setMaximum(1)
+        self.voting_spinbox.setValue(1)
         self.voting_spinbox.setStyleSheet(theme.spinbox())
         voting_layout.addWidget(self.voting_label)
         voting_layout.addWidget(self.voting_help)
@@ -671,13 +1108,15 @@ class VideoSmartCropperUI(QMainWindow):
         settings_layout.addWidget(self.ensemble_group)
         
         # Connect ensemble checkbox to show/hide settings
-        self.ensemble_cb.toggled.connect(self.ensemble_group.setVisible)
+        self.ensemble_cb.toggled.connect(
+            lambda checked: smooth_expand(self.ensemble_group, expand=checked, duration=200)
+        )
         
         # Skip subtitle checkbox
         skip_layout_cb = QHBoxLayout()
         self.skip_subtitle_cb = QCheckBox(get_text('skip_subtitle', self.current_lang))
         self.skip_subtitle_cb.setChecked(True)
-        self.skip_subtitle_cb.setStyleSheet(f"font-size: 12px; color: {theme.TEXT_PRIMARY};")
+        self.skip_subtitle_cb.setStyleSheet(f"font-size: {theme.fs(12)}; color: {theme.TEXT_PRIMARY};")
         self.skip_help = QLabel("ℹ️")
         self.skip_help.setStyleSheet(theme.info_icon())
         self.skip_help.setToolTip(get_text('skip_subtitle_tooltip', self.current_lang))
@@ -691,7 +1130,7 @@ class VideoSmartCropperUI(QMainWindow):
         turbo_layout_cb = QHBoxLayout()
         self.turbo_cb = QCheckBox(get_text('turbo_mode', self.current_lang))
         self.turbo_cb.setChecked(True)
-        self.turbo_cb.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {theme.ORANGE_LIGHT};")
+        self.turbo_cb.setStyleSheet(f"font-size: {theme.fs(12)}; font-weight: bold; color: {theme.ORANGE_LIGHT};")
         self.turbo_help = QLabel("ℹ️")
         self.turbo_help.setStyleSheet(theme.info_icon())
         self.turbo_help.setToolTip(get_text('turbo_mode_tooltip', self.current_lang))
@@ -760,48 +1199,162 @@ class VideoSmartCropperUI(QMainWindow):
         padding_layout.addWidget(self.padding_spinbox)
         padding_layout.addStretch()
         settings_layout.addLayout(padding_layout)
-        
+
         layout.addWidget(self.settings_group)
         
         # Process and Stop buttons
         buttons_layout = QHBoxLayout()
         
+        # ── Start button (large, prominent, orange) ──
         self.process_btn = QPushButton(get_text('start_btn', self.current_lang))
         self.process_btn.setEnabled(False)
-        self.process_btn.setStyleSheet(theme.btn_primary())
+        self.process_btn.setStyleSheet(theme.btn_action_start())
         self.process_btn.clicked.connect(self.start_processing)
-        
+
+        # ── Pause/Resume button (medium, neutral outline) ──
+        self.pause_btn = QPushButton(get_text('pause_btn', self.current_lang))
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setStyleSheet(theme.btn_action_pause())
+        self.pause_btn.setToolTip(get_text('pause_btn_tooltip', self.current_lang))
+        self.pause_btn.clicked.connect(self.toggle_pause)
+
+        # ── Skip button (small, subtle dashed border) ──
+        self.skip_btn = QPushButton(get_text('skip_btn', self.current_lang))
+        self.skip_btn.setEnabled(False)
+        self.skip_btn.setStyleSheet(theme.btn_action_skip())
+        self.skip_btn.setToolTip(get_text('skip_btn_tooltip', self.current_lang))
+        self.skip_btn.clicked.connect(self.skip_current_video)
+
+        # ── Stop button (red pill shape, stands apart) ──
         self.stop_btn = QPushButton(get_text('stop_btn', self.current_lang))
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet(theme.btn_danger())
+        self.stop_btn.setStyleSheet(theme.btn_action_stop())
         self.stop_btn.clicked.connect(self.stop_processing)
-        
-        # Open output folder button
+
+        # ── Open output folder ──
         self.open_output_btn = QPushButton(get_text('open_output_btn', self.current_lang))
         self.open_output_btn.setStyleSheet(theme.btn_secondary())
         self.open_output_btn.clicked.connect(self.open_output_folder)
-        
+
+        # Hover lift + ripple on all control + browse buttons
+        for _btn in (self.process_btn, self.pause_btn, self.skip_btn,
+                     self.stop_btn, self.open_output_btn, self.browse_btn):
+            HoverLift(_btn, lift_px=2)
+            RippleButton(_btn)
+
+        # Layout: [  Start  ] [Pause] [Skip] ─── stretch ─── (Stop)
         buttons_layout.addWidget(self.process_btn)
+        buttons_layout.addWidget(self.pause_btn)
+        buttons_layout.addWidget(self.skip_btn)
+        buttons_layout.addStretch()
         buttons_layout.addWidget(self.stop_btn)
-        buttons_layout.addWidget(self.open_output_btn)
         layout.addLayout(buttons_layout)
-        
+
+        # Open output button on its own row
+        output_row = QHBoxLayout()
+        output_row.addStretch()
+        output_row.addWidget(self.open_output_btn)
+        output_row.addStretch()
+        layout.addLayout(output_row)
+
+        # ── Stats row (Queued / Extracted / Saved pill cards) ──
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(10)
+        self._stat_cards = {}
+        for key, icon, label_key in (
+            ('queued',    '📋', 'stat_queued'),
+            ('extracted', '⚡', 'stat_extracted'),
+            ('saved',     '💾', 'stat_saved'),
+        ):
+            card = QFrame()
+            card.setStyleSheet(
+                f"QFrame {{ background-color: {theme.BG_PANEL}; "
+                f"border: 1px solid {theme.BORDER}; "
+                f"border-radius: {theme.R_SM}; padding: 8px 12px; }}"
+            )
+            card_lay = QHBoxLayout(card)
+            card_lay.setContentsMargins(8, 4, 8, 4)
+            card_lay.setSpacing(10)
+            icon_lbl = QLabel(icon)
+            icon_lbl.setStyleSheet(
+                f"background: transparent; border: none; font-size: {theme.fs(16)};"
+            )
+            text_col = QVBoxLayout()
+            text_col.setContentsMargins(0, 0, 0, 0)
+            text_col.setSpacing(0)
+            val_lbl = QLabel("0")
+            val_lbl.setStyleSheet(
+                f"background: transparent; border: none; "
+                f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(16)}; "
+                f"font-weight: 700;"
+            )
+            desc_lbl = QLabel(get_text(label_key, self.current_lang))
+            desc_lbl.setStyleSheet(
+                f"background: transparent; border: none; "
+                f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)};"
+            )
+            text_col.addWidget(val_lbl)
+            text_col.addWidget(desc_lbl)
+            card_lay.addWidget(icon_lbl)
+            card_lay.addLayout(text_col)
+            card_lay.addStretch()
+            stats_row.addWidget(card, stretch=1)
+            self._stat_cards[key] = {
+                'frame': card, 'value': val_lbl, 'desc': desc_lbl,
+                'label_key': label_key,
+            }
+        layout.addLayout(stats_row)
+
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet(theme.progress_bar())
         layout.addWidget(self.progress_bar)
-        
-        # Status/Log area
+        self._progress_glow = ProgressGlow(
+            self.progress_bar, color=theme.get_accent()
+        )
+
+        # ── Live preview thumbnail grid ──
+        self.preview_label = QLabel(get_text('preview_title', self.current_lang))
+        self.preview_label.setStyleSheet(theme.label_section())
+        layout.addWidget(self.preview_label)
+
+        from PyQt5.QtWidgets import QGridLayout
+        self._preview_frame = QFrame()
+        self._preview_frame.setStyleSheet(
+            f"background-color: {theme.BG_PANEL}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: {theme.R_SM};"
+        )
+        self._preview_grid = QGridLayout(self._preview_frame)
+        self._preview_grid.setSpacing(6)
+        self._preview_grid.setContentsMargins(8, 8, 8, 8)
+        self._PREVIEW_COLS = 6
+        self._PREVIEW_ROWS = 2
+        self._preview_labels: list = []
+        for r in range(self._PREVIEW_ROWS):
+            for c in range(self._PREVIEW_COLS):
+                lbl = QLabel()
+                lbl.setFixedSize(96, 96)
+                lbl.setAlignment(Qt.AlignCenter)
+                lbl.setStyleSheet(
+                    f"background-color: {theme.BG_SURFACE}; "
+                    f"border: 1px solid {theme.BORDER}; border-radius: 4px;"
+                )
+                self._preview_grid.addWidget(lbl, r, c)
+                self._preview_labels.append(lbl)
+        self._preview_frame.setMaximumHeight(self._PREVIEW_ROWS * 104 + 20)
+        layout.addWidget(self._preview_frame)
+
+        # Log area
         self.log_label = QLabel(get_text('log_title', self.current_lang))
-        self.log_label.setStyleSheet(f"font-weight: bold; margin-top: 10px; color: {theme.TEXT_PRIMARY};")
+        self.log_label.setStyleSheet(theme.label_section())
         layout.addWidget(self.log_label)
-        
+
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(150)
+        self.log_text.setMaximumHeight(160)
         self.log_text.setStyleSheet(theme.log_area())
         layout.addWidget(self.log_text)
-        
+
         self.log(get_text('log_started', self.current_lang))
     
     def log(self, message: str):
@@ -843,21 +1396,81 @@ class VideoSmartCropperUI(QMainWindow):
         except Exception as e:
             self.log(f"❌ Failed to open output folder: {str(e)}")
     
+    _VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v'}
+
     def on_files_dropped(self, file_paths: List[str]):
-        """Handle file selection - supports multiple files"""
-        self.video_paths = file_paths
+        """Handle file / folder / .txt list selection.
+
+        Folder drop → recursively walk and collect all video files.
+        .txt drop   → read line-by-line as video paths.
+        Otherwise   → treat each item as a direct video path.
+        """
+        resolved: List[str] = []
+        for p in file_paths:
+            pp = Path(p)
+            if pp.is_dir():
+                # Recursive video walk
+                found = sorted(
+                    str(f) for f in pp.rglob('*')
+                    if f.is_file() and f.suffix.lower() in self._VIDEO_EXTENSIONS
+                )
+                resolved.extend(found)
+                if found:
+                    self.log(f"📂 Folder scanned: {pp.name} ({len(found)} videos)")
+                else:
+                    self.log(f"⚠️ No videos found in {pp.name}")
+            elif pp.suffix.lower() == '.txt' and pp.is_file():
+                try:
+                    lines = pp.read_text(encoding='utf-8').splitlines()
+                    for line in lines:
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                        lp = Path(line)
+                        if lp.is_file() and lp.suffix.lower() in self._VIDEO_EXTENSIONS:
+                            resolved.append(str(lp))
+                    self.log(f"📋 Loaded {len(resolved)} paths from {pp.name}")
+                except Exception as e:
+                    self.log(f"❌ Failed to read list file {pp.name}: {e}")
+            else:
+                resolved.append(str(pp))
+
+        if not resolved:
+            self.log("⚠️ No valid video files found")
+            return
+
+        prev_count = len(getattr(self, 'video_paths', []) or [])
+        self.video_paths = resolved
         self.process_btn.setEnabled(True)
-        
-        if len(file_paths) == 1:
-            self.log(get_text('log_loaded', self.current_lang).format(Path(file_paths[0]).name))
+
+        if len(resolved) == 1:
+            self.log(get_text('log_loaded', self.current_lang).format(Path(resolved[0]).name))
             self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(1))
         else:
-            names = ', '.join([Path(f).name for f in file_paths[:3]])
-            if len(file_paths) > 3:
-                names += f' ... (+{len(file_paths)-3} more)'
+            names = ', '.join([Path(f).name for f in resolved[:3]])
+            if len(resolved) > 3:
+                names += f' ... (+{len(resolved)-3} more)'
             self.log(get_text('log_loaded', self.current_lang).format(names))
-            self.log(get_text('log_batch_mode', self.current_lang).format(len(file_paths)))
-            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(len(file_paths)))
+            self.log(get_text('log_batch_mode', self.current_lang).format(len(resolved)))
+            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(len(resolved)))
+
+        # Pop the drop zone on successful file drop
+        scale_pop(self.drop_zone, factor=1.03, duration=260)
+
+        # Animate the queued count + nav badge
+        try:
+            cur = int(self._stat_cards['queued']['value'].text())
+        except (ValueError, KeyError):
+            cur = prev_count
+        count_up(self._stat_cards['queued']['value'], cur, len(resolved))
+        self._update_video_badge(len(resolved))
+
+        # Toast notification
+        ToastNotification(
+            get_text('toast_files_added', self.current_lang).format(len(resolved)),
+            icon='📥', duration_ms=2400, accent=theme.get_accent(),
+            parent=self.centralWidget(),
+        )
     
     def _cleanup_processing_thread(self):
         """Disconnect signals and schedule deletion of the current processing thread"""
@@ -867,6 +1480,7 @@ class VideoSmartCropperUI(QMainWindow):
                 self.processing_thread.log_message.disconnect(self.log)
                 self.processing_thread.finished.disconnect(self.on_finished)
                 self.processing_thread.error.disconnect(self.on_error)
+                self.processing_thread.frame_saved.disconnect(self._on_preview_frame)
             except (TypeError, RuntimeError):
                 pass  # Already disconnected
             # Only deleteLater if thread is not running to avoid crash
@@ -881,24 +1495,112 @@ class VideoSmartCropperUI(QMainWindow):
                     pass
             self.processing_thread = None
 
+    def toggle_pause(self):
+        """Toggle pause/resume on the processing thread."""
+        if self.processing_thread and self.processing_thread.isRunning():
+            now_paused = self.processing_thread.toggle_pause()
+            if now_paused:
+                self.pause_btn.setText(get_text('resume_btn', self.current_lang))
+                self.log(get_text('log_paused', self.current_lang))
+                self._set_status('paused')
+                if hasattr(self, '_progress_glow'):
+                    self._progress_glow.stop()
+                ToastNotification(
+                    get_text('toast_paused', self.current_lang),
+                    icon='⏸', duration_ms=1800, accent='#F0C040',
+                    parent=self.centralWidget(),
+                )
+            else:
+                self.pause_btn.setText(get_text('pause_btn', self.current_lang))
+                self.log(get_text('log_resumed', self.current_lang))
+                self._set_status('processing')
+                if hasattr(self, '_progress_glow'):
+                    self._progress_glow.start()
+                ToastNotification(
+                    get_text('toast_resumed', self.current_lang),
+                    icon='▶', duration_ms=1600, accent=theme.get_accent(),
+                    parent=self.centralWidget(),
+                )
+
     def stop_processing(self):
-        """Stop video processing"""
+        """Stop video processing. Immediately re-enables the Start button so
+        the user can restart with the same file without reselecting."""
         if self.processing_thread and self.processing_thread.isRunning():
             self.log(get_text('log_stopping', self.current_lang))
             self.processing_thread.stop()
             self.stop_btn.setEnabled(False)
-            # Don't block UI — the thread's finished signal will trigger cleanup
+            self.skip_btn.setEnabled(False)
+            self.pause_btn.setEnabled(False)
+            self.pause_btn.setText(get_text('pause_btn', self.current_lang))
+            self.drop_zone.setEnabled(True)
+            # Re-enable Start immediately if we still have video paths so the
+            # user can retry the same files without reselecting.
+            if self.video_paths:
+                self.process_btn.setEnabled(True)
+            # Reset visual state
+            self._set_status('idle')
+            if hasattr(self, '_progress_glow'):
+                self._progress_glow.stop()
+            ToastNotification(
+                get_text('toast_stopped', self.current_lang),
+                icon='⏹', duration_ms=2000, accent='#888',
+                parent=self.centralWidget(),
+            )
+
+    def skip_current_video(self):
+        """Skip the currently processing video and move on to the next one."""
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.log(get_text('log_skipping_current', self.current_lang))
+            self.processing_thread.skip_current_video()
+            # Briefly disable the skip button to debounce rapid clicks —
+            # it's re-enabled once the next video actually starts. The
+            # simplest approximation: leave it disabled until the user
+            # sees the progress bar advance again (we'll just re-enable
+            # it on the next progress update).
+            self.skip_btn.setEnabled(False)
     
     def start_processing(self):
-        """Start video processing with v2.0 features"""
+        """Start video processing. Always begins from scratch — cancelling
+        a previous run and pressing Start again restarts the full pipeline."""
         if not self.video_paths:
             self.log(get_text('log_no_file', self.current_lang))
+            shake_widget(self.drop_zone)
             return
+
+        # If a previous thread is still alive (graceful stop pending), wait
+        # briefly so we don't start two processing pipelines at once.
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.processing_thread.stop()
+            self.processing_thread.safe_wait(3000)
+        self._cleanup_processing_thread()
+
+        # Reset progress state for a fresh run
+        self.progress_bar.setValue(0)
+        self._reset_stat('extracted')
+        self._reset_stat('saved')
 
         # Disable UI during processing
         self.process_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
+        self.pause_btn.setEnabled(True)
+        self.pause_btn.setText(get_text('pause_btn', self.current_lang))
+        # Skip only makes sense when there's more than one video in the
+        # batch — otherwise it's just a funny-looking Stop.
+        self.skip_btn.setEnabled(len(self.video_paths) > 1)
         self.drop_zone.setEnabled(False)
+        # Clear the preview thumbnails for a fresh run.
+        for lbl in self._preview_labels:
+            lbl.clear()
+
+        # Visual state — status dot, progress glow, toast
+        self._set_status('processing')
+        if hasattr(self, '_progress_glow'):
+            self._progress_glow.start()
+        ToastNotification(
+            get_text('toast_processing_started', self.current_lang),
+            icon='🚀', duration_ms=2000, accent=theme.get_accent(),
+            parent=self.centralWidget(),
+        )
 
         # Get settings
         frame_interval = self.interval_slider.value()
@@ -915,21 +1617,9 @@ class VideoSmartCropperUI(QMainWindow):
         tag_settings = self.tags_panel.get_settings()
 
         # Ensemble model selection
-        models_to_use = []
-        voting_threshold = 2
+        models_to_use = ['yolo']
+        voting_threshold = 1
         if use_ensemble:
-            if self.yolo_cb.isChecked():
-                models_to_use.append('yolo')
-            if self.detr_cb.isChecked():
-                models_to_use.append('detr')
-            if self.fasterrcnn_cb.isChecked():
-                models_to_use.append('fasterrcnn')
-
-            if not models_to_use:
-                self.log(get_text('log_error_model', self.current_lang))
-                self.process_btn.setEnabled(True)
-                self.drop_zone.setEnabled(True)
-                return
             voting_threshold = self.voting_spinbox.value()
 
         # Log settings
@@ -952,13 +1642,14 @@ class VideoSmartCropperUI(QMainWindow):
             'models_to_use': models_to_use,
             'voting_threshold': voting_threshold,
             'use_turbo': use_turbo,
+            'start_skip_seconds': float(self.trim_start_spin.value()),
+            'end_skip_seconds': float(self.trim_end_spin.value()),
             'quality_settings': quality_settings,
             'caption_settings': caption_settings,
             'tag_settings': tag_settings,
+            # Resource settings from the drawer
+            'resource_settings': dict(self._resource_cfg),
         }
-
-        # Clean up any leftover thread before starting a new one
-        self._cleanup_processing_thread()
 
         # Start processing thread (models load in background)
         self.processing_thread = ProcessingThread(config)
@@ -966,12 +1657,53 @@ class VideoSmartCropperUI(QMainWindow):
         self.processing_thread.log_message.connect(self.log)
         self.processing_thread.finished.connect(self.on_finished)
         self.processing_thread.error.connect(self.on_error)
+        self.processing_thread.frame_saved.connect(self._on_preview_frame)
         self.processing_thread.start()
     
+    def _on_preview_frame(self, path: str):
+        """Slot connected to ProcessingThread.frame_saved.
+
+        Shifts the preview grid left and places the new thumbnail at the
+        rightmost position. The image is down-sampled to 96x96 in the
+        main thread; since JPEGs are small (typically <100KB) and we fire
+        at most once per saved frame the overhead is negligible."""
+        from PyQt5.QtGui import QPixmap
+        try:
+            pix = QPixmap(path)
+            if pix.isNull():
+                return
+            thumb = pix.scaled(
+                96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation,
+            )
+        except Exception:
+            return
+        # Shift left: move every label's pixmap one slot to the left, then
+        # set the last slot to the new thumbnail.
+        for i in range(len(self._preview_labels) - 1):
+            pm = self._preview_labels[i + 1].pixmap()
+            if pm and not pm.isNull():
+                self._preview_labels[i].setPixmap(pm)
+            else:
+                self._preview_labels[i].clear()
+        self._preview_labels[-1].setPixmap(thumb)
+        fade_in(self._preview_labels[-1], duration=160)
+
     def on_progress(self, progress: float, stats: dict):
         """Update progress"""
-        self.progress_bar.setValue(int(progress))
-        
+        progress_smooth(self.progress_bar, int(progress), duration=160)
+        # The skip button gets disabled while the "skip" request is
+        # in-flight; as soon as we see a progress tick again it means
+        # the next video has started and the button is safe to re-arm.
+        if (self.processing_thread and self.processing_thread.isRunning()
+                and len(self.video_paths) > 1
+                and not self.skip_btn.isEnabled()):
+            self.skip_btn.setEnabled(True)
+
+        # Live stat cards — extracted = frames pulled from video,
+        # saved = frames kept after filtering
+        self._bump_stat('extracted', int(stats.get('processed_frames', 0)))
+        self._bump_stat('saved', int(stats.get('saved_frames', 0)))
+
         # Update log with stats
         if stats['processed_frames'] % 10 == 0:  # Update every 10 frames
             self.log(get_text('log_progress', self.current_lang).format(
@@ -981,11 +1713,20 @@ class VideoSmartCropperUI(QMainWindow):
     
     def on_finished(self, stats: dict):
         """Processing finished"""
-        # If stopped by user, thread was already cleaned up in stop_processing
-        if stats.get('stopped'):
-            return
-        # Guard against stale signal from an old thread
+        # Guard against stale signal from an old / already-cleaned-up thread.
+        # After stop_processing() re-enables the Start button the user may have
+        # already pressed Start again, reassigning self.processing_thread.
+        # sender() lets us verify the signal came from the current thread.
         if self.processing_thread is None:
+            return
+        sender = self.sender()
+        if sender is not None and sender is not self.processing_thread:
+            return
+
+        # If stopped by user, just clean up — buttons were already re-enabled
+        # in stop_processing().
+        if stats.get('stopped'):
+            self._cleanup_processing_thread()
             return
 
         self.progress_bar.setValue(100)
@@ -1032,18 +1773,58 @@ class VideoSmartCropperUI(QMainWindow):
                 self.log(f"🛡️ Overlay-aware crops: {stats['overlay_crops']}")
         
         self.log("="*50)
-        
+
+        # Final stat card sync — lock in the canonical totals
+        final_saved = int(
+            stats.get('total_frames_saved', stats.get('saved_frames', 0))
+        )
+        final_processed = int(
+            stats.get('total_frames_processed', stats.get('processed_frames', 0))
+        )
+        if final_processed:
+            self._bump_stat('extracted', final_processed)
+        self._bump_stat('saved', final_saved)
+
+        # Status + ambient animations
+        self._set_status('done')
+        if hasattr(self, '_progress_glow'):
+            self._progress_glow.stop()
+        ToastNotification(
+            get_text('toast_processing_done', self.current_lang).format(final_saved),
+            icon='✅', duration_ms=3000, accent=theme.get_accent(),
+            parent=self.centralWidget(),
+        )
+        # Queue badge: processing finished, the queue is empty again
+        self.video_paths = []
+        self._update_video_badge(0)
+        self._reset_stat('queued')
+
         # Re-enable UI
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.skip_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText(get_text('pause_btn', self.current_lang))
         self.drop_zone.setEnabled(True)
         self._cleanup_processing_thread()
 
     def on_error(self, error_msg: str):
         """Handle error"""
         self.log(get_text('log_error', self.current_lang).format(error_msg))
+        self._set_status('error')
+        if hasattr(self, '_progress_glow'):
+            self._progress_glow.stop()
+        glitch_effect(self.progress_bar)
+        ToastNotification(
+            get_text('toast_processing_error', self.current_lang).format(error_msg),
+            icon='⚠', duration_ms=4000, accent=theme.RED,
+            parent=self.centralWidget(),
+        )
         self.process_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.skip_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText(get_text('pause_btn', self.current_lang))
         self.drop_zone.setEnabled(True)
         self._cleanup_processing_thread()
 
@@ -1054,16 +1835,16 @@ class VideoSmartCropperUI(QMainWindow):
             self.processing_thread.stop()
             self.processing_thread.safe_wait(5000)
 
-        # Stop captioning thread (from captioning page)
-        if hasattr(self, 'captioning_page'):
-            cp = self.captioning_page
-            if hasattr(cp, 'captioning_thread') and cp.captioning_thread:
-                if cp.captioning_thread.isRunning():
-                    cp.captioning_thread.stop()
-                    cp.captioning_thread.wait(5000)
-            # Cleanup captioner models
-            if hasattr(cp, '_cleanup_captioner'):
-                cp._cleanup_captioner()
+        # Stop captioning thread (from caption studio page)
+        if hasattr(self, 'caption_studio_page'):
+            studio = self.caption_studio_page
+            gen_tab = getattr(studio, 'generate_tab', None)
+            if gen_tab:
+                ct = getattr(gen_tab, 'captioning_thread', None)
+                if ct and ct.isRunning():
+                    ct.stop()
+                    ct.wait(5000)
+                gen_tab._safe_delete_thread()
 
         event.accept()
         # Force process exit so no threads linger
@@ -1079,19 +1860,35 @@ class VideoSmartCropperUI(QMainWindow):
         """Update all UI texts with current language"""
         self.setWindowTitle(get_text('app_title', self.current_lang))
         
-        # Page navigation buttons
-        self.page_video_btn.setText(get_text('page_video_processing', self.current_lang))
-        self.page_caption_btn.setText(get_text('page_captioning', self.current_lang))
-        self.page_char_sort_btn.setText(get_text('page_character_sort', self.current_lang))
+        # Sidebar nav buttons (icon + label)
+        _nav_labels = [
+            ("  🎬  ", 'page_video_processing'),
+            ("  🏷  ", 'page_caption_studio'),
+            ("  👥  ", 'page_character_sort'),
+            ("  📊  ", 'page_tag_frequency'),
+        ]
+        for btn, (icon, key) in zip(self._nav_buttons, _nav_labels):
+            btn.setText(f"{icon}{get_text(key, self.current_lang)}")
 
-        # Update captioning page language
-        if hasattr(self, 'captioning_page'):
-            self.captioning_page.update_language(self.current_lang)
+        self.res_settings_btn.setText("⚙")
+        self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
+        if hasattr(self, '_resource_drawer'):
+            self._resource_drawer.update_language(self.current_lang)
+        if hasattr(self, '_topbar_monitor'):
+            self._topbar_monitor.update_language(self.current_lang)
+
+        # Update caption studio page language
+        if hasattr(self, 'caption_studio_page'):
+            self.caption_studio_page.update_language(self.current_lang)
 
         # Update character sort page language
         if hasattr(self, 'char_sort_page'):
             self.char_sort_page.update_language(self.current_lang)
-        
+
+        # Update tag frequency page language
+        if hasattr(self, 'tag_freq_page'):
+            self.tag_freq_page.update_language(self.current_lang)
+
         # Video page elements
         self.title_label.setText(get_text('title', self.current_lang))
         self.subtitle_label.setText(get_text('subtitle', self.current_lang))
@@ -1116,8 +1913,17 @@ class VideoSmartCropperUI(QMainWindow):
         self.padding_label.setText(get_text('min_padding', self.current_lang))
         self.padding_help.setToolTip(get_text('min_padding_tooltip', self.current_lang))
         self.process_btn.setText(get_text('start_btn', self.current_lang))
+        self.pause_btn.setText(get_text('pause_btn', self.current_lang))
+        self.pause_btn.setToolTip(get_text('pause_btn_tooltip', self.current_lang))
+        self.skip_btn.setText(get_text('skip_btn', self.current_lang))
+        self.skip_btn.setToolTip(get_text('skip_btn_tooltip', self.current_lang))
         self.stop_btn.setText(get_text('stop_btn', self.current_lang))
         self.open_output_btn.setText(get_text('open_output_btn', self.current_lang))
+        self.trim_label.setText(get_text('trim_label', self.current_lang))
+        self.trim_help.setToolTip(get_text('trim_tooltip', self.current_lang))
+        self.trim_start_lbl.setText(get_text('trim_start', self.current_lang))
+        self.trim_end_lbl.setText(get_text('trim_end', self.current_lang))
+        self.preview_label.setText(get_text('preview_title', self.current_lang))
         self.log_label.setText(get_text('log_title', self.current_lang))
         self.update_drop_zone_text()
         
@@ -1136,6 +1942,28 @@ class VideoSmartCropperUI(QMainWindow):
             self.caption_panel.update_language(self.current_lang)
         if hasattr(self, 'tags_panel'):
             self.tags_panel.update_language(self.current_lang)
+
+        # Topbar status label — re-translate without changing the current state
+        if hasattr(self, '_status_dot') and hasattr(self, '_status_label'):
+            state = getattr(self._status_dot, '_state', 'idle')
+            key_map = {
+                'idle':       'status_idle',
+                'processing': 'status_processing',
+                'paused':     'status_paused',
+                'done':       'status_done',
+                'error':      'status_error',
+            }
+            self._status_label.setText(
+                get_text(key_map.get(state, 'status_idle'), self.current_lang)
+            )
+
+        # Stat card description labels (Queued / Extracted / Saved)
+        if hasattr(self, '_stat_cards'):
+            for card in self._stat_cards.values():
+                desc = card.get('desc')
+                key = card.get('label_key')
+                if desc and key:
+                    desc.setText(get_text(key, self.current_lang))
     
     def update_drop_zone_text(self):
         """Update drop zone text"""
