@@ -346,11 +346,14 @@ def nav_btn_active() -> str:
         QPushButton {{
             background-color: {SIDEBAR_ACTIVE};
             color: {ORANGE};
-            border: none;
-            padding: 7px 12px;
-            font-size: {fs(12)};
+            border-top: none;
+            border-right: none;
+            border-bottom: none;
+            border-left: 2px solid {ORANGE};
+            padding: 7px 14px;
+            font-size: {fs(13)};
             font-weight: 600;
-            border-radius: {R_SM};
+            border-radius: 0px;
             text-align: left;
         }}
     """
@@ -360,11 +363,14 @@ def nav_btn_inactive() -> str:
         QPushButton {{
             background-color: transparent;
             color: {TEXT_SECONDARY};
-            border: none;
-            padding: 7px 12px;
-            font-size: {fs(12)};
+            border-top: none;
+            border-right: none;
+            border-bottom: none;
+            border-left: 2px solid transparent;
+            padding: 7px 14px;
+            font-size: {fs(13)};
             font-weight: 500;
-            border-radius: {R_SM};
+            border-radius: 0px;
             text-align: left;
         }}
         QPushButton:hover {{
