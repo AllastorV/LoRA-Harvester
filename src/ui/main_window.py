@@ -526,6 +526,33 @@ class VideoSmartCropperUI(QMainWindow):
         sidebar_lay.setContentsMargins(12, 14, 12, 12)
         sidebar_lay.setSpacing(4)
 
+        # Brand header — icon + label
+        brand_row = QHBoxLayout()
+        brand_row.setContentsMargins(0, 0, 0, 0)
+        brand_row.setSpacing(8)
+
+        # Icon from assets/icon.png
+        _icon_path = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), '..', '..', 'assets', 'icon.png'
+        ))
+        if not os.path.exists(_icon_path):
+            _icon_path = _icon_path.replace('.png', '.ico')
+        self._brand_icon_lbl = QLabel()
+        if os.path.exists(_icon_path):
+            from PyQt5.QtGui import QPixmap
+            pix = QPixmap(_icon_path).scaled(30, 30, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self._brand_icon_lbl.setPixmap(pix)
+        else:
+            self._brand_icon_lbl.setText("🌾")
+            self._brand_icon_lbl.setStyleSheet("font-size: 20px;")
+        self._brand_icon_lbl.setFixedSize(32, 32)
+        self._brand_icon_lbl.setStyleSheet("background: transparent; border: none;")
+        brand_row.addWidget(self._brand_icon_lbl)
+
+        brand_text_col = QVBoxLayout()
+        brand_text_col.setSpacing(0)
+        brand_text_col.setContentsMargins(0, 0, 0, 0)
+
         # Brand — animated shimmer highlight travelling across the text
         self._brand_label = ShimmerLabel(
             "LoRA-Harvester",
@@ -533,14 +560,22 @@ class VideoSmartCropperUI(QMainWindow):
             highlight_color=theme.ORANGE_LIGHT,
         )
         self._brand_label.setStyleSheet(theme.sidebar_brand())
-        sidebar_lay.addWidget(self._brand_label)
-        # shimmer starts only when processing — driven by _set_status()
+        brand_text_col.addWidget(self._brand_label)
+
         self._brand_sub = QLabel("v4.0 · Dataset Studio")
         self._brand_sub.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"border: none; background: transparent; margin-bottom: 14px;"
+            f"border: none; background: transparent;"
         )
-        sidebar_lay.addWidget(self._brand_sub)
+        brand_text_col.addWidget(self._brand_sub)
+        brand_row.addLayout(brand_text_col)
+        brand_row.addStretch()
+
+        brand_widget = QWidget()
+        brand_widget.setStyleSheet("background: transparent;")
+        brand_widget.setLayout(brand_row)
+        brand_widget.setContentsMargins(0, 0, 0, 8)
+        sidebar_lay.addWidget(brand_widget)
 
         # Section: WORKSPACE
         ws_label = QLabel("WORKSPACE")
@@ -1140,357 +1175,221 @@ class VideoSmartCropperUI(QMainWindow):
         if hasattr(self, '_nav_indicator'):
             self._nav_indicator.move_under(self._nav_buttons[index])
     
+    # ── helpers for bento card frames ──────────────────────────────────
+
+    def _bento_card(self, title: str = None) -> QFrame:
+        """Dark card with optional title label, returns (card, body_layout)."""
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background: {theme.BG_CARD};
+                border: 1px solid {theme.BORDER};
+                border-radius: 10px;
+            }}
+        """)
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(16, 12, 16, 14)
+        lay.setSpacing(10)
+        if title:
+            hdr = QLabel(title)
+            hdr.setStyleSheet(
+                f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 600;"
+                f" background: transparent; border: none; letter-spacing: -0.01em;"
+            )
+            lay.addWidget(hdr)
+        return card
+
+    def _row_label(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)};"
+            f" font-family: {theme.FONT_MONO}; background: transparent; border: none;"
+        )
+        return lbl
+
     def setup_video_page(self):
-        """Setup video processing page"""
-        layout = QVBoxLayout()
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(12)
-        self.video_page.setLayout(layout)
+        """Setup video processing page — bento grid layout."""
+        from PyQt5.QtWidgets import QGridLayout
+        from src.ui.animations import ProgressGlowBar
 
-        # Title — left-aligned, SaaS style
+        root = QVBoxLayout()
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        self.video_page.setLayout(root)
+
+        # ── Hidden widgets kept for backward-compat (refresh_styles etc.) ──
         self.title_label = QLabel(get_text('title', self.current_lang))
-        self.title_label.setStyleSheet(theme.label_title())
-        layout.addWidget(self.title_label)
-
-        # Subtitle
+        self.title_label.hide()
         self.subtitle_label = QLabel(get_text('subtitle', self.current_lang))
-        self.subtitle_label.setStyleSheet(theme.label_muted())
-        layout.addWidget(self.subtitle_label)
+        self.subtitle_label.hide()
+        self.settings_group = QGroupBox()
+        self.settings_group.hide()
 
-        # Drop zone + browse on same row
-        drop_row = QHBoxLayout()
-        drop_row.setSpacing(10)
+        # Hidden collapsible buttons (referenced in _refresh_all_styles / _toggle_panel)
+        self.quality_btn  = QPushButton(); self.quality_btn.setCheckable(True);  self.quality_btn.hide()
+        self.caption_btn  = QPushButton(); self.caption_btn.setCheckable(True);  self.caption_btn.hide()
+        self.tags_btn     = QPushButton(); self.tags_btn.setCheckable(True);     self.tags_btn.hide()
+
+        # ══════════════════════════════════════════════════
+        #  BENTO ROW:  left (scroll) ║ right column
+        # ══════════════════════════════════════════════════
+        bento_row = QHBoxLayout()
+        bento_row.setContentsMargins(20, 16, 20, 0)
+        bento_row.setSpacing(16)
+
+        # ─── LEFT COLUMN (stretch=2) ───
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        left_scroll.setStyleSheet("background: transparent; border: none;")
+
+        left_inner = QWidget()
+        left_inner.setStyleSheet("background: transparent;")
+        left_lay = QVBoxLayout(left_inner)
+        left_lay.setContentsMargins(0, 0, 0, 16)
+        left_lay.setSpacing(12)
+
+        # -- Drop Zone --
         self.drop_zone = DropZone()
         self.drop_zone.files_dropped.connect(self.on_files_dropped)
-        self.update_drop_zone_text()
-        drop_row.addWidget(self.drop_zone, stretch=1)
+        self.drop_zone.setMinimumHeight(110)
+        self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
 
+        browse_row = QHBoxLayout()
+        browse_row.setSpacing(8)
+        browse_row.addWidget(self.drop_zone, stretch=1)
         self.browse_btn = QPushButton(get_text('browse_btn', self.current_lang))
         self.browse_btn.setStyleSheet(theme.btn_browse())
         self.browse_btn.setCursor(Qt.PointingHandCursor)
         self.browse_btn.clicked.connect(self.browse_video)
-        self.browse_btn.setFixedWidth(180)
-        drop_row.addWidget(self.browse_btn, alignment=Qt.AlignTop)
-        layout.addLayout(drop_row)
-        
-        # Settings Group
-        self.settings_group = QGroupBox(get_text('settings_title', self.current_lang))
-        self.settings_group.setStyleSheet(theme.group_box())
-        settings_layout = QVBoxLayout()
-        self.settings_group.setLayout(settings_layout)
-        
-        # Frame interval slider
-        interval_layout = QHBoxLayout()
-        self.interval_label = QLabel(get_text('frame_interval', self.current_lang))
-        self.interval_label.setStyleSheet(theme.label_default())
-        self.interval_help = QLabel("ℹ️")
-        self.interval_help.setStyleSheet(theme.info_icon())
-        self.interval_help.setToolTip(get_text('frame_interval_tooltip', self.current_lang))
-        self.interval_help.setCursor(Qt.WhatsThisCursor)
-        self.interval_slider = QSlider(Qt.Horizontal)
-        self.interval_slider.setMinimum(1)
-        self.interval_slider.setMaximum(120)
-        self.interval_slider.setValue(30)
-        self.interval_slider.setTickPosition(QSlider.TicksBelow)
-        self.interval_slider.setTickInterval(10)
-        self.interval_slider.setStyleSheet(theme.slider())
+        self.browse_btn.setFixedWidth(140)
+        browse_row.addWidget(self.browse_btn, alignment=Qt.AlignTop)
+        left_lay.addLayout(browse_row)
+        self.update_drop_zone_text()
+
+        # -- 2-col settings bento --
+        bento_2col = QHBoxLayout()
+        bento_2col.setSpacing(10)
+
+        # Extraction Config card
+        ext_card = self._bento_card("⚙  Extraction Config")
+        ext_lay = ext_card.layout()
+
+        # Frame interval
+        iv_row = QHBoxLayout()
+        self.interval_label = self._row_label(get_text('frame_interval', self.current_lang))
+        iv_row.addWidget(self.interval_label)
+        iv_row.addStretch()
         self.interval_value_label = QLabel("30")
         self.interval_value_label.setStyleSheet(theme.label_value())
-        self.interval_slider.valueChanged.connect(
-            lambda v: self.interval_value_label.setText(str(v))
-        )
-        interval_layout.addWidget(self.interval_label)
-        interval_layout.addWidget(self.interval_help)
-        interval_layout.addWidget(self.interval_slider)
-        interval_layout.addWidget(self.interval_value_label)
-        settings_layout.addLayout(interval_layout)
+        iv_row.addWidget(self.interval_value_label)
+        ext_lay.addLayout(iv_row)
+        self.interval_slider = QSlider(Qt.Horizontal)
+        self.interval_slider.setMinimum(1); self.interval_slider.setMaximum(120)
+        self.interval_slider.setValue(30); self.interval_slider.setStyleSheet(theme.slider())
+        self.interval_help = QLabel("ℹ️"); self.interval_help.setStyleSheet(theme.info_icon()); self.interval_help.hide()
+        self.interval_slider.valueChanged.connect(lambda v: self.interval_value_label.setText(str(v)))
+        ext_lay.addWidget(self.interval_slider)
 
-        # ── Batch-wide video trim (right below frame interval) ──
-        trim_layout = QHBoxLayout()
-        self.trim_label = QLabel(get_text('trim_label', self.current_lang))
-        self.trim_label.setStyleSheet(theme.label_default())
-        self.trim_help = QLabel("ℹ️")
-        self.trim_help.setStyleSheet(theme.info_icon())
-        self.trim_help.setToolTip(get_text('trim_tooltip', self.current_lang))
-        self.trim_help.setCursor(Qt.WhatsThisCursor)
-        self.trim_start_spin = QSpinBox()
-        self.trim_start_spin.setMinimum(0)
-        self.trim_start_spin.setMaximum(600)
-        self.trim_start_spin.setValue(0)
-        self.trim_start_spin.setSuffix(" s")
-        self.trim_start_spin.setMinimumWidth(90)
-        self.trim_start_spin.setKeyboardTracking(True)
-        self.trim_start_spin.setFocusPolicy(Qt.StrongFocus)
-        self.trim_start_spin.lineEdit().setReadOnly(False)
-        self.trim_start_spin.setStyleSheet(theme.spinbox())
-        self.trim_start_lbl = QLabel(get_text('trim_start', self.current_lang))
-        self.trim_start_lbl.setStyleSheet(theme.label_default())
-        self.trim_end_spin = QSpinBox()
-        self.trim_end_spin.setMinimum(0)
-        self.trim_end_spin.setMaximum(600)
-        self.trim_end_spin.setValue(0)
-        self.trim_end_spin.setSuffix(" s")
-        self.trim_end_spin.setMinimumWidth(90)
-        self.trim_end_spin.setKeyboardTracking(True)
-        self.trim_end_spin.setFocusPolicy(Qt.StrongFocus)
-        self.trim_end_spin.lineEdit().setReadOnly(False)
-        self.trim_end_spin.setStyleSheet(theme.spinbox())
-        self.trim_end_lbl = QLabel(get_text('trim_end', self.current_lang))
-        self.trim_end_lbl.setStyleSheet(theme.label_default())
-        trim_layout.addWidget(self.trim_label)
-        trim_layout.addWidget(self.trim_help)
-        trim_layout.addWidget(self.trim_start_lbl)
-        trim_layout.addWidget(self.trim_start_spin)
-        trim_layout.addWidget(self.trim_end_lbl)
-        trim_layout.addWidget(self.trim_end_spin)
-        trim_layout.addStretch()
-        settings_layout.addLayout(trim_layout)
+        # Trim
+        trim_row = QHBoxLayout(); trim_row.setSpacing(6)
+        trim_lbl = self._row_label(get_text('trim_label', self.current_lang))
+        self.trim_label = trim_lbl; self.trim_help = QLabel(); self.trim_help.hide()
+        self.trim_start_spin = QSpinBox(); self.trim_start_spin.setRange(0, 600); self.trim_start_spin.setSuffix(" s"); self.trim_start_spin.setStyleSheet(theme.spinbox_compact())
+        self.trim_end_spin = QSpinBox(); self.trim_end_spin.setRange(0, 600); self.trim_end_spin.setSuffix(" s"); self.trim_end_spin.setStyleSheet(theme.spinbox_compact())
+        self.trim_start_lbl = self._row_label(get_text('trim_start', self.current_lang))
+        self.trim_end_lbl = self._row_label(get_text('trim_end', self.current_lang))
+        trim_row.addWidget(trim_lbl); trim_row.addStretch()
+        trim_row.addWidget(self.trim_start_lbl); trim_row.addWidget(self.trim_start_spin)
+        trim_row.addWidget(self.trim_end_lbl); trim_row.addWidget(self.trim_end_spin)
+        ext_lay.addLayout(trim_row)
+        ext_lay.addStretch()
 
-        # Aspect ratio selector
-        ratio_layout = QHBoxLayout()
-        self.ratio_label = QLabel(get_text('output_format', self.current_lang))
-        self.ratio_label.setStyleSheet(theme.label_default())
-        self.ratio_help = QLabel("ℹ️")
-        self.ratio_help.setStyleSheet(theme.info_icon())
-        self.ratio_help.setToolTip(get_text('output_format_tooltip', self.current_lang))
-        self.ratio_help.setCursor(Qt.WhatsThisCursor)
-        self.ratio_combo = QComboBox()
-        self.ratio_combo.addItems(['9:16', '3:4', '1:1', '4:5', '16:9', '4:3'])
-        self.ratio_combo.setStyleSheet(theme.combo())
-        ratio_layout.addWidget(self.ratio_label)
-        ratio_layout.addWidget(self.ratio_help)
-        ratio_layout.addWidget(self.ratio_combo)
-        ratio_layout.addStretch()
-        settings_layout.addLayout(ratio_layout)
-        
-        # Detection confidence
-        conf_layout = QHBoxLayout()
-        self.conf_label = QLabel(get_text('confidence', self.current_lang))
-        self.conf_label.setStyleSheet(theme.label_default())
-        self.conf_help = QLabel("ℹ️")
-        self.conf_help.setStyleSheet(theme.info_icon())
-        self.conf_help.setToolTip(get_text('confidence_tooltip', self.current_lang))
-        self.conf_help.setCursor(Qt.WhatsThisCursor)
-        self.conf_spinbox = QSpinBox()
-        self.conf_spinbox.setMinimum(10)
-        self.conf_spinbox.setMaximum(95)
-        self.conf_spinbox.setValue(50)
-        self.conf_spinbox.setSuffix("%")
-        self.conf_spinbox.setStyleSheet(theme.spinbox())
-        conf_layout.addWidget(self.conf_label)
-        conf_layout.addWidget(self.conf_help)
-        conf_layout.addWidget(self.conf_spinbox)
-        conf_layout.addStretch()
-        settings_layout.addLayout(conf_layout)
-        
-        # Ensemble mode checkbox
-        ensemble_layout_cb = QHBoxLayout()
+        bento_2col.addWidget(ext_card)
+
+        # Processing Options card
+        proc_card = self._bento_card("🎛  Processing Options")
+        proc_lay = proc_card.layout()
+
+        # Aspect ratio
+        ratio_row = QHBoxLayout()
+        self.ratio_label = self._row_label(get_text('output_format', self.current_lang))
+        self.ratio_help = QLabel(); self.ratio_help.hide()
+        self.ratio_combo = QComboBox(); self.ratio_combo.addItems(['9:16', '3:4', '1:1', '4:5', '16:9', '4:3']); self.ratio_combo.setStyleSheet(theme.combo_compact())
+        ratio_row.addWidget(self.ratio_label); ratio_row.addStretch(); ratio_row.addWidget(self.ratio_combo)
+        proc_lay.addLayout(ratio_row)
+
+        # Confidence + Ensemble toggle
+        conf_row = QHBoxLayout()
+        self.conf_label = self._row_label(get_text('confidence', self.current_lang))
+        self.conf_help = QLabel(); self.conf_help.hide()
+        self.conf_spinbox = QSpinBox(); self.conf_spinbox.setRange(10, 95); self.conf_spinbox.setValue(50); self.conf_spinbox.setSuffix("%"); self.conf_spinbox.setStyleSheet(theme.spinbox_compact())
+        conf_row.addWidget(self.conf_label); conf_row.addStretch(); conf_row.addWidget(self.conf_spinbox)
+        proc_lay.addLayout(conf_row)
+
+        # Ensemble checkbox
+        ens_row = QHBoxLayout()
         self.ensemble_cb = QCheckBox(get_text('ensemble_mode', self.current_lang))
-        self.ensemble_cb.setChecked(False)
-        self.ensemble_cb.setStyleSheet(f"font-size: {theme.fs(12)}; font-weight: bold; color: {theme.ORANGE_LIGHT};")
-        self.ensemble_help = QLabel("ℹ️")
-        self.ensemble_help.setStyleSheet(theme.info_icon())
-        self.ensemble_help.setToolTip(get_text('ensemble_mode_tooltip', self.current_lang))
-        self.ensemble_help.setCursor(Qt.WhatsThisCursor)
-        ensemble_layout_cb.addWidget(self.ensemble_cb)
-        ensemble_layout_cb.addWidget(self.ensemble_help)
-        ensemble_layout_cb.addStretch()
-        settings_layout.addLayout(ensemble_layout_cb)
-        
-        # Ensemble settings (initially hidden)
-        self.ensemble_group = QGroupBox(get_text('ensemble_settings', self.current_lang))
-        self.ensemble_group.setVisible(False)
-        self.ensemble_group.setStyleSheet(theme.panel_group())
+        self.ensemble_cb.setChecked(False); self.ensemble_cb.setStyleSheet(theme.checkbox_frame())
+        self.ensemble_help = QLabel(); self.ensemble_help.hide()
+        ens_row.addWidget(self.ensemble_cb); ens_row.addStretch()
+        proc_lay.addLayout(ens_row)
+
+        # Ensemble group (hidden initially)
+        self.ensemble_group = QGroupBox(); self.ensemble_group.setStyleSheet(theme.panel_group())
         ensemble_layout = QVBoxLayout()
-        
-        # Model selection checkboxes
         models_layout = QHBoxLayout()
-        self.models_label = QLabel(get_text('active_models', self.current_lang))
-        self.models_label.setStyleSheet(theme.label_default())
-        self.yolo_cb = QCheckBox("YOLOv8")
-        self.yolo_cb.setChecked(True)
-        self.yolo_cb.setEnabled(False)  # Only model available
-        self.yolo_cb.setStyleSheet(theme.label_default())
-        models_layout.addWidget(self.models_label)
-        models_layout.addWidget(self.yolo_cb)
-        models_layout.addStretch()
-        ensemble_layout.addLayout(models_layout)
-        
-        # Voting threshold
+        self.models_label = self._row_label(get_text('active_models', self.current_lang))
+        self.yolo_cb = QCheckBox("YOLOv8"); self.yolo_cb.setChecked(True); self.yolo_cb.setEnabled(False); self.yolo_cb.setStyleSheet(theme.label_default())
+        models_layout.addWidget(self.models_label); models_layout.addWidget(self.yolo_cb); models_layout.addStretch()
         voting_layout = QHBoxLayout()
-        self.voting_label = QLabel(get_text('voting_threshold', self.current_lang))
-        self.voting_label.setStyleSheet(theme.label_default())
-        self.voting_help = QLabel("ℹ️")
-        self.voting_help.setStyleSheet(theme.info_icon())
-        self.voting_help.setToolTip(get_text('voting_threshold_tooltip', self.current_lang))
-        self.voting_help.setCursor(Qt.WhatsThisCursor)
-        self.voting_spinbox = QSpinBox()
-        self.voting_spinbox.setMinimum(1)
-        self.voting_spinbox.setMaximum(1)
-        self.voting_spinbox.setValue(1)
-        self.voting_spinbox.setStyleSheet(theme.spinbox())
-        voting_layout.addWidget(self.voting_label)
-        voting_layout.addWidget(self.voting_help)
-        voting_layout.addWidget(self.voting_spinbox)
-        voting_layout.addStretch()
-        ensemble_layout.addLayout(voting_layout)
-        
+        self.voting_label = self._row_label(get_text('voting_threshold', self.current_lang))
+        self.voting_help = QLabel(); self.voting_help.hide()
+        self.voting_spinbox = QSpinBox(); self.voting_spinbox.setRange(1, 1); self.voting_spinbox.setValue(1); self.voting_spinbox.setStyleSheet(theme.spinbox_compact())
+        voting_layout.addWidget(self.voting_label); voting_layout.addWidget(self.voting_spinbox); voting_layout.addStretch()
+        ensemble_layout.addLayout(models_layout); ensemble_layout.addLayout(voting_layout)
         self.ensemble_group.setLayout(ensemble_layout)
-        settings_layout.addWidget(self.ensemble_group)
-        
-        # Connect ensemble checkbox to show/hide settings
-        self.ensemble_cb.toggled.connect(
-            lambda checked: smooth_expand(self.ensemble_group, expand=checked, duration=200)
-        )
-        
-        # Skip subtitle checkbox
-        skip_layout_cb = QHBoxLayout()
-        self.skip_subtitle_cb = QCheckBox(get_text('skip_subtitle', self.current_lang))
-        self.skip_subtitle_cb.setChecked(True)
-        self.skip_subtitle_cb.setStyleSheet(f"font-size: {theme.fs(12)}; color: {theme.TEXT_PRIMARY};")
-        self.skip_help = QLabel("ℹ️")
-        self.skip_help.setStyleSheet(theme.info_icon())
-        self.skip_help.setToolTip(get_text('skip_subtitle_tooltip', self.current_lang))
-        self.skip_help.setCursor(Qt.WhatsThisCursor)
-        skip_layout_cb.addWidget(self.skip_subtitle_cb)
-        skip_layout_cb.addWidget(self.skip_help)
-        skip_layout_cb.addStretch()
-        settings_layout.addLayout(skip_layout_cb)
-        
-        # Turbo mode checkbox
-        turbo_layout_cb = QHBoxLayout()
-        self.turbo_cb = QCheckBox(get_text('turbo_mode', self.current_lang))
-        self.turbo_cb.setChecked(True)
-        self.turbo_cb.setStyleSheet(f"font-size: {theme.fs(12)}; font-weight: bold; color: {theme.ORANGE_LIGHT};")
-        self.turbo_help = QLabel("ℹ️")
-        self.turbo_help.setStyleSheet(theme.info_icon())
-        self.turbo_help.setToolTip(get_text('turbo_mode_tooltip', self.current_lang))
-        self.turbo_help.setCursor(Qt.WhatsThisCursor)
-        turbo_layout_cb.addWidget(self.turbo_cb)
-        turbo_layout_cb.addWidget(self.turbo_help)
-        turbo_layout_cb.addStretch()
-        settings_layout.addLayout(turbo_layout_cb)
-        
-        # ============ V2.0 Advanced Settings - Collapsible Buttons ============
-        v2_container = QVBoxLayout()
-        v2_container.setSpacing(5)
-        
-        # --- Quality Analysis Button & Panel ---
-        self.quality_btn = QPushButton(get_text('quality_title', self.current_lang))
-        self.quality_btn.setCheckable(True)
-        self.quality_btn.setStyleSheet(self._collapsible_btn_style())
-        self.quality_btn.clicked.connect(lambda: self._toggle_panel('quality'))
-        v2_container.addWidget(self.quality_btn)
-        
+        self.ensemble_group.setVisible(False)
+        proc_lay.addWidget(self.ensemble_group)
+        self.ensemble_cb.toggled.connect(lambda c: smooth_expand(self.ensemble_group, expand=c, duration=200))
+
+        # Skip subtitle + turbo
+        opts_row = QHBoxLayout()
+        self.skip_subtitle_cb = QCheckBox(get_text('skip_subtitle', self.current_lang)); self.skip_subtitle_cb.setChecked(True); self.skip_subtitle_cb.setStyleSheet(theme.checkbox_frame())
+        self.skip_help = QLabel(); self.skip_help.hide()
+        self.turbo_cb = QCheckBox(get_text('turbo_mode', self.current_lang)); self.turbo_cb.setChecked(True); self.turbo_cb.setStyleSheet(theme.checkbox_frame())
+        self.turbo_help = QLabel(); self.turbo_help.hide()
+        opts_row.addWidget(self.skip_subtitle_cb); opts_row.addWidget(self.turbo_cb); opts_row.addStretch()
+        proc_lay.addLayout(opts_row)
+
+        # Min padding (hidden row — kept for build_config compat)
+        self.padding_label = self._row_label(get_text('min_padding', self.current_lang)); self.padding_label.hide()
+        self.padding_help = QLabel(); self.padding_help.hide()
+        self.padding_spinbox = QSpinBox(); self.padding_spinbox.setRange(100, 1000); self.padding_spinbox.setValue(500); self.padding_spinbox.setSingleStep(50); self.padding_spinbox.hide()
+        proc_lay.addStretch()
+
+        bento_2col.addWidget(proc_card)
+        left_lay.addLayout(bento_2col)
+
+        # -- Accordion panels (self-contained) --
         self.quality_panel = QualitySettingsPanel(self.current_lang)
-        self.quality_panel.setVisible(False)
-        v2_container.addWidget(self.quality_panel)
-        
-        # --- Auto Captioning Button & Panel ---
-        self.caption_btn = QPushButton(get_text('caption_title', self.current_lang))
-        self.caption_btn.setCheckable(True)
-        self.caption_btn.setStyleSheet(self._collapsible_btn_style())
-        self.caption_btn.clicked.connect(lambda: self._toggle_panel('caption'))
-        v2_container.addWidget(self.caption_btn)
-        
         self.caption_panel = CaptioningSettingsPanel(self.current_lang)
-        self.caption_panel.setVisible(False)
-        v2_container.addWidget(self.caption_panel)
-        
-        # --- Tag Settings Button & Panel ---
-        self.tags_btn = QPushButton(get_text('tag_settings_title', self.current_lang))
-        self.tags_btn.setCheckable(True)
-        self.tags_btn.setStyleSheet(self._collapsible_btn_style())
-        self.tags_btn.clicked.connect(lambda: self._toggle_panel('tags'))
-        v2_container.addWidget(self.tags_btn)
-        
-        self.tags_panel = TagSettingsPanel(self.current_lang)
-        self.tags_panel.setVisible(False)
-        v2_container.addWidget(self.tags_panel)
-        
-        settings_layout.addLayout(v2_container)
-        # ============ End V2.0 Advanced Settings ============
+        self.tags_panel    = TagSettingsPanel(self.current_lang)
+        for panel in (self.quality_panel, self.caption_panel, self.tags_panel):
+            left_lay.addWidget(panel)
 
-        # Minimum padding
-        padding_layout = QHBoxLayout()
-        self.padding_label = QLabel(get_text('min_padding', self.current_lang))
-        self.padding_label.setStyleSheet(theme.label_default())
-        self.padding_help = QLabel("ℹ️")
-        self.padding_help.setStyleSheet(theme.info_icon())
-        self.padding_help.setToolTip(get_text('min_padding_tooltip', self.current_lang))
-        self.padding_help.setCursor(Qt.WhatsThisCursor)
-        self.padding_spinbox = QSpinBox()
-        self.padding_spinbox.setMinimum(100)
-        self.padding_spinbox.setMaximum(1000)
-        self.padding_spinbox.setValue(500)
-        self.padding_spinbox.setSingleStep(50)
-        self.padding_spinbox.setStyleSheet(theme.spinbox())
-        padding_layout.addWidget(self.padding_label)
-        padding_layout.addWidget(self.padding_help)
-        padding_layout.addWidget(self.padding_spinbox)
-        padding_layout.addStretch()
-        settings_layout.addLayout(padding_layout)
+        left_lay.addStretch()
+        left_scroll.setWidget(left_inner)
+        bento_row.addWidget(left_scroll, stretch=2)
 
-        layout.addWidget(self.settings_group)
-        
-        # Process and Stop buttons
-        buttons_layout = QHBoxLayout()
-        
-        # ── Start button (large, prominent, orange) ──
-        self.process_btn = QPushButton(get_text('start_btn', self.current_lang))
-        self.process_btn.setEnabled(False)
-        self.process_btn.setStyleSheet(theme.btn_action_start())
-        self.process_btn.clicked.connect(self.start_processing)
+        # ─── RIGHT COLUMN (stretch=1) ───
+        right_col = QVBoxLayout()
+        right_col.setContentsMargins(0, 0, 0, 0)
+        right_col.setSpacing(10)
 
-        # ── Pause/Resume button (medium, neutral outline) ──
-        self.pause_btn = QPushButton(get_text('pause_btn', self.current_lang))
-        self.pause_btn.setEnabled(False)
-        self.pause_btn.setStyleSheet(theme.btn_action_pause())
-        self.pause_btn.setToolTip(get_text('pause_btn_tooltip', self.current_lang))
-        self.pause_btn.clicked.connect(self.toggle_pause)
-
-        # ── Skip button (small, subtle dashed border) ──
-        self.skip_btn = QPushButton(get_text('skip_btn', self.current_lang))
-        self.skip_btn.setEnabled(False)
-        self.skip_btn.setStyleSheet(theme.btn_action_skip())
-        self.skip_btn.setToolTip(get_text('skip_btn_tooltip', self.current_lang))
-        self.skip_btn.clicked.connect(self.skip_current_video)
-
-        # ── Stop button (red pill shape, stands apart) ──
-        self.stop_btn = QPushButton(get_text('stop_btn', self.current_lang))
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet(theme.btn_action_stop())
-        self.stop_btn.clicked.connect(self.stop_processing)
-
-        # ── Open output folder ──
-        self.open_output_btn = QPushButton(get_text('open_output_btn', self.current_lang))
-        self.open_output_btn.setStyleSheet(theme.btn_secondary())
-        self.open_output_btn.clicked.connect(self.open_output_folder)
-
-        # Hover lift + ripple on all control + browse buttons
-        for _btn in (self.process_btn, self.pause_btn, self.skip_btn,
-                     self.stop_btn, self.open_output_btn, self.browse_btn):
-            HoverLift(_btn, lift_px=2)
-            RippleButton(_btn)
-
-        # Layout: [  Start  ] [Pause] [Skip] ─── stretch ─── (Stop)
-        buttons_layout.addWidget(self.process_btn)
-        buttons_layout.addWidget(self.pause_btn)
-        buttons_layout.addWidget(self.skip_btn)
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(self.stop_btn)
-        layout.addLayout(buttons_layout)
-
-        # Open output button on its own row
-        output_row = QHBoxLayout()
-        output_row.addStretch()
-        output_row.addWidget(self.open_output_btn)
-        output_row.addStretch()
-        layout.addLayout(output_row)
-
-        # ── Stats row (Queued / Extracted / Saved pill cards) ──
-        stats_row = QHBoxLayout()
-        stats_row.setSpacing(10)
+        # Stat cards
+        stats_row = QHBoxLayout(); stats_row.setSpacing(8)
         self._stat_cards = {}
         for key, icon, label_key in (
             ('queued',    '📋', 'stat_queued'),
@@ -1499,92 +1398,91 @@ class VideoSmartCropperUI(QMainWindow):
         ):
             card = QFrame()
             card.setStyleSheet(
-                f"QFrame {{ background-color: {theme.BG_PANEL}; "
-                f"border: 1px solid {theme.BORDER}; "
-                f"border-radius: {theme.R_SM}; padding: 8px 12px; }}"
+                f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER};"
+                f" border-radius: 10px; }}"
             )
-            card_lay = QHBoxLayout(card)
-            card_lay.setContentsMargins(8, 4, 8, 4)
-            card_lay.setSpacing(10)
-            icon_lbl = QLabel(icon)
-            icon_lbl.setStyleSheet(
-                f"background: transparent; border: none; font-size: {theme.fs(16)};"
-            )
-            text_col = QVBoxLayout()
-            text_col.setContentsMargins(0, 0, 0, 0)
-            text_col.setSpacing(0)
+            cl = QVBoxLayout(card); cl.setContentsMargins(10, 10, 10, 10); cl.setAlignment(Qt.AlignCenter)
             val_lbl = QLabel("0")
-            val_lbl.setStyleSheet(
-                f"background: transparent; border: none; "
-                f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(16)}; "
-                f"font-weight: 700;"
-            )
+            val_lbl.setAlignment(Qt.AlignCenter)
+            val_lbl.setStyleSheet(f"background: transparent; border: none; color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(20)}; font-weight: 700;")
             desc_lbl = QLabel(get_text(label_key, self.current_lang))
-            desc_lbl.setStyleSheet(
-                f"background: transparent; border: none; "
-                f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)};"
-            )
-            text_col.addWidget(val_lbl)
-            text_col.addWidget(desc_lbl)
-            card_lay.addWidget(icon_lbl)
-            card_lay.addLayout(text_col)
-            card_lay.addStretch()
+            desc_lbl.setAlignment(Qt.AlignCenter)
+            desc_lbl.setStyleSheet(f"background: transparent; border: none; color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-family: {theme.FONT_MONO};")
+            cl.addWidget(val_lbl); cl.addWidget(desc_lbl)
             stats_row.addWidget(card, stretch=1)
-            self._stat_cards[key] = {
-                'frame': card, 'value': val_lbl, 'desc': desc_lbl,
-                'label_key': label_key,
-            }
-        layout.addLayout(stats_row)
+            self._stat_cards[key] = {'frame': card, 'value': val_lbl, 'desc': desc_lbl, 'label_key': label_key}
+        right_col.addLayout(stats_row)
 
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setStyleSheet(theme.progress_bar())
-        layout.addWidget(self.progress_bar)
-        self._progress_glow = ProgressGlow(
-            self.progress_bar, color=theme.get_accent()
-        )
+        # Action buttons card
+        action_card = self._bento_card()
+        act_lay = action_card.layout()
+        act_lay.setSpacing(6)
+        top_btns = QHBoxLayout(); top_btns.setSpacing(6)
+        self.process_btn = QPushButton(get_text('start_btn', self.current_lang)); self.process_btn.setEnabled(False); self.process_btn.setStyleSheet(theme.btn_action_start()); self.process_btn.clicked.connect(self.start_processing)
+        self.pause_btn   = QPushButton(get_text('pause_btn', self.current_lang));  self.pause_btn.setEnabled(False);  self.pause_btn.setStyleSheet(theme.btn_action_pause()); self.pause_btn.clicked.connect(self.toggle_pause)
+        top_btns.addWidget(self.process_btn); top_btns.addWidget(self.pause_btn)
+        bot_btns = QHBoxLayout(); bot_btns.setSpacing(6)
+        self.skip_btn = QPushButton(get_text('skip_btn', self.current_lang)); self.skip_btn.setEnabled(False); self.skip_btn.setStyleSheet(theme.btn_action_skip()); self.skip_btn.clicked.connect(self.skip_current_video)
+        self.stop_btn = QPushButton(get_text('stop_btn', self.current_lang)); self.stop_btn.setEnabled(False); self.stop_btn.setStyleSheet(theme.btn_action_stop()); self.stop_btn.clicked.connect(self.stop_processing)
+        bot_btns.addWidget(self.skip_btn); bot_btns.addWidget(self.stop_btn)
+        self.open_output_btn = QPushButton(get_text('open_output_btn', self.current_lang)); self.open_output_btn.setStyleSheet(theme.btn_secondary()); self.open_output_btn.clicked.connect(self.open_output_folder)
+        act_lay.addLayout(top_btns); act_lay.addLayout(bot_btns); act_lay.addWidget(self.open_output_btn)
+        right_col.addWidget(action_card)
 
-        # ── Live preview thumbnail grid ──
-        self.preview_label = QLabel(get_text('preview_title', self.current_lang))
-        self.preview_label.setStyleSheet(theme.label_section())
-        layout.addWidget(self.preview_label)
+        # Hover lift + ripple
+        for _btn in (self.process_btn, self.pause_btn, self.skip_btn, self.stop_btn, self.open_output_btn, self.browse_btn):
+            HoverLift(_btn, lift_px=2); RippleButton(_btn)
 
-        from PyQt5.QtWidgets import QGridLayout
+        # Progress card
+        prog_card = self._bento_card()
+        prog_lay = prog_card.layout(); prog_lay.setSpacing(6)
+        prog_info = QHBoxLayout()
+        self._prog_file_lbl = QLabel("Idle")
+        self._prog_file_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; font-family: {theme.FONT_MONO}; background: transparent; border: none;")
+        self._prog_pct_lbl = QLabel("0%")
+        self._prog_pct_lbl.setStyleSheet(f"color: {theme.ORANGE}; font-size: {theme.fs(11)}; font-family: {theme.FONT_MONO}; background: transparent; border: none;")
+        prog_info.addWidget(self._prog_file_lbl); prog_info.addStretch(); prog_info.addWidget(self._prog_pct_lbl)
+        prog_lay.addLayout(prog_info)
+        self.progress_bar = ProgressGlowBar()
+        prog_lay.addWidget(self.progress_bar)
+        self._progress_glow = ProgressGlow(self.progress_bar, color=theme.get_accent())
+        right_col.addWidget(prog_card)
+
+        # Thumbnail grid card
+        thumb_card = self._bento_card("Latest Frames")
+        thumb_lay = thumb_card.layout(); thumb_lay.setSpacing(6)
+        self.preview_label = QLabel("Latest Frames"); self.preview_label.hide()
+        self.log_label = QLabel(); self.log_label.hide()
         self._preview_frame = QFrame()
-        self._preview_frame.setStyleSheet(
-            f"background-color: {theme.BG_PANEL}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: {theme.R_SM};"
-        )
+        self._preview_frame.setStyleSheet("background: transparent; border: none;")
         self._preview_grid = QGridLayout(self._preview_frame)
-        self._preview_grid.setSpacing(6)
-        self._preview_grid.setContentsMargins(8, 8, 8, 8)
-        self._PREVIEW_COLS = 6
-        self._PREVIEW_ROWS = 2
-        self._preview_labels: list = []
+        self._preview_grid.setSpacing(4); self._preview_grid.setContentsMargins(0, 0, 0, 0)
+        self._PREVIEW_COLS = 6; self._PREVIEW_ROWS = 2
+        self._preview_labels = []
         for r in range(self._PREVIEW_ROWS):
             for c in range(self._PREVIEW_COLS):
-                lbl = QLabel()
-                lbl.setFixedSize(96, 96)
-                lbl.setAlignment(Qt.AlignCenter)
-                lbl.setStyleSheet(
-                    f"background-color: {theme.BG_SURFACE}; "
-                    f"border: 1px solid {theme.BORDER}; border-radius: 4px;"
-                )
-                self._preview_grid.addWidget(lbl, r, c)
-                self._preview_labels.append(lbl)
-        self._preview_frame.setMaximumHeight(self._PREVIEW_ROWS * 104 + 20)
-        layout.addWidget(self._preview_frame)
+                lbl = QLabel(); lbl.setFixedSize(72, 72); lbl.setAlignment(Qt.AlignCenter)
+                lbl.setStyleSheet(f"background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER}; border-radius: 4px;")
+                self._preview_grid.addWidget(lbl, r, c); self._preview_labels.append(lbl)
+        thumb_lay.addWidget(self._preview_frame)
+        right_col.addWidget(thumb_card)
+        right_col.addStretch()
 
-        # Log area
-        self.log_label = QLabel(get_text('log_title', self.current_lang))
-        self.log_label.setStyleSheet(theme.label_section())
-        layout.addWidget(self.log_label)
+        right_widget = QWidget(); right_widget.setStyleSheet("background: transparent;")
+        right_widget.setLayout(right_col)
+        bento_row.addWidget(right_widget, stretch=1)
 
+        root.addLayout(bento_row, stretch=1)
+
+        # ── Log terminal (full width) ──
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(160)
+        self.log_text.setFixedHeight(160)
         self.log_text.setStyleSheet(theme.log_area())
-        layout.addWidget(self.log_text)
+        log_wrap = QWidget(); log_wrap.setStyleSheet("background: transparent;")
+        log_wl = QVBoxLayout(log_wrap); log_wl.setContentsMargins(20, 8, 20, 12)
+        log_wl.addWidget(self.log_text)
+        root.addWidget(log_wrap)
 
         self.log(get_text('log_started', self.current_lang))
     

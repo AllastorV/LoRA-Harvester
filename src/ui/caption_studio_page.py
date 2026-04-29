@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QCheckBox, QSpinBox, QDoubleSpinBox, QLineEdit, QComboBox,
     QTextEdit, QPushButton, QProgressBar, QFileDialog, QFrame,
     QListWidget, QListWidgetItem, QInputDialog, QSplitter,
-    QTabWidget, QCompleter, QScrollArea,
+    QTabWidget, QCompleter, QScrollArea, QSizePolicy,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QStringListModel
 from PyQt5.QtGui import (
@@ -721,18 +721,40 @@ class _GenerateTab(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet(theme.progress_bar())
         step3_layout.addWidget(self.progress_bar)
-        layout.addWidget(step3_frame)
 
         # ── Log ─────────────────────────────────────────────────
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(105)
-        self.log_text.setMaximumHeight(225)
+        self.log_text.setFixedHeight(140)
         self.log_text.setStyleSheet(theme.log_area())
-        layout.addWidget(self.log_text)
 
-        layout.addStretch()
-        self.setLayout(layout)
+        # ── Bento assembly ──────────────────────────────────────
+        from PyQt5.QtWidgets import QScrollArea
+        left_scroll = QScrollArea(); left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setStyleSheet("background: transparent; border: none;")
+        left_inner = QWidget(); left_inner.setStyleSheet("background: transparent;")
+        left_lay = QVBoxLayout(left_inner); left_lay.setContentsMargins(0, 0, 0, 0); left_lay.setSpacing(12)
+        left_lay.addWidget(step1_frame)
+        left_lay.addWidget(step2_frame)
+        left_lay.addStretch()
+        left_scroll.setWidget(left_inner)
+
+        right_w = QWidget(); right_w.setStyleSheet("background: transparent;")
+        right_lay = QVBoxLayout(right_w); right_lay.setContentsMargins(0, 0, 0, 0); right_lay.setSpacing(10)
+        right_lay.addWidget(step3_frame)
+        right_lay.addStretch()
+
+        bento = QHBoxLayout(); bento.setSpacing(12)
+        bento.addWidget(left_scroll, stretch=2)
+        bento.addWidget(right_w, stretch=1)
+
+        root_layout = QVBoxLayout()
+        root_layout.setContentsMargins(20, 12, 20, 12)
+        root_layout.setSpacing(10)
+        root_layout.addLayout(bento, stretch=1)
+        root_layout.addWidget(self.log_text)
+        self.setLayout(root_layout)
 
         # Apply default preset (Balanced) so model/confidence/max_tags are synced
         self.preset_combo.setCurrentIndex(1)
@@ -1248,23 +1270,28 @@ class _EditTab(QWidget):
 
     def _init_ui(self):
         root = QVBoxLayout()
-        root.setSpacing(12)
+        root.setSpacing(10)
         root.setContentsMargins(20, 12, 20, 12)
         self.setLayout(root)
 
-        # Toolbar
+        # ── Toolbar ──────────────────────────────────────────────
         toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
+
         self.load_btn = QPushButton(get_text('ce_load_folder', self.lang))
         self.load_btn.setStyleSheet(theme.btn_primary())
         self.load_btn.clicked.connect(self._browse_folder)
         toolbar.addWidget(self.load_btn)
 
         self.save_btn = QPushButton(get_text('ce_save_all', self.lang))
-        self.save_btn.setStyleSheet(theme.btn_primary())
+        self.save_btn.setStyleSheet(theme.btn_secondary())
         self.save_btn.clicked.connect(self._save_all)
         self.save_btn.setEnabled(False)
         toolbar.addWidget(self.save_btn)
-        toolbar.addSpacing(20)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.VLine)
+        sep.setStyleSheet(f"color: {theme.BORDER};")
+        toolbar.addWidget(sep)
 
         self.add_tag_btn = QPushButton(get_text('ce_add_tag', self.lang))
         self.add_tag_btn.setStyleSheet(theme.btn_secondary())
@@ -1285,56 +1312,143 @@ class _EditTab(QWidget):
         toolbar.addWidget(self.replace_tag_btn)
 
         toolbar.addStretch()
-        root.addLayout(toolbar)
-
-        # Splitter: left = thumbnail list, right = preview + editor
-        splitter = QSplitter(Qt.Horizontal)
-
-        self.image_list = QListWidget()
-        self.image_list.setIconSize(QSize(64, 64))
-        self.image_list.setMinimumWidth(200)
-        self.image_list.setMaximumWidth(320)
-        self.image_list.setStyleSheet(
-            f"background-color: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: 6px;"
-        )
-        self.image_list.currentRowChanged.connect(self._on_item_selected)
-        splitter.addWidget(self.image_list)
-
-        right = QWidget()
-        right_lay = QVBoxLayout(right)
-        right_lay.setContentsMargins(8, 0, 0, 0)
-
-        self.preview_lbl = QLabel()
-        self.preview_lbl.setAlignment(Qt.AlignCenter)
-        self.preview_lbl.setMinimumHeight(300)
-        self.preview_lbl.setStyleSheet(
-            f"background-color: {theme.BG_DARK}; border-radius: 6px;"
-        )
-        right_lay.addWidget(self.preview_lbl, stretch=2)
-
-        self.filename_lbl = QLabel("")
-        self.filename_lbl.setStyleSheet(
-            f"color: {theme.ORANGE_LIGHT}; font-weight: bold; margin-top: 6px;"
-        )
-        right_lay.addWidget(self.filename_lbl)
-
-        # TagCompleterTextEdit instead of plain QTextEdit
-        self.caption_edit = TagCompleterTextEdit()
-        self.caption_edit.setMinimumHeight(100)
-        self.caption_edit.setMaximumHeight(180)
-        self.caption_edit.setStyleSheet(theme.log_area())
-        self.caption_edit.textChanged.connect(self._on_caption_changed)
-        right_lay.addWidget(self.caption_edit, stretch=1)
-
-        splitter.addWidget(right)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
-        root.addWidget(splitter, stretch=1)
 
         self.status_lbl = QLabel(get_text('ce_no_images', self.lang))
         self.status_lbl.setStyleSheet(theme.label_muted())
-        root.addWidget(self.status_lbl)
+        toolbar.addWidget(self.status_lbl)
+
+        root.addLayout(toolbar)
+
+        # ── 3-panel bento ────────────────────────────────────────
+        bento = QHBoxLayout()
+        bento.setSpacing(12)
+
+        # Left panel — file list card (fixed 220px)
+        left_card = QFrame()
+        left_card.setFixedWidth(220)
+        left_card.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_CARD}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+        )
+        left_card_lay = QVBoxLayout(left_card)
+        left_card_lay.setContentsMargins(0, 0, 0, 0)
+        left_card_lay.setSpacing(0)
+
+        list_hdr = QLabel("  Images")
+        list_hdr.setFixedHeight(36)
+        list_hdr.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-weight: 600; "
+            f"letter-spacing: 0.08em; text-transform: uppercase; "
+            f"border-bottom: 1px solid {theme.BORDER}; "
+            f"background: transparent; padding-left: 8px;"
+        )
+        left_card_lay.addWidget(list_hdr)
+
+        self.image_list = QListWidget()
+        self.image_list.setIconSize(QSize(48, 48))
+        self.image_list.setSpacing(2)
+        self.image_list.setStyleSheet(
+            f"QListWidget {{ background: transparent; border: none; "
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(10)}; }}"
+            f"QListWidget::item {{ padding: 6px 8px; border-radius: 4px; }}"
+            f"QListWidget::item:selected {{ background: {theme.ORANGE}22; "
+            f"color: {theme.ORANGE_LIGHT}; }}"
+            f"QListWidget::item:hover:!selected {{ background: {theme.BG_SURFACE}; }}"
+        )
+        self.image_list.currentRowChanged.connect(self._on_item_selected)
+        left_card_lay.addWidget(self.image_list)
+
+        bento.addWidget(left_card)
+
+        # Right area — preview card (top) + editor card (bottom)
+        right_col = QVBoxLayout()
+        right_col.setSpacing(10)
+
+        # Preview card
+        preview_card = QFrame()
+        preview_card.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_CARD}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+        )
+        preview_lay = QVBoxLayout(preview_card)
+        preview_lay.setContentsMargins(12, 10, 12, 10)
+        preview_lay.setSpacing(6)
+
+        self.filename_lbl = QLabel("")
+        self.filename_lbl.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-weight: 600; "
+            f"font-size: {theme.fs(11)}; background: transparent; border: none;"
+        )
+        preview_lay.addWidget(self.filename_lbl)
+
+        self.preview_lbl = QLabel()
+        self.preview_lbl.setAlignment(Qt.AlignCenter)
+        self.preview_lbl.setMinimumHeight(240)
+        self.preview_lbl.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.preview_lbl.setStyleSheet(
+            f"background: {theme.BG_DEEPEST}; border-radius: 6px; border: none;"
+        )
+        preview_lay.addWidget(self.preview_lbl, stretch=1)
+
+        right_col.addWidget(preview_card, stretch=55)
+
+        # Editor card
+        editor_card = QFrame()
+        editor_card.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_CARD}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+        )
+        editor_lay = QVBoxLayout(editor_card)
+        editor_lay.setContentsMargins(12, 10, 12, 10)
+        editor_lay.setSpacing(8)
+
+        editor_hdr = QHBoxLayout()
+        editor_title = QLabel("Tags / Caption")
+        editor_title.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(10)}; "
+            f"font-weight: 600; background: transparent; border: none;"
+        )
+        editor_hdr.addWidget(editor_title)
+        editor_hdr.addStretch()
+
+        self._save_one_btn = QPushButton("Save")
+        self._save_one_btn.setFixedHeight(26)
+        self._save_one_btn.setStyleSheet(theme.btn_primary())
+        self._save_one_btn.clicked.connect(self._save_current)
+        self._save_one_btn.setEnabled(False)
+        editor_hdr.addWidget(self._save_one_btn)
+
+        self._save_next_btn = QPushButton("Save & Next")
+        self._save_next_btn.setFixedHeight(26)
+        self._save_next_btn.setStyleSheet(theme.btn_secondary())
+        self._save_next_btn.clicked.connect(self._save_and_next)
+        self._save_next_btn.setEnabled(False)
+        editor_hdr.addWidget(self._save_next_btn)
+
+        self._revert_btn = QPushButton("Revert")
+        self._revert_btn.setFixedHeight(26)
+        self._revert_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER}; "
+            f"color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 0 10px; "
+            f"font-size: {theme.fs(10)}; }}"
+            f"QPushButton:hover {{ border-color: {theme.BORDER_LIGHT}; color: {theme.TEXT_SECONDARY}; }}"
+        )
+        self._revert_btn.clicked.connect(self._revert_current)
+        self._revert_btn.setEnabled(False)
+        editor_hdr.addWidget(self._revert_btn)
+
+        editor_lay.addLayout(editor_hdr)
+
+        self.caption_edit = TagCompleterTextEdit()
+        self.caption_edit.setStyleSheet(theme.log_area())
+        self.caption_edit.textChanged.connect(self._on_caption_changed)
+        editor_lay.addWidget(self.caption_edit, stretch=1)
+
+        right_col.addWidget(editor_card, stretch=45)
+
+        bento.addLayout(right_col, stretch=1)
+        root.addLayout(bento, stretch=1)
 
     # ── Folder loading ──────────────────────────────────────────
 
@@ -1383,13 +1497,24 @@ class _EditTab(QWidget):
         self.add_tag_btn.setEnabled(has)
         self.remove_tag_btn.setEnabled(has)
         self.replace_tag_btn.setEnabled(has)
+        self._save_one_btn.setEnabled(has)
+        self._save_next_btn.setEnabled(has)
+        self._revert_btn.setEnabled(has)
         self.status_lbl.setText(
             get_text('ce_loaded', self.lang).format(len(self._items), existing_captions))
         if self._items:
             self.image_list.setCurrentRow(0)
         self.folder_changed.emit(folder)
 
-    # ── Item selection ──────────────────────────────────────────
+    def _commit_current(self):
+        if 0 <= self._current_idx < len(self._items):
+            _, cap_path = self._items[self._current_idx]
+            self._captions[cap_path] = self.caption_edit.toPlainText()
+
+    def _on_caption_changed(self):
+        self._dirty = True
+
+    # ── Item selection + per-item save ─────────────────────────
 
     def _on_item_selected(self, row: int):
         if self._current_idx >= 0:
@@ -1415,15 +1540,41 @@ class _EditTab(QWidget):
         self.caption_edit.setPlainText(self._captions.get(cap_path, ""))
         self.caption_edit.blockSignals(False)
 
-    def _commit_current(self):
+    # ── Save ────────────────────────────────────────────────────
+
+    def _save_current(self):
+        """Save the caption of the currently selected image to disk."""
         if 0 <= self._current_idx < len(self._items):
             _, cap_path = self._items[self._current_idx]
-            self._captions[cap_path] = self.caption_edit.toPlainText()
+            text = self.caption_edit.toPlainText()
+            self._captions[cap_path] = text
+            try:
+                Path(cap_path).write_text(text, encoding='utf-8')
+            except Exception:
+                pass
+            self._dirty = False
+            self.status_lbl.setText(f"Saved: {Path(cap_path).name}")
 
-    def _on_caption_changed(self):
-        self._dirty = True
+    def _save_and_next(self):
+        """Save current caption then advance to the next image."""
+        self._save_current()
+        nxt = self._current_idx + 1
+        if nxt < len(self._items):
+            self.image_list.setCurrentRow(nxt)
 
-    # ── Save ────────────────────────────────────────────────────
+    def _revert_current(self):
+        """Reload caption from disk, discarding unsaved edits."""
+        if 0 <= self._current_idx < len(self._items):
+            _, cap_path = self._items[self._current_idx]
+            try:
+                text = Path(cap_path).read_text(encoding='utf-8') if Path(cap_path).exists() else ""
+            except Exception:
+                text = ""
+            self._captions[cap_path] = text
+            self.caption_edit.blockSignals(True)
+            self.caption_edit.setPlainText(text)
+            self.caption_edit.blockSignals(False)
+            self._dirty = False
 
     def _save_all(self):
         self._commit_current()

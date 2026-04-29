@@ -276,46 +276,79 @@ class CharacterSortPage(QWidget):
     # ─── UI construction ──────────────────────────────────────────────────────
 
     def init_ui(self):
-        layout = QVBoxLayout()
-        layout.setSpacing(16)
-        layout.setContentsMargins(30, 20, 30, 20)
-        self.setLayout(layout)
+        from PyQt5.QtWidgets import QScrollArea, QGridLayout
+        root = QVBoxLayout()
+        root.setContentsMargins(20, 16, 20, 0)
+        root.setSpacing(12)
+        self.setLayout(root)
 
-        # Tooltip style handled by global theme
+        # Hidden legacy labels (kept for update_language compat)
+        self.title_lbl = QLabel(get_text('char_sort_title', self.lang)); self.title_lbl.hide()
+        self.subtitle_lbl = QLabel(get_text('char_sort_subtitle', self.lang)); self.subtitle_lbl.hide()
 
-        # Title
-        self.title_lbl = QLabel(get_text('char_sort_title', self.lang))
-        self.title_lbl.setFont(QFont('Inter', 20, QFont.Bold))
-        self.title_lbl.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
-        self.title_lbl.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.title_lbl)
+        # ── Preset bar (full width) ──
+        root.addWidget(self._build_preset_bar())
 
-        self.subtitle_lbl = QLabel(get_text('char_sort_subtitle', self.lang))
-        self.subtitle_lbl.setAlignment(Qt.AlignCenter)
-        self.subtitle_lbl.setStyleSheet(theme.label_muted())
-        layout.addWidget(self.subtitle_lbl)
+        # ── Bento row: folders (left 2/3) + settings+start (right 1/3) ──
+        bento = QHBoxLayout(); bento.setSpacing(12)
 
-        # ── Preset butonları ───────────────────────────────────────────────
-        layout.addWidget(self._build_preset_bar())
+        folder_scroll = QScrollArea(); folder_scroll.setWidgetResizable(True)
+        folder_scroll.setFrameShape(QFrame.NoFrame)
+        folder_scroll.setStyleSheet("background: transparent; border: none;")
+        folder_inner = QWidget(); folder_inner.setStyleSheet("background: transparent;")
+        fi_lay = QVBoxLayout(folder_inner); fi_lay.setContentsMargins(0, 0, 0, 0); fi_lay.setSpacing(10)
+        fi_lay.addWidget(self._build_folder_step())
+        fi_lay.addStretch()
+        folder_scroll.setWidget(folder_inner)
+        bento.addWidget(folder_scroll, stretch=2)
 
-        # ── Step 1: Folders ────────────────────────────────────────────────
-        layout.addWidget(self._build_folder_step())
+        right_col = QVBoxLayout(); right_col.setSpacing(10)
+        right_col.addWidget(self._build_settings_step())
+        right_col.addWidget(self._build_start_step())
+        right_col.addStretch()
+        right_w = QWidget(); right_w.setStyleSheet("background: transparent;")
+        right_w.setLayout(right_col)
+        bento.addWidget(right_w, stretch=1)
 
-        # ── Step 2: Settings ───────────────────────────────────────────────
-        layout.addWidget(self._build_settings_step())
+        root.addLayout(bento)
 
-        # ── Step 3: Start ──────────────────────────────────────────────────
-        layout.addWidget(self._build_start_step())
+        # ── Cluster Results ──
+        res_hdr = QHBoxLayout()
+        self._results_title = QLabel("Cluster Results")
+        self._results_title.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(18)}; font-weight: 700;"
+            f" letter-spacing: -0.02em; background: transparent; border: none;"
+        )
+        self._cluster_count_badge = QLabel("0 Total")
+        self._cluster_count_badge.setStyleSheet(
+            f"background: {theme.BG_SURFACE}; color: {theme.TEXT_SECONDARY};"
+            f" font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)};"
+            f" border-radius: 10px; padding: 2px 10px; border: none;"
+        )
+        res_hdr.addWidget(self._results_title); res_hdr.addWidget(self._cluster_count_badge); res_hdr.addStretch()
+        root.addLayout(res_hdr)
 
-        # Log
+        cluster_scroll = QScrollArea(); cluster_scroll.setObjectName("cluster_scroll")
+        cluster_scroll.setWidgetResizable(True); cluster_scroll.setFixedHeight(200)
+        cluster_scroll.setStyleSheet("background: transparent; border: none;")
+        self._cluster_inner = QWidget(); self._cluster_inner.setStyleSheet("background: transparent;")
+        self._cluster_grid_lay = QGridLayout(self._cluster_inner); self._cluster_grid_lay.setSpacing(8)
+        # Placeholder
+        self._cluster_placeholder = QLabel("Run clustering to see results here.")
+        self._cluster_placeholder.setAlignment(Qt.AlignCenter)
+        self._cluster_placeholder.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(13)}; background: transparent; border: none;"
+        )
+        self._cluster_grid_lay.addWidget(self._cluster_placeholder, 0, 0)
+        cluster_scroll.setWidget(self._cluster_inner)
+        root.addWidget(cluster_scroll)
+
+        # ── Log terminal ──
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(105)
-        self.log_text.setMaximumHeight(225)
+        self.log_text.setFixedHeight(130)
         self.log_text.setStyleSheet(theme.log_area())
-        layout.addWidget(self.log_text)
-
-        layout.addStretch()
+        root.addWidget(self.log_text)
 
     # ── Preset bar ────────────────────────────────────────────────────────────
 
@@ -950,6 +983,55 @@ class CharacterSortPage(QWidget):
             self.log(f"   📁 {name}: {count}")
         self._cleanup_thread()
         self._reset_buttons()
+        self._populate_cluster_grid(stats)
+
+    def _populate_cluster_grid(self, stats: Dict):
+        """Populate the cluster results grid with folder cards."""
+        from PyQt5.QtWidgets import QGridLayout
+        # Clear existing content
+        while self._cluster_grid_lay.count():
+            item = self._cluster_grid_lay.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not stats:
+            self._cluster_placeholder = QLabel("No clusters found.")
+            self._cluster_placeholder.setAlignment(Qt.AlignCenter)
+            self._cluster_placeholder.setStyleSheet(f"color: {theme.TEXT_MUTED}; background: transparent; border: none;")
+            self._cluster_grid_lay.addWidget(self._cluster_placeholder, 0, 0)
+            self._cluster_count_badge.setText("0 Total")
+            return
+
+        cols = 5
+        self._cluster_count_badge.setText(f"{len(stats)} Total")
+        for idx, (name, count) in enumerate(sorted(stats.items())):
+            row, col = divmod(idx, cols)
+            card = self._make_cluster_card(name, count)
+            self._cluster_grid_lay.addWidget(card, row, col)
+
+    def _make_cluster_card(self, name: str, count: int) -> QFrame:
+        is_noise = name in ('unknown', 'no_face', 'multi_face') or name.startswith('unknown')
+        border_color = theme.RED if is_noise else f"rgba(232,131,42,0.3)"
+        card = QFrame()
+        card.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_SURFACE}; border: 1px solid {border_color};"
+            f" border-radius: 8px; }}"
+        )
+        cl = QVBoxLayout(card); cl.setContentsMargins(10, 10, 10, 10); cl.setSpacing(4)
+        icon = "🔴" if is_noise else "👤"
+        name_lbl = QLabel(f"{icon}  {name}")
+        name_lbl.setStyleSheet(
+            f"color: {theme.RED if is_noise else theme.ORANGE}; font-weight: 600;"
+            f" font-size: {theme.fs(11)}; background: transparent; border: none;"
+        )
+        name_lbl.setWordWrap(True)
+        count_lbl = QLabel(f"{count} images")
+        count_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-family: {theme.FONT_MONO};"
+            f" background: transparent; border: none;"
+        )
+        cl.addWidget(name_lbl); cl.addWidget(count_lbl)
+        return card
 
     def _on_error(self, msg: str):
         self.log(f"❌ {get_text('log_error', self.lang).format(msg)}")
