@@ -889,10 +889,11 @@ class VideoSmartCropperUI(QMainWindow):
         for btn in (self.quality_btn, self.caption_btn, self.tags_btn):
             btn.setStyleSheet(self._collapsible_btn_style())
         self.ensemble_group.setStyleSheet(theme.panel_group())
-        self.quality_panel.setStyleSheet(theme.panel_group())
-        self.caption_panel.setStyleSheet(theme.panel_group())
-        if hasattr(self, 'tags_panel'):
-            self.tags_panel.setStyleSheet(theme.panel_group())
+        for panel in (self.quality_panel, self.caption_panel):
+            if hasattr(panel, 'refresh_styles'):
+                panel.refresh_styles()
+        if hasattr(self, 'tags_panel') and hasattr(self.tags_panel, 'refresh_styles'):
+            self.tags_panel.refresh_styles()
 
         # Settings page
         if hasattr(self, '_theme_dark_btn'):
