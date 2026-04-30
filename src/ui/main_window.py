@@ -586,15 +586,15 @@ class VideoSmartCropperUI(QMainWindow):
         sidebar_lay.addWidget(brand_widget)
 
         # Section: WORKSPACE
-        ws_label = QLabel("WORKSPACE")
+        ws_label = QLabel(get_text('workspace_label', self.current_lang))
         ws_label.setStyleSheet(theme.sidebar_section_label())
         sidebar_lay.addWidget(ws_label)
         sidebar_lay.addSpacing(4)
         self._sidebar_section_labels = [ws_label]
 
         self.page_video_btn = QPushButton("Video Harvester")
-        self.page_caption_studio_btn = QPushButton("Captioning")
-        self.page_char_sort_btn = QPushButton("Characters")
+        self.page_caption_studio_btn = QPushButton(get_text('page_caption_studio', self.current_lang))
+        self.page_char_sort_btn = QPushButton(get_text('page_character_sort', self.current_lang))
 
         self._nav_buttons = [
             self.page_video_btn,
@@ -619,14 +619,14 @@ class VideoSmartCropperUI(QMainWindow):
 
         sidebar_lay.addSpacing(10)
 
-        # Section: KÜTÜPHANE
-        lib_label = QLabel("KÜTÜPHANE")
+        # Section: LIBRARY
+        lib_label = QLabel(get_text('library_label', self.current_lang))
         lib_label.setStyleSheet(theme.sidebar_section_label())
         sidebar_lay.addWidget(lib_label)
         sidebar_lay.addSpacing(4)
         self._sidebar_section_labels.append(lib_label)
 
-        self.page_tag_freq_btn = QPushButton("Tag Dictionary")
+        self.page_tag_freq_btn = QPushButton(get_text('page_tag_frequency', self.current_lang))
         self.page_tag_freq_btn.setCursor(Qt.PointingHandCursor)
         self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(False))
         self.page_tag_freq_btn.clicked.connect(lambda: self.switch_page(3))
@@ -986,10 +986,10 @@ class VideoSmartCropperUI(QMainWindow):
         # Apply / Reset row (bottom of settings content)
         btn_row = QHBoxLayout()
         btn_row.setContentsMargins(0, 8, 0, 8)
-        reset_btn = QPushButton("Reset Defaults")
+        reset_btn = QPushButton(get_text('settings_reset', self.current_lang))
         reset_btn.setStyleSheet(theme.btn_secondary())
         reset_btn.clicked.connect(self._settings_reset_defaults)
-        apply_btn = QPushButton("Apply")
+        apply_btn = QPushButton(get_text('settings_apply', self.current_lang))
         apply_btn.setStyleSheet(theme.btn_primary())
         apply_btn.clicked.connect(self._settings_apply)
         btn_row.addWidget(reset_btn); btn_row.addStretch(); btn_row.addWidget(apply_btn)
@@ -1027,11 +1027,11 @@ class VideoSmartCropperUI(QMainWindow):
 
         # Theme mode
         row1 = QHBoxLayout()
-        lbl = QLabel("Theme Mode")
+        lbl = QLabel(get_text('settings_theme_mode', self.current_lang))
         lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 500; background: transparent; border: none;")
         row1.addWidget(lbl); row1.addStretch()
-        dark_btn = QPushButton("Dark")
-        light_btn = QPushButton("Light")
+        dark_btn = QPushButton(get_text('theme_dark', self.current_lang))
+        light_btn = QPushButton(get_text('theme_light', self.current_lang))
         for btn, mode in [(dark_btn, "dark"), (light_btn, "light")]:
             btn.setFixedHeight(30)
             btn.clicked.connect(lambda _, m=mode: self._apply_theme_mode(m))
@@ -1043,7 +1043,7 @@ class VideoSmartCropperUI(QMainWindow):
 
         # Accent color swatches
         row2 = QHBoxLayout()
-        lbl2 = QLabel("Accent Color")
+        lbl2 = QLabel(get_text('settings_accent_color', self.current_lang))
         lbl2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 500; background: transparent; border: none;")
         row2.addWidget(lbl2); row2.addStretch()
         self._accent_swatches = []
@@ -1061,7 +1061,7 @@ class VideoSmartCropperUI(QMainWindow):
 
         # Font scale
         row3 = QHBoxLayout()
-        lbl3 = QLabel("Font Scale")
+        lbl3 = QLabel(get_text('settings_font_scale', self.current_lang))
         lbl3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 500; background: transparent; border: none;")
         self._font_scale_slider = QSlider(Qt.Horizontal)
         self._font_scale_slider.setRange(80, 140)
@@ -1081,7 +1081,7 @@ class VideoSmartCropperUI(QMainWindow):
     def _settings_language_widget(self) -> QWidget:
         w = QWidget(); w.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(w); lay.setContentsMargins(20, 12, 20, 16)
-        lbl = QLabel("Interface Language")
+        lbl = QLabel(get_text('settings_language', self.current_lang))
         lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; background: transparent; border: none;")
         self._settings_lang_combo = QComboBox()
         self._settings_lang_combo.addItems(["English", "Türkçe"])
@@ -1097,13 +1097,13 @@ class VideoSmartCropperUI(QMainWindow):
     def _settings_output_widget(self) -> QWidget:
         w = QWidget(); w.setStyleSheet("background: transparent;")
         lay = QHBoxLayout(w); lay.setContentsMargins(20, 12, 20, 16)
-        lbl = QLabel("Default Output Folder")
+        lbl = QLabel(get_text('settings_output_folder', self.current_lang))
         lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; background: transparent; border: none;")
         self._output_path_lbl = QLabel("—")
         self._output_path_lbl.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)}; background: transparent; border: none;"
         )
-        browse = QPushButton("Browse")
+        browse = QPushButton(get_text('settings_browse', self.current_lang))
         browse.setStyleSheet(theme.btn_secondary())
         browse.clicked.connect(self._browse_settings_output)
         lay.addWidget(lbl); lay.addStretch()
@@ -1633,7 +1633,7 @@ class VideoSmartCropperUI(QMainWindow):
         right_col.addWidget(prog_card)
 
         # Thumbnail grid card
-        thumb_card = self._bento_card("Latest Frames")
+        thumb_card = self._bento_card(get_text('latest_frames', self.current_lang))
         thumb_lay = thumb_card.layout(); thumb_lay.setSpacing(6)
         self.preview_label = QLabel("Latest Frames"); self.preview_label.hide()
         self.log_label = QLabel(); self.log_label.hide()
@@ -2217,7 +2217,10 @@ class VideoSmartCropperUI(QMainWindow):
         """Update all UI texts with current language"""
         self.setWindowTitle(get_text('app_title', self.current_lang))
         
-        # Sidebar nav buttons
+        # Sidebar nav buttons — update section labels too
+        for i, lbl in enumerate(self._sidebar_section_labels):
+            lbl.setText(get_text('workspace_label' if i == 0 else 'library_label', self.current_lang))
+
         _nav_labels = [
             'page_video_processing',
             'page_caption_studio',

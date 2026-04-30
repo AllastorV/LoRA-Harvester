@@ -356,12 +356,12 @@ class CharacterSortPage(QWidget):
         src_lay.setAlignment(Qt.AlignCenter); src_lay.setSpacing(6); src_lay.setContentsMargins(16, 12, 16, 12)
         src_icon = QLabel("▸"); src_icon.setAlignment(Qt.AlignCenter)
         src_icon.setStyleSheet("font-size: 28px; background: transparent; border: none;")
-        src_title_lbl = QLabel("Source Images"); src_title_lbl.setAlignment(Qt.AlignCenter)
+        src_title_lbl = QLabel(get_text('source_images_label', self.lang)); src_title_lbl.setAlignment(Qt.AlignCenter)
         src_title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(15)}; font-weight: 600; background: transparent; border: none;")
-        src_desc = QLabel("Drag & drop folder containing images to cluster")
+        src_desc = QLabel(get_text('source_images_desc', self.lang))
         src_desc.setAlignment(Qt.AlignCenter); src_desc.setWordWrap(True)
         src_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;")
-        self._src_path_lbl = QLabel("No folder selected")
+        self._src_path_lbl = QLabel(get_text('no_folder_selected', self.lang))
         self._src_path_lbl.setAlignment(Qt.AlignCenter)
         self._src_path_lbl.setStyleSheet(
             f"background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER}; border-radius: 3px;"
@@ -387,12 +387,12 @@ class CharacterSortPage(QWidget):
         ref_lay.setAlignment(Qt.AlignCenter); ref_lay.setSpacing(6); ref_lay.setContentsMargins(16, 12, 16, 12)
         ref_icon = QLabel("◈"); ref_icon.setAlignment(Qt.AlignCenter)
         ref_icon.setStyleSheet("font-size: 28px; background: transparent; border: none;")
-        ref_title_lbl = QLabel("Reference Faces (Optional)"); ref_title_lbl.setAlignment(Qt.AlignCenter)
+        ref_title_lbl = QLabel(get_text('ref_faces_label', self.lang)); ref_title_lbl.setAlignment(Qt.AlignCenter)
         ref_title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(15)}; font-weight: 600; background: transparent; border: none;")
-        ref_desc = QLabel("Drag & drop folder with known character subfolders")
+        ref_desc = QLabel(get_text('ref_faces_desc', self.lang))
         ref_desc.setAlignment(Qt.AlignCenter); ref_desc.setWordWrap(True)
         ref_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;")
-        self._ref_path_lbl = QLabel("No reference folder loaded")
+        self._ref_path_lbl = QLabel(get_text('no_ref_loaded', self.lang))
         self._ref_path_lbl.setAlignment(Qt.AlignCenter)
         self._ref_path_lbl.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-style: italic; background: transparent; border: none;"
@@ -417,7 +417,7 @@ class CharacterSortPage(QWidget):
         sc_lay.setSpacing(10)
 
         sc_hdr = QHBoxLayout()
-        sc_title_lbl = QLabel("Clustering Settings")
+        sc_title_lbl = QLabel(get_text('clustering_settings', self.lang))
         sc_title_lbl.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; font-weight: 600;"
             f" background: transparent; border: none;"
@@ -497,7 +497,7 @@ class CharacterSortPage(QWidget):
         div.setStyleSheet(f"background: {theme.BORDER}; border: none;"); div.setFixedHeight(1)
         sc_lay.addWidget(div)
 
-        self.start_btn = QPushButton("Start Clustering")
+        self.start_btn = QPushButton(get_text('start_clustering', self.lang))
         self.start_btn.setEnabled(False)
         self.start_btn.setFixedHeight(36)
         self.start_btn.setToolTip("Start face clustering on the source images")
@@ -526,7 +526,7 @@ class CharacterSortPage(QWidget):
 
         # ── CLUSTER RESULTS ──────────────────────────────────────────────────
         res_hdr = QHBoxLayout()
-        self._results_title = QLabel("Cluster Results")
+        self._results_title = QLabel(get_text('cluster_results', self.lang))
         self._results_title.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(18)}; font-weight: 700;"
             f" letter-spacing: -0.02em; background: transparent; border: none;"
@@ -577,7 +577,7 @@ class CharacterSortPage(QWidget):
         self._cluster_inner = QWidget(); self._cluster_inner.setStyleSheet("background: transparent;")
         self._cluster_grid_lay = QGridLayout(self._cluster_inner); self._cluster_grid_lay.setSpacing(10)
         self._cluster_grid_lay.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self._cluster_placeholder = QLabel("Run clustering to see results here.")
+        self._cluster_placeholder = QLabel(get_text('no_clusters_placeholder', self.lang))
         self._cluster_placeholder.setAlignment(Qt.AlignCenter)
         self._cluster_placeholder.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(13)}; background: transparent; border: none;"

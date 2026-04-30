@@ -652,12 +652,12 @@ class _GenerateTab(QWidget):
         self.setLayout(root_layout)
 
         # Page header
-        pg_title = QLabel("Batch Caption Generation")
+        pg_title = QLabel(get_text('batch_caption_title', self.lang))
         pg_title.setStyleSheet(
             f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(22)};font-weight:600;"
             f"letter-spacing:-0.015em;background:transparent;border:none;"
         )
-        pg_desc = QLabel("Configure models and settings to automatically generate captions for your dataset.")
+        pg_desc = QLabel(get_text('batch_caption_desc', self.lang))
         pg_desc.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(12)};background:transparent;border:none;")
         hdr_left = QVBoxLayout(); hdr_left.setSpacing(4)
         hdr_left.addWidget(pg_title); hdr_left.addWidget(pg_desc)
@@ -667,7 +667,7 @@ class _GenerateTab(QWidget):
         )
         sb_lay = QHBoxLayout(status_badge); sb_lay.setContentsMargins(10, 4, 14, 4); sb_lay.setSpacing(6)
         dot = QLabel("●"); dot.setStyleSheet("color:#22c55e;background:transparent;border:none;font-size:8px;")
-        sb_txt = QLabel("Harvester Idle")
+        sb_txt = QLabel(get_text('harvester_idle', self.lang))
         sb_txt.setStyleSheet(
             f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
             f"background:transparent;border:none;"
@@ -684,7 +684,7 @@ class _GenerateTab(QWidget):
         left_col = QVBoxLayout(); left_col.setSpacing(16)
 
         # -- Model Selection card ---------------------------------
-        model_card = _card("Model Selection", "⚙")
+        model_card = _card(get_text('model_selection_title', self.lang), "⚙")
         mc_lay = model_card.layout()
 
         def _model_subcard(title, badge_text, badge_color, desc_text, sl_attr, sl_lbl_attr, sl_default, cb_attr):
@@ -751,7 +751,7 @@ class _GenerateTab(QWidget):
         left_col.addWidget(model_card)
 
         # -- Global Formatting card -------------------------------
-        fmt_card = _card("Global Formatting", "🎛")
+        fmt_card = _card(get_text('global_formatting_title', self.lang), "🎛")
         fmt_lay = fmt_card.layout()
         grid = QGridLayout(); grid.setSpacing(16); grid.setContentsMargins(0, 0, 0, 0)
         grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); grid.setColumnStretch(2, 1)
@@ -772,12 +772,12 @@ class _GenerateTab(QWidget):
             "Custom Workflow",
         ])
         self._preset_vis.setStyleSheet(theme.combo())
-        grid.addLayout(_field_col("Preset Configuration", self._preset_vis), 0, 0)
+        grid.addLayout(_field_col(get_text('preset_label', self.lang), self._preset_vis), 0, 0)
 
         self.trigger_edit.setStyleSheet(theme.line_edit())
         grid.addLayout(
-            _field_col("Activation / Trigger Word(s)", self.trigger_edit,
-                       "Automatically prepended to all captions."),
+            _field_col(get_text('trigger_word', self.lang), self.trigger_edit,
+                       get_text('trigger_hint', self.lang)),
             0, 1,
         )
 
@@ -785,21 +785,21 @@ class _GenerateTab(QWidget):
         self._last_words_edit.setPlaceholderText("e.g., style of Artist")
         self._last_words_edit.setStyleSheet(theme.line_edit())
         grid.addLayout(
-            _field_col("Last Word(s)", self._last_words_edit,
-                       "Automatically appended before global suffix."),
+            _field_col(get_text('last_words_label', self.lang), self._last_words_edit,
+                       get_text('last_words_hint', self.lang)),
             0, 2,
         )
 
         self.suffix_edit.setStyleSheet(theme.line_edit())
         grid.addLayout(
-            _field_col("Global Suffix", self.suffix_edit,
-                       "Automatically appended to all captions."),
+            _field_col(get_text('global_suffix_label', self.lang), self.suffix_edit,
+                       get_text('global_suffix_hint', self.lang)),
             1, 0, 1, 2,
         )
 
         # Tag Mode segmented radio bar
         tm_col = QVBoxLayout(); tm_col.setSpacing(6)
-        tm_col.addWidget(_mono_lbl("Tag Mode"))
+        tm_col.addWidget(_mono_lbl(get_text('tag_mode_label', self.lang)))
         seg_bar = QFrame()
         seg_bar.setStyleSheet(
             f"QFrame {{background:rgba(0,0,0,0.4);border:1px solid {theme.BORDER};border-radius:6px;}}"
@@ -820,7 +820,12 @@ class _GenerateTab(QWidget):
                 f"QRadioButton::indicator {{width:0;height:0;}}"
             )
 
-        for i, lbl in enumerate(["Tag Only", "Tag First", "Combined"]):
+        _tag_mode_labels = [
+            get_text('tag_mode_tag_only', self.lang),
+            get_text('tag_mode_tag_first', self.lang),
+            get_text('tag_mode_combined', self.lang),
+        ]
+        for i, lbl in enumerate(_tag_mode_labels):
             rb = QRadioButton(lbl)
             rb.setChecked(i == 1)
             rb.setStyleSheet(_rb_style(i == 1))
@@ -849,7 +854,7 @@ class _GenerateTab(QWidget):
         right_col = QVBoxLayout(); right_col.setSpacing(16)
 
         # -- Batch Rules card ------------------------------------
-        rules_card = _card("Batch Rules", "📋")
+        rules_card = _card(get_text('batch_rules_title', self.lang), "")
         rules_lay = rules_card.layout()
         write_grp = QButtonGroup(self); write_grp.setExclusive(True)
         self._overwrite_rb = QRadioButton(); self._overwrite_rb.setChecked(True)
@@ -881,12 +886,14 @@ class _GenerateTab(QWidget):
             return row
 
         rules_lay.addLayout(_rule_row(
-            self._overwrite_rb, "Overwrite Existing",
-            "Deletes any existing .txt files in the dataset folder before writing new ones.",
+            self._overwrite_rb,
+            get_text('batch_overwrite', self.lang),
+            get_text('batch_overwrite_desc', self.lang),
         ))
         rules_lay.addLayout(_rule_row(
-            self._append_rb, "Append to Existing",
-            "Adds newly generated tags to existing caption files, separated by commas.",
+            self._append_rb,
+            get_text('batch_append', self.lang),
+            get_text('batch_append_desc', self.lang),
         ))
         div_line = QFrame(); div_line.setFrameShape(QFrame.HLine)
         div_line.setStyleSheet(f"background:{theme.BORDER};border:none;"); div_line.setFixedHeight(1)
@@ -902,12 +909,12 @@ class _GenerateTab(QWidget):
         ac_row = QHBoxLayout(); ac_row.setSpacing(10); ac_row.setAlignment(Qt.AlignTop)
         ac_row.addWidget(self._auto_clean_cb)
         ac_txt = QVBoxLayout(); ac_txt.setSpacing(2)
-        act = QLabel("Auto-clean Tags")
+        act = QLabel(get_text('auto_clean_tags', self.lang))
         act.setStyleSheet(
             f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
             f"background:transparent;border:none;"
         )
-        acd = QLabel("Remove duplicates, underscore to space, and normalize casing.")
+        acd = QLabel(get_text('auto_clean_desc', self.lang))
         acd.setWordWrap(True)
         acd.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};background:transparent;border:none;")
         ac_txt.addWidget(act); ac_txt.addWidget(acd)
@@ -939,16 +946,16 @@ class _GenerateTab(QWidget):
             f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
             f"background:transparent;border:none;"
         )
-        ac_lay.addLayout(_info_row("Target Dataset", self._target_path_lbl))
+        ac_lay.addLayout(_info_row(get_text('target_dataset_label', self.lang), self._target_path_lbl))
 
         self._img_count_lbl = QLabel("—")
         self._img_count_lbl.setStyleSheet(
             f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:600;"
             f"font-family:{theme.FONT_MONO};background:transparent;border:none;"
         )
-        ac_lay.addLayout(_info_row("Images Found", self._img_count_lbl))
+        ac_lay.addLayout(_info_row(get_text('images_found_count', self.lang), self._img_count_lbl))
 
-        self.start_btn = QPushButton("Run Batch Captioning")
+        self.start_btn = QPushButton(get_text('run_batch_captioning', self.lang))
         self.start_btn.setEnabled(False)
         self.start_btn.setFixedHeight(48)
         self.start_btn.setCursor(Qt.PointingHandCursor)
