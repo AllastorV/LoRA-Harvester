@@ -1457,11 +1457,11 @@ class VideoSmartCropperUI(QMainWindow):
         self._preview_frame.setStyleSheet("background: transparent; border: none;")
         self._preview_grid = QGridLayout(self._preview_frame)
         self._preview_grid.setSpacing(4); self._preview_grid.setContentsMargins(0, 0, 0, 0)
-        self._PREVIEW_COLS = 6; self._PREVIEW_ROWS = 2
+        self._PREVIEW_COLS = 4; self._PREVIEW_ROWS = 2
         self._preview_labels = []
         for r in range(self._PREVIEW_ROWS):
             for c in range(self._PREVIEW_COLS):
-                lbl = QLabel(); lbl.setFixedSize(72, 72); lbl.setAlignment(Qt.AlignCenter)
+                lbl = QLabel(); lbl.setFixedSize(60, 60); lbl.setAlignment(Qt.AlignCenter)
                 lbl.setStyleSheet(f"background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER}; border-radius: 4px;")
                 self._preview_grid.addWidget(lbl, r, c); self._preview_labels.append(lbl)
         thumb_lay.addWidget(self._preview_frame)
@@ -1473,6 +1473,7 @@ class VideoSmartCropperUI(QMainWindow):
         bento_row.addWidget(right_widget, stretch=1)
 
         root.addLayout(bento_row, stretch=1)
+        self.video_page.setMinimumHeight(640)
 
         # ── Log terminal (full width) ──
         self.log_text = QTextEdit()

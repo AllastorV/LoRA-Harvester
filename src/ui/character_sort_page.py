@@ -278,41 +278,248 @@ class CharacterSortPage(QWidget):
     def init_ui(self):
         from PyQt5.QtWidgets import QScrollArea, QGridLayout
         root = QVBoxLayout()
-        root.setContentsMargins(20, 16, 20, 0)
-        root.setSpacing(12)
+        root.setContentsMargins(24, 20, 24, 16)
+        root.setSpacing(16)
         self.setLayout(root)
 
-        # Hidden legacy labels (kept for update_language compat)
-        self.title_lbl = QLabel(get_text('char_sort_title', self.lang)); self.title_lbl.hide()
+        # ── Hidden compat widgets (referenced by update_language / refresh_styles / _apply_preset) ──
+        self.title_lbl    = QLabel(get_text('char_sort_title',    self.lang)); self.title_lbl.hide()
         self.subtitle_lbl = QLabel(get_text('char_sort_subtitle', self.lang)); self.subtitle_lbl.hide()
+        self.step1_title  = QLabel(); self.step1_title.hide()
+        self.step2_title  = QLabel(); self.step2_title.hide()
+        self.step3_title  = QLabel(); self.step3_title.hide()
+        self.input_lbl    = QLabel(); self.input_lbl.hide()
+        self.ref_lbl      = QLabel(); self.ref_lbl.hide()
+        self.out_lbl      = QLabel(); self.out_lbl.hide()
+        self.browse_input_btn = QPushButton(); self.browse_input_btn.hide()
+        self.browse_files_btn = QPushButton(); self.browse_files_btn.hide()
+        self.browse_ref_btn   = QPushButton(); self.browse_ref_btn.hide()
+        self.browse_out_btn   = QPushButton(); self.browse_out_btn.hide()
+        self.clear_ref_btn    = QPushButton(); self.clear_ref_btn.hide()
+        self.clear_out_btn    = QPushButton(); self.clear_out_btn.hide()
+        self.input_count_lbl  = QLabel(); self.input_count_lbl.hide()
+        self.ref_status_lbl   = QLabel(); self.ref_status_lbl.hide()
+        self.out_status_lbl   = QLabel(); self.out_status_lbl.hide()
+        self.out_drop = DropZoneFrame(""); self.out_drop.hide()
+        self.out_drop.folder_dropped.connect(self._set_output)
+        # Hidden settings widgets used by _get_settings / _apply_preset
+        self.thresh_spin = QDoubleSpinBox(); self.thresh_spin.setRange(0.20, 0.80); self.thresh_spin.setValue(0.45); self.thresh_spin.setSingleStep(0.05); self.thresh_spin.hide()
+        self.eps_spin    = QDoubleSpinBox(); self.eps_spin.setRange(0.20, 1.50); self.eps_spin.setValue(0.60); self.eps_spin.setSingleStep(0.05); self.eps_spin.hide()
+        self.min_spin    = QSpinBox(); self.min_spin.setRange(1, 20); self.min_spin.setValue(2); self.min_spin.hide()
+        self.no_cluster_cb = QCheckBox(); self.no_cluster_cb.hide()
+        self.copy_cb       = QCheckBox(); self.copy_cb.hide()
+        self.recursive_cb  = QCheckBox(); self.recursive_cb.setChecked(True); self.recursive_cb.hide()
+        self.gpu_cb        = QCheckBox(); self.gpu_cb.setChecked(True); self.gpu_cb.hide()
+        self.max_char_slider   = QSlider(Qt.Horizontal); self.max_char_slider.setMinimum(1); self.max_char_slider.setMaximum(6); self.max_char_slider.setValue(6); self.max_char_slider.hide()
+        self.max_char_value_lbl = QLabel("6"); self.max_char_value_lbl.hide()
+        self.topn_spin     = QSpinBox(); self.topn_spin.setMinimum(0); self.topn_spin.setMaximum(9999); self.topn_spin.setValue(0); self.topn_spin.hide()
+        # Hidden labels for update_language / refresh_styles
+        self.model_lbl      = QLabel(); self.model_lbl.hide()
+        self.thresh_lbl     = QLabel(); self.thresh_lbl.hide()
+        self.thresh_lbl_info= QLabel(); self.thresh_lbl_info.hide()
+        self.eps_lbl        = QLabel(); self.eps_lbl.hide()
+        self.eps_info       = QLabel(); self.eps_info.hide()
+        self.min_lbl        = QLabel(); self.min_lbl.hide()
+        self.min_info       = QLabel(); self.min_info.hide()
+        self.max_char_lbl   = QLabel(); self.max_char_lbl.hide()
+        self.max_char_info  = QLabel(); self.max_char_info.hide()
+        self._ticks_lbl     = QLabel(); self._ticks_lbl.hide()
+        self.topn_lbl       = QLabel(); self.topn_lbl.hide()
+        self.topn_info      = QLabel(); self.topn_info.hide()
+        # Hidden preset bar widgets for _apply_preset / update_language / refresh_styles
+        self._preset_type_lbl  = QLabel(); self._preset_type_lbl.hide()
+        self._preset_info_lbl  = QLabel(); self._preset_info_lbl.hide()
+        self._preset_real_btn  = QPushButton(); self._preset_real_btn.setCheckable(True); self._preset_real_btn.setChecked(True); self._preset_real_btn.hide()
+        self._preset_anime_btn = QPushButton(); self._preset_anime_btn.setCheckable(True); self._preset_anime_btn.hide()
 
-        # ── Preset bar (full width) ──
-        root.addWidget(self._build_preset_bar())
+        # ── TOP ROW: Drop zones (left 8) + Settings card (right 4) ──────────
+        top_row = QHBoxLayout()
+        top_row.setSpacing(16)
 
-        # ── Bento row: folders (left 2/3) + settings+start (right 1/3) ──
-        bento = QHBoxLayout(); bento.setSpacing(12)
+        # LEFT — two drop zone cards side by side
+        drops_lay = QHBoxLayout()
+        drops_lay.setSpacing(12)
 
-        folder_scroll = QScrollArea(); folder_scroll.setWidgetResizable(True)
-        folder_scroll.setFrameShape(QFrame.NoFrame)
-        folder_scroll.setStyleSheet("background: transparent; border: none;")
-        folder_inner = QWidget(); folder_inner.setStyleSheet("background: transparent;")
-        fi_lay = QVBoxLayout(folder_inner); fi_lay.setContentsMargins(0, 0, 0, 0); fi_lay.setSpacing(10)
-        fi_lay.addWidget(self._build_folder_step())
-        fi_lay.addStretch()
-        folder_scroll.setWidget(folder_inner)
-        bento.addWidget(folder_scroll, stretch=2)
+        # Source Images drop zone
+        self.input_drop = DropZoneFrame(get_text('char_drag_input', self.lang))
+        self.input_drop.setMinimumHeight(160)
+        self.input_drop.setStyleSheet(self._drop_zone_card_style())
+        self.input_drop.folder_dropped.connect(self._set_input)
+        self.input_drop.files_dropped.connect(self._set_input_files)
+        # Rebuild DropZoneFrame layout to match mockup card design
+        for i in reversed(range(self.input_drop.layout().count())):
+            w = self.input_drop.layout().itemAt(i).widget()
+            if w:
+                w.setParent(None)
+        self.input_drop.layout().deleteLater()
+        src_lay = QVBoxLayout(self.input_drop)
+        src_lay.setAlignment(Qt.AlignCenter); src_lay.setSpacing(6); src_lay.setContentsMargins(16, 12, 16, 12)
+        src_icon = QLabel("📁"); src_icon.setAlignment(Qt.AlignCenter)
+        src_icon.setStyleSheet("font-size: 28px; background: transparent; border: none;")
+        src_title_lbl = QLabel("Source Images"); src_title_lbl.setAlignment(Qt.AlignCenter)
+        src_title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(15)}; font-weight: 600; background: transparent; border: none;")
+        src_desc = QLabel("Drag & drop folder containing images to cluster")
+        src_desc.setAlignment(Qt.AlignCenter); src_desc.setWordWrap(True)
+        src_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;")
+        self._src_path_lbl = QLabel("No folder selected")
+        self._src_path_lbl.setAlignment(Qt.AlignCenter)
+        self._src_path_lbl.setStyleSheet(
+            f"background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER}; border-radius: 3px;"
+            f" color: {theme.TEXT_SECONDARY}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(10)}; padding: 2px 8px;"
+        )
+        src_lay.addWidget(src_icon); src_lay.addWidget(src_title_lbl)
+        src_lay.addWidget(src_desc); src_lay.addWidget(self._src_path_lbl)
+        self.input_drop.mousePressEvent = lambda e: self._browse_input()
+        self.input_drop.setCursor(Qt.PointingHandCursor)
+        drops_lay.addWidget(self.input_drop)
 
-        right_col = QVBoxLayout(); right_col.setSpacing(10)
-        right_col.addWidget(self._build_settings_step())
-        right_col.addWidget(self._build_start_step())
-        right_col.addStretch()
-        right_w = QWidget(); right_w.setStyleSheet("background: transparent;")
-        right_w.setLayout(right_col)
-        bento.addWidget(right_w, stretch=1)
+        # Reference Faces drop zone
+        self.ref_drop = DropZoneFrame(get_text('char_drag_ref', self.lang))
+        self.ref_drop.setMinimumHeight(160)
+        self.ref_drop.setStyleSheet(self._drop_zone_card_style())
+        self.ref_drop.folder_dropped.connect(self._set_ref)
+        for i in reversed(range(self.ref_drop.layout().count())):
+            w = self.ref_drop.layout().itemAt(i).widget()
+            if w:
+                w.setParent(None)
+        self.ref_drop.layout().deleteLater()
+        ref_lay = QVBoxLayout(self.ref_drop)
+        ref_lay.setAlignment(Qt.AlignCenter); ref_lay.setSpacing(6); ref_lay.setContentsMargins(16, 12, 16, 12)
+        ref_icon = QLabel("👤"); ref_icon.setAlignment(Qt.AlignCenter)
+        ref_icon.setStyleSheet("font-size: 28px; background: transparent; border: none;")
+        ref_title_lbl = QLabel("Reference Faces (Optional)"); ref_title_lbl.setAlignment(Qt.AlignCenter)
+        ref_title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(15)}; font-weight: 600; background: transparent; border: none;")
+        ref_desc = QLabel("Drag & drop folder with known character subfolders")
+        ref_desc.setAlignment(Qt.AlignCenter); ref_desc.setWordWrap(True)
+        ref_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;")
+        self._ref_path_lbl = QLabel("No reference folder loaded")
+        self._ref_path_lbl.setAlignment(Qt.AlignCenter)
+        self._ref_path_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-style: italic; background: transparent; border: none;"
+        )
+        ref_lay.addWidget(ref_icon); ref_lay.addWidget(ref_title_lbl)
+        ref_lay.addWidget(ref_desc); ref_lay.addWidget(self._ref_path_lbl)
+        self.ref_drop.mousePressEvent = lambda e: self._browse_ref()
+        self.ref_drop.setCursor(Qt.PointingHandCursor)
+        drops_lay.addWidget(self.ref_drop)
 
-        root.addLayout(bento)
+        drops_w = QWidget(); drops_w.setStyleSheet("background: transparent;")
+        drops_w.setLayout(drops_lay)
+        top_row.addWidget(drops_w, stretch=8)
 
-        # ── Cluster Results ──
+        # RIGHT — Clustering Settings card
+        sc = QFrame()
+        sc.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+        )
+        sc_lay = QVBoxLayout(sc)
+        sc_lay.setContentsMargins(16, 14, 16, 14)
+        sc_lay.setSpacing(10)
+
+        sc_hdr = QHBoxLayout()
+        sc_title_lbl = QLabel("⚙  Clustering Settings")
+        sc_title_lbl.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; font-weight: 600;"
+            f" background: transparent; border: none;"
+        )
+        sc_hdr.addWidget(sc_title_lbl); sc_hdr.addStretch()
+        sc_lay.addLayout(sc_hdr)
+
+        # InsightFace Model
+        sc_lay.addWidget(self._settings_label("INSIGHTFACE MODEL"))
+        self.model_combo = QComboBox()
+        self.model_combo.addItem("buffalo_l (ResNet50) - Balanced",          "buffalo_l")
+        self.model_combo.addItem("antelopev2 (ResNet100) - High Accuracy",   "antelopev2")
+        self.model_combo.setStyleSheet(theme.combo())
+        sc_lay.addWidget(self.model_combo)
+
+        # Similarity Threshold slider
+        th_hdr = QHBoxLayout()
+        th_hdr.addWidget(self._settings_label("SIMILARITY THRESHOLD"))
+        th_hdr.addStretch()
+        self._thresh_val_lbl = QLabel("0.65")
+        self._thresh_val_lbl.setStyleSheet(
+            f"color: {theme.ORANGE}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)};"
+            f" background: transparent; border: none;"
+        )
+        th_hdr.addWidget(self._thresh_val_lbl)
+        sc_lay.addLayout(th_hdr)
+        self._thresh_sl = QSlider(Qt.Horizontal)
+        self._thresh_sl.setMinimum(10); self._thresh_sl.setMaximum(90); self._thresh_sl.setValue(65)
+        self._thresh_sl.setStyleSheet(self._slider_style())
+        self._thresh_sl.valueChanged.connect(lambda v: self._thresh_val_lbl.setText(f"{v/100:.2f}"))
+        sc_lay.addWidget(self._thresh_sl)
+
+        # Max Faces + Domain side by side
+        mid_row = QHBoxLayout(); mid_row.setSpacing(12)
+        max_col = QVBoxLayout()
+        max_col.addWidget(self._settings_label("MAX FACES/IMG"))
+        self._max_faces_spin = QSpinBox()
+        self._max_faces_spin.setRange(1, 10); self._max_faces_spin.setValue(3)
+        self._max_faces_spin.setStyleSheet(theme.spinbox())
+        max_col.addWidget(self._max_faces_spin)
+        mid_row.addLayout(max_col)
+        domain_col = QVBoxLayout()
+        domain_col.addWidget(self._settings_label("DOMAIN"))
+        domain_toggle = QFrame()
+        domain_toggle.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_DEEPEST}; border: 1px solid {theme.BORDER}; border-radius: 4px; }}"
+        )
+        dtl = QHBoxLayout(domain_toggle); dtl.setContentsMargins(2, 2, 2, 2); dtl.setSpacing(0)
+        self._domain_real_btn  = QPushButton("Real")
+        self._domain_anime_btn = QPushButton("Anime")
+        self._domain_real_btn.setStyleSheet(self._domain_btn_style(True))
+        self._domain_anime_btn.setStyleSheet(self._domain_btn_style(False))
+        self._domain_real_btn.clicked.connect(lambda: self._set_domain('real'))
+        self._domain_anime_btn.clicked.connect(lambda: self._set_domain('anime'))
+        dtl.addWidget(self._domain_real_btn); dtl.addWidget(self._domain_anime_btn)
+        domain_col.addWidget(domain_toggle)
+        mid_row.addLayout(domain_col)
+        sc_lay.addLayout(mid_row)
+
+        # DBSCAN Min Samples
+        db_row = QHBoxLayout()
+        db_row.addWidget(self._settings_label("DBSCAN MIN SAMPLES"))
+        db_row.addStretch()
+        self._dbscan_spin = QSpinBox()
+        self._dbscan_spin.setRange(2, 20); self._dbscan_spin.setValue(5)
+        self._dbscan_spin.setFixedWidth(64)
+        self._dbscan_spin.setStyleSheet(theme.spinbox())
+        db_row.addWidget(self._dbscan_spin)
+        sc_lay.addLayout(db_row)
+
+        sc_lay.addStretch()
+
+        div = QFrame(); div.setFrameShape(QFrame.HLine)
+        div.setStyleSheet(f"background: {theme.BORDER}; border: none;"); div.setFixedHeight(1)
+        sc_lay.addWidget(div)
+
+        self.start_btn = QPushButton("▶  Start Clustering")
+        self.start_btn.setEnabled(False)
+        self.start_btn.setFixedHeight(36)
+        self.start_btn.setStyleSheet(
+            f"QPushButton {{ background: {theme.ORANGE}; color: #1a1a1a; font-weight: 700;"
+            f" font-size: {theme.fs(13)}; border: none; border-radius: 6px; }}"
+            f"QPushButton:hover {{ background: {theme.ORANGE_LIGHT}; }}"
+            f"QPushButton:disabled {{ background: {theme.BG_SURFACE}; color: {theme.TEXT_MUTED}; }}"
+        )
+        self.start_btn.clicked.connect(self._start)
+        sc_lay.addWidget(self.start_btn)
+
+        self.stop_btn = QPushButton("■  Stop")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setStyleSheet(theme.btn_danger())
+        self.stop_btn.clicked.connect(self._stop)
+        sc_lay.addWidget(self.stop_btn)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setStyleSheet(theme.progress_bar()); self.progress_bar.setValue(0)
+        sc_lay.addWidget(self.progress_bar)
+
+        top_row.addWidget(sc, stretch=4)
+        root.addLayout(top_row)
+
+        # ── CLUSTER RESULTS ──────────────────────────────────────────────────
         res_hdr = QHBoxLayout()
         self._results_title = QLabel("Cluster Results")
         self._results_title.setStyleSheet(
@@ -328,12 +535,16 @@ class CharacterSortPage(QWidget):
         res_hdr.addWidget(self._results_title); res_hdr.addWidget(self._cluster_count_badge); res_hdr.addStretch()
         root.addLayout(res_hdr)
 
-        cluster_scroll = QScrollArea(); cluster_scroll.setObjectName("cluster_scroll")
-        cluster_scroll.setWidgetResizable(True); cluster_scroll.setFixedHeight(200)
+        hline = QFrame(); hline.setFrameShape(QFrame.HLine)
+        hline.setStyleSheet(f"background: {theme.BORDER}; border: none;"); hline.setFixedHeight(1)
+        root.addWidget(hline)
+
+        cluster_scroll = QScrollArea()
+        cluster_scroll.setWidgetResizable(True); cluster_scroll.setMinimumHeight(180)
         cluster_scroll.setStyleSheet("background: transparent; border: none;")
         self._cluster_inner = QWidget(); self._cluster_inner.setStyleSheet("background: transparent;")
-        self._cluster_grid_lay = QGridLayout(self._cluster_inner); self._cluster_grid_lay.setSpacing(8)
-        # Placeholder
+        self._cluster_grid_lay = QGridLayout(self._cluster_inner); self._cluster_grid_lay.setSpacing(10)
+        self._cluster_grid_lay.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self._cluster_placeholder = QLabel("Run clustering to see results here.")
         self._cluster_placeholder.setAlignment(Qt.AlignCenter)
         self._cluster_placeholder.setStyleSheet(
@@ -341,14 +552,67 @@ class CharacterSortPage(QWidget):
         )
         self._cluster_grid_lay.addWidget(self._cluster_placeholder, 0, 0)
         cluster_scroll.setWidget(self._cluster_inner)
-        root.addWidget(cluster_scroll)
+        root.addWidget(cluster_scroll, stretch=1)
 
-        # ── Log terminal ──
+        # ── LOG TERMINAL ─────────────────────────────────────────────────────
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setFixedHeight(130)
+        self.log_text.setFixedHeight(160)
         self.log_text.setStyleSheet(theme.log_area())
         root.addWidget(self.log_text)
+
+    # ── New UI helper methods ──────────────────────────────────────────────────
+
+    def _settings_label(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(10)};"
+            f" font-weight: 500; letter-spacing: 0.06em; background: transparent; border: none;"
+        )
+        return lbl
+
+    def _drop_zone_card_style(self) -> str:
+        return (
+            f"QFrame {{ background: {theme.BG_SURFACE}; border: 1px dashed {theme.BORDER};"
+            f" border-radius: 8px; }}"
+            f"QFrame:hover {{ border-color: {theme.ORANGE}; background: {theme.BG_CARD}; }}"
+        )
+
+    def _slider_style(self) -> str:
+        return (
+            f"QSlider::groove:horizontal {{ height: 4px; background: {theme.BORDER}; border-radius: 2px; }}"
+            f"QSlider::handle:horizontal {{ width: 14px; height: 14px; background: {theme.ORANGE};"
+            f" border-radius: 7px; margin: -5px 0; }}"
+            f"QSlider::sub-page:horizontal {{ background: {theme.ORANGE}; border-radius: 2px; }}"
+        )
+
+    def _domain_btn_style(self, active: bool) -> str:
+        if active:
+            return (
+                f"QPushButton {{ background: {theme.ORANGE}22; color: {theme.ORANGE};"
+                f" border: 1px solid {theme.ORANGE}44; border-radius: 3px;"
+                f" font-size: {theme.fs(11)}; padding: 3px 10px; }}"
+            )
+        return (
+            f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
+            f" border: none; border-radius: 3px; font-size: {theme.fs(11)}; padding: 3px 10px; }}"
+            f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY}; }}"
+        )
+
+    def _set_domain(self, mode: str):
+        self._mode = mode
+        is_real = (mode == 'real')
+        self._domain_real_btn.setStyleSheet(self._domain_btn_style(is_real))
+        self._domain_anime_btn.setStyleSheet(self._domain_btn_style(not is_real))
+        self._preset_real_btn.setChecked(is_real)
+        self._preset_anime_btn.setChecked(not is_real)
+        preset = self.PRESETS.get(mode, self.PRESETS['real'])
+        self.thresh_spin.setValue(preset['threshold'])
+        self.eps_spin.setValue(preset['cluster_eps'])
+        self.min_spin.setValue(preset['cluster_min'])
+        self._thresh_sl.setValue(int(preset['threshold'] * 100))
+        self._dbscan_spin.setValue(preset['cluster_min'])
+        self.model_combo.setEnabled(is_real)
 
     # ── Preset bar ────────────────────────────────────────────────────────────
 
@@ -762,12 +1026,19 @@ class CharacterSortPage(QWidget):
 
     def _set_input(self, path: str):
         self.input_folder = path
-        self.input_files = None  # clear any previously selected files
-        lbl = self.input_drop.get_label()
-        display = path if len(path) <= 50 else "..." + path[-47:]
-        lbl.setText(display)
-        lbl.setStyleSheet(theme.label_success())
-        self.input_drop.setStyleSheet(theme.drop_zone_frame_success())
+        self.input_files = None
+        display = path if len(path) <= 42 else "..." + path[-39:]
+        if hasattr(self, '_src_path_lbl'):
+            self._src_path_lbl.setText(display)
+            self._src_path_lbl.setStyleSheet(
+                f"background: {theme.BG_SURFACE}; border: 1px solid {theme.ORANGE}44;"
+                f" border-radius: 3px; color: {theme.ORANGE_LIGHT};"
+                f" font-family: {theme.FONT_MONO}; font-size: {theme.fs(10)}; padding: 2px 8px;"
+            )
+            self.input_drop.setStyleSheet(
+                f"QFrame {{ background: {theme.BG_SURFACE}; border: 1px dashed {theme.ORANGE};"
+                f" border-radius: 8px; }}"
+            )
         self.input_drop.setToolTip(path)
         count = self._count_images_recursive(path)
         self.input_count_lbl.setText(get_text('images_found', self.lang).format(count))
@@ -776,31 +1047,37 @@ class CharacterSortPage(QWidget):
 
     def _set_input_files(self, files: List[str]):
         self.input_files = files
-        self.input_folder = None  # clear folder selection
-        lbl = self.input_drop.get_label()
-        display = f"{len(files)} görsel seçildi"
-        lbl.setText(display)
-        lbl.setStyleSheet(theme.label_success())
-        self.input_drop.setStyleSheet(theme.drop_zone_frame_success())
-        self.input_drop.setToolTip("\n".join(files[:10]) + ("\n..." if len(files) > 10 else ""))
+        self.input_folder = None
+        display = f"{len(files)} image(s) selected"
+        if hasattr(self, '_src_path_lbl'):
+            self._src_path_lbl.setText(display)
+            self._src_path_lbl.setStyleSheet(
+                f"background: {theme.BG_SURFACE}; border: 1px solid {theme.ORANGE}44;"
+                f" border-radius: 3px; color: {theme.ORANGE_LIGHT};"
+                f" font-family: {theme.FONT_MONO}; font-size: {theme.fs(10)}; padding: 2px 8px;"
+            )
         self.input_count_lbl.setText(get_text('images_found', self.lang).format(len(files)))
         self.start_btn.setEnabled(True)
         self.log(f"🖼️ {len(files)} görsel seçildi")
 
     def _set_ref(self, path: str):
         self.ref_folder = path
-        lbl = self.ref_drop.get_label()
-        display = path if len(path) <= 50 else "..." + path[-47:]
-        lbl.setText(display)
-        lbl.setStyleSheet(theme.label_success())
-        self.ref_drop.setStyleSheet(theme.drop_zone_frame_success())
+        display = path if len(path) <= 42 else "..." + path[-39:]
+        if hasattr(self, '_ref_path_lbl'):
+            self._ref_path_lbl.setText(display)
+            self._ref_path_lbl.setStyleSheet(
+                f"color: {theme.ORANGE_LIGHT}; font-size: {theme.fs(10)};"
+                f" font-style: normal; background: transparent; border: none;"
+            )
+            self.ref_drop.setStyleSheet(
+                f"QFrame {{ background: {theme.BG_SURFACE}; border: 1px dashed {theme.ORANGE};"
+                f" border-radius: 8px; }}"
+            )
         self.ref_drop.setToolTip(path)
-        self.clear_ref_btn.setVisible(True)
         char_dirs = [d for d in Path(path).iterdir() if d.is_dir()]
         self.ref_status_lbl.setText(
             get_text('char_ref_loaded', self.lang).format(len(char_dirs))
         )
-        self.ref_status_lbl.setStyleSheet(theme.label_success())
         self.log(f"📚 References: {path}  ({len(char_dirs)} character folder(s))")
 
     def _set_output(self, path: str):
@@ -845,11 +1122,19 @@ class CharacterSortPage(QWidget):
         self.min_spin.setEnabled(not checked)
 
     def _get_settings(self) -> Dict:
+        # Read from new visible widgets when available, fall back to hidden compat ones
+        thresh = getattr(self, '_thresh_sl', self.thresh_spin).value()
+        if hasattr(self, '_thresh_sl'):
+            thresh = thresh / 100.0  # slider is 10-90 → 0.10-0.90
+        else:
+            thresh = self.thresh_spin.value()
+        cluster_min = getattr(self, '_dbscan_spin', self.min_spin).value()
+        model_key = self.model_combo.currentData() or self.model_combo.currentText()
         return {
-            'model': self.model_combo.currentText(),
-            'threshold': self.thresh_spin.value(),
+            'model': model_key,
+            'threshold': thresh,
             'cluster_eps': self.eps_spin.value(),
-            'cluster_min': self.min_spin.value(),
+            'cluster_min': cluster_min,
             'no_cluster': self.no_cluster_cb.isChecked(),
             'copy_files': self.copy_cb.isChecked(),
             'recursive': self.recursive_cb.isChecked(),
@@ -1009,28 +1294,79 @@ class CharacterSortPage(QWidget):
             card = self._make_cluster_card(name, count)
             self._cluster_grid_lay.addWidget(card, row, col)
 
-    def _make_cluster_card(self, name: str, count: int) -> QFrame:
+    def _make_cluster_card(self, name: str, count: int, confidence: float = 0.0) -> QFrame:
         is_noise = name in ('unknown', 'no_face', 'multi_face') or name.startswith('unknown')
-        border_color = theme.RED if is_noise else f"rgba(232,131,42,0.3)"
+        is_named = not is_noise and not name.startswith('cluster_')
+        if is_noise:
+            border_color = "#7f1d1d"
+            name_color   = "#f87171"
+        elif is_named:
+            border_color = f"{theme.ORANGE}55"
+            name_color   = theme.ORANGE
+        else:
+            border_color = theme.BORDER
+            name_color   = theme.TEXT_PRIMARY
+
         card = QFrame()
+        card.setFixedWidth(160)
         card.setStyleSheet(
             f"QFrame {{ background: {theme.BG_SURFACE}; border: 1px solid {border_color};"
-            f" border-radius: 8px; }}"
+            f" border-radius: 8px; overflow: hidden; }}"
         )
-        cl = QVBoxLayout(card); cl.setContentsMargins(10, 10, 10, 10); cl.setSpacing(4)
-        icon = "🔴" if is_noise else "👤"
-        name_lbl = QLabel(f"{icon}  {name}")
+        cl = QVBoxLayout(card); cl.setContentsMargins(0, 0, 0, 0); cl.setSpacing(0)
+
+        # Mosaic top (3×2 grid of tinted rectangles)
+        mosaic = QFrame(); mosaic.setFixedHeight(100)
+        mosaic.setStyleSheet(f"background: {theme.BG_DEEPEST}; border: none;")
+        from PyQt5.QtWidgets import QGridLayout as _GL
+        mg = _GL(mosaic); mg.setSpacing(1); mg.setContentsMargins(1, 1, 1, 1)
+        _shades = ["#27272a","#3f3f46","#27272a","#1c1c1e","#27272a","#3f3f46"]
+        if is_noise:
+            _shades = ["#1c0a0a","#27272a","#1c0a0a","#27272a","#1c0a0a","#27272a"]
+        for r in range(2):
+            for c in range(3):
+                i = r * 3 + c
+                cell = QLabel()
+                cell.setStyleSheet(f"background:{_shades[i]};border:none;")
+                mg.addWidget(cell, r, c)
+        # image count badge (top-right overlay)
+        badge_row = QHBoxLayout(); badge_row.addStretch()
+        img_badge = QLabel(f"  {count}  ")
+        img_badge.setStyleSheet(
+            f"background: rgba(0,0,0,0.7); color: {theme.TEXT_SECONDARY};"
+            f" font-family: {theme.FONT_MONO}; font-size: 9px; border-radius: 3px; border: none;"
+        )
+        badge_row.addWidget(img_badge)
+        mg.addLayout(badge_row, 0, 2, Qt.AlignTop | Qt.AlignRight)
+        cl.addWidget(mosaic)
+
+        # Info section
+        info = QFrame()
+        info.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_SURFACE}; border: none;"
+            f" border-top: 1px solid {theme.BORDER}; border-bottom-left-radius: 8px;"
+            f" border-bottom-right-radius: 8px; }}"
+        )
+        il = QVBoxLayout(info); il.setContentsMargins(10, 8, 10, 8); il.setSpacing(2)
+        name_row = QHBoxLayout(); name_row.setSpacing(4)
+        name_lbl = QLabel(name)
         name_lbl.setStyleSheet(
-            f"color: {theme.RED if is_noise else theme.ORANGE}; font-weight: 600;"
-            f" font-size: {theme.fs(11)}; background: transparent; border: none;"
-        )
-        name_lbl.setWordWrap(True)
-        count_lbl = QLabel(f"{count} images")
-        count_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-family: {theme.FONT_MONO};"
+            f"color: {name_color}; font-weight: 600; font-size: {theme.fs(11)};"
             f" background: transparent; border: none;"
         )
-        cl.addWidget(name_lbl); cl.addWidget(count_lbl)
+        name_lbl.setWordWrap(False)
+        name_row.addWidget(name_lbl, stretch=1)
+        edit_icon = QLabel("✏" if not is_noise else "🗑")
+        edit_icon.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 10px; background: transparent; border: none;")
+        name_row.addWidget(edit_icon)
+        il.addLayout(name_row)
+        conf_lbl = QLabel("Outliers" if is_noise else f"Confidence: {confidence:.2f}" if confidence else f"{count} images")
+        conf_lbl.setStyleSheet(
+            f"color: {'#7f1d1d' if is_noise else theme.TEXT_MUTED}; font-size: {theme.fs(9)};"
+            f" font-family: {theme.FONT_MONO}; background: transparent; border: none;"
+        )
+        il.addWidget(conf_lbl)
+        cl.addWidget(info)
         return card
 
     def _on_error(self, msg: str):

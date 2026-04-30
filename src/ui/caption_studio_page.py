@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
     QTextEdit, QPushButton, QProgressBar, QFileDialog, QFrame,
     QListWidget, QListWidgetItem, QInputDialog, QSplitter,
     QTabWidget, QCompleter, QScrollArea, QSizePolicy,
+    QGridLayout, QButtonGroup, QRadioButton, QSlider,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QStringListModel
 from PyQt5.QtGui import (
@@ -450,184 +451,81 @@ class _GenerateTab(QWidget):
         self.captioning_thread = None
         self._init_ui()
 
-    def _init_ui(self):
+    def _init_ui(self):  # noqa: C901
         self.setAcceptDrops(True)
-        layout = QVBoxLayout()
-        layout.setSpacing(20)
-        layout.setContentsMargins(20, 12, 20, 12)
+        self._install_thread = None
 
-        # ── Step 1: Folder ──────────────────────────────────────
-        step1_frame = QFrame()
-        step1_frame.setStyleSheet(theme.card_frame())
-        step1_layout = QVBoxLayout(step1_frame)
-        step1_layout.setContentsMargins(2, 8, 2, 8)
+        # ── Hidden compat store (keeps widgets alive for backend/refresh) ──
+        self._adv = QFrame()
+        self._adv.hide()
+        _adv_lay = QVBoxLayout(self._adv)
 
+        # Legacy step titles (referenced in refresh_styles / update_language)
         self.step1_title = QLabel(get_text('step1_select_folder', self.lang))
-        self.step1_title.setFont(QFont('Arial', 14, QFont.Bold))
-        self.step1_title.setStyleSheet(theme.label_section())
-        step1_layout.addWidget(self.step1_title)
+        self.step2_title = QLabel()
+        self.step3_title = QLabel(get_text('step3_start', self.lang))
 
-        folder_row = QHBoxLayout()
+        # Drop zone widgets (drag/drop still works via dragEnterEvent/dropEvent)
         self.drop_zone = QFrame()
         self.drop_zone.setMinimumHeight(65)
         self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
-        drop_layout = QHBoxLayout(self.drop_zone)
-        drop_layout.setContentsMargins(15, 5, 15, 5)
-        drop_layout.setAlignment(Qt.AlignCenter)
-
+        _dz_lay = QHBoxLayout(self.drop_zone)
+        _dz_lay.setContentsMargins(15, 5, 15, 5)
         self.drop_icon = QLabel("📂")
         self.drop_icon.setStyleSheet(theme.icon_transparent())
-        self.drop_icon.setAlignment(Qt.AlignCenter)
-        drop_layout.addWidget(self.drop_icon)
-
+        _dz_lay.addWidget(self.drop_icon)
         self.folder_label = QLabel(get_text('drag_drop_folder', self.lang))
         self.folder_label.setStyleSheet(theme.label_transparent())
-        self.folder_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        self.folder_label.setMinimumWidth(0)
-        # Allow label to shrink below its preferred width — prevents horizontal scroll
-        from PyQt5.QtWidgets import QSizePolicy as _SP
-        self.folder_label.setSizePolicy(_SP.Ignored, _SP.Preferred)
-        drop_layout.addWidget(self.folder_label, stretch=1)
-        folder_row.addWidget(self.drop_zone, stretch=1)
+        self.folder_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        _dz_lay.addWidget(self.folder_label, stretch=1)
 
         self.browse_btn = QPushButton(get_text('select_input_folder', self.lang))
         self.browse_btn.setStyleSheet(theme.btn_browse())
         self.browse_btn.clicked.connect(self.select_folder)
-        folder_row.addWidget(self.browse_btn)
-        step1_layout.addLayout(folder_row)
 
-        opts_row = QHBoxLayout()
         self.recursive_cb = QCheckBox(get_text('recursive_search', self.lang))
         self.recursive_cb.setToolTip(get_text('recursive_tooltip', self.lang))
         self.overwrite_cb = QCheckBox(get_text('overwrite_existing', self.lang))
         self.overwrite_cb.setToolTip(get_text('overwrite_tooltip', self.lang))
-        opts_row.addWidget(self.recursive_cb)
-        opts_row.addWidget(self.overwrite_cb)
-        opts_row.addStretch()
-        step1_layout.addLayout(opts_row)
+        self.overwrite_cb.setChecked(True)
 
         self.image_count_label = QLabel("")
         self.image_count_label.setStyleSheet(theme.label_success())
-        step1_layout.addWidget(self.image_count_label)
-        layout.addWidget(step1_frame)
 
-        # ── Output Mode Selection Card ───────────────────────────
-        # ── Step 2: Clean settings card ─────────────────────────
-        step2_frame = QFrame()
-        step2_frame.setStyleSheet(theme.card_frame())
-        step2_layout = QVBoxLayout(step2_frame)
-        step2_layout.setSpacing(12)
-        step2_layout.setContentsMargins(16, 12, 16, 12)
-
-        _LABEL_W = 100  # fixed label column width for alignment
-
-        def _make_row(label_text, widget, stretch_widget=True):
-            row = QHBoxLayout()
-            row.setSpacing(12)
-            lbl = QLabel(label_text)
-            lbl.setFixedWidth(_LABEL_W)
-            lbl.setStyleSheet(
-                f"background: transparent; border: none; "
-                f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)};"
-            )
-            row.addWidget(lbl)
-            if stretch_widget:
-                row.addWidget(widget, stretch=1)
-            else:
-                row.addWidget(widget)
-                row.addStretch()
-            return row, lbl
-
-        # ── Row 1: Model ────────────────────────────────────────
+        # Hidden combos / spinboxes referenced by backend
         self.model_combo = QComboBox()
-        self.model_combo.addItem("WD14 Tagger",      'wd14')
-        self.model_combo.addItem("Florence-2",        'florence2')
+        self.model_combo.addItem("WD14 Tagger", 'wd14')
+        self.model_combo.addItem("Florence-2", 'florence2')
         self.model_combo.addItem("WD14 + Florence-2", 'both')
-        self.model_combo.setStyleSheet(theme.combo())
         self.model_combo.currentIndexChanged.connect(self._on_model_combo_changed)
-        row_model, self._model_lbl = _make_row("Model", self.model_combo)
-        step2_layout.addLayout(row_model)
 
-        # ── Row 1b: Variant ─────────────────────────────────────
         self.variant_combo = QComboBox()
-        self.variant_combo.setStyleSheet(theme.combo())
         self.variant_combo.currentIndexChanged.connect(self._on_variant_changed)
-        row_variant, self._variant_lbl = _make_row("Variant", self.variant_combo)
-        step2_layout.addLayout(row_variant)
-        # _populate_variants deferred — called after conf_spin/max_tags_spin are created
 
-        # ── Row 2: Mode ─────────────────────────────────────────
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem(get_text('caption_mode_tags', self.lang),      'tags_only')
+        self.mode_combo.addItem(get_text('caption_mode_tags', self.lang), 'tags_only')
         self.mode_combo.addItem(get_text('caption_mode_tag_first', self.lang), 'tag_first')
-        self.mode_combo.addItem(get_text('caption_mode_combined', self.lang),  'combined')
-        self.mode_combo.setStyleSheet(theme.combo())
+        self.mode_combo.addItem(get_text('caption_mode_combined', self.lang), 'combined')
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        row_mode, self._mode_lbl = _make_row("Mode", self.mode_combo)
-        step2_layout.addLayout(row_mode)
 
-        # ── Row 3: Trigger Word ─────────────────────────────────
         self.trigger_edit = QLineEdit()
-        self.trigger_edit.setPlaceholderText("sks person...")
+        self.trigger_edit.setPlaceholderText("e.g., ohwx, 1girl")
         self.trigger_edit.setStyleSheet(theme.line_edit())
-        row_trigger, self._trigger_lbl = _make_row("Trigger Word", self.trigger_edit)
-        step2_layout.addLayout(row_trigger)
 
-        # ── Row 4: Last Words ───────────────────────────────────
         self.suffix_edit = QLineEdit()
-        self.suffix_edit.setPlaceholderText("masterpiece, best quality...")
+        self.suffix_edit.setPlaceholderText("e.g., high quality, masterpiece, 4k")
         self.suffix_edit.setStyleSheet(theme.line_edit())
-        row_suffix, self._suffix_lbl = _make_row("Last Words", self.suffix_edit)
-        step2_layout.addLayout(row_suffix)
 
-        # ── Divider ─────────────────────────────────────────────
-        div = QFrame()
-        div.setFrameShape(QFrame.HLine)
-        div.setStyleSheet(f"color: {theme.BORDER}; background: {theme.BORDER};")
-        div.setFixedHeight(1)
-        step2_layout.addWidget(div)
-
-        # ── Row 5: Max Tags (kelime sayısı) — sol hizalı ────────
         self.max_tags_spin = QSpinBox()
-        self.max_tags_spin.setRange(5, 100)
-        self.max_tags_spin.setValue(25)
-        self.max_tags_spin.setStyleSheet(theme.spinbox())
-        self.max_tags_spin.setFixedWidth(120)
-        self.max_tags_spin.setKeyboardTracking(True)
-        self.max_tags_spin.setFocusPolicy(Qt.StrongFocus)
-        self.max_tags_spin.lineEdit().setReadOnly(False)
-        row_maxtags, self._maxtags_lbl = _make_row("Max Tags", self.max_tags_spin, stretch_widget=False)
-        step2_layout.addLayout(row_maxtags)
+        self.max_tags_spin.setRange(5, 100); self.max_tags_spin.setValue(25)
 
-        # ── Row 6: Confidence (ağırlık) — sol hizalı ────────────
         self.conf_spin = QDoubleSpinBox()
-        self.conf_spin.setRange(0.10, 0.90)
-        self.conf_spin.setValue(0.35)
-        self.conf_spin.setSingleStep(0.05)
-        self.conf_spin.setDecimals(2)
-        self.conf_spin.setStyleSheet(theme.spinbox())
-        self.conf_spin.setFixedWidth(120)
-        self.conf_spin.setKeyboardTracking(True)
-        self.conf_spin.setFocusPolicy(Qt.StrongFocus)
-        self.conf_spin.lineEdit().setReadOnly(False)
-        row_conf, self._conf_lbl = _make_row("Confidence", self.conf_spin, stretch_widget=False)
-        step2_layout.addLayout(row_conf)
+        self.conf_spin.setRange(0.10, 0.90); self.conf_spin.setValue(0.35)
+        self.conf_spin.setSingleStep(0.05); self.conf_spin.setDecimals(2)
 
-        # Populate variant dropdown now that spinboxes exist
-        self._populate_variants('wd14')
-
-        layout.addWidget(step2_frame)
-
-        # ── Hidden advanced widgets (used by get_settings / backend) ──
-        self._adv = QFrame()   # keep reference — prevents GC of child widgets
-        self._adv.hide()
-        _adv_lay = QVBoxLayout(self._adv)
-        _adv = self._adv
-
-        self.mode_label  = QLabel()  # compat placeholder
-        self.mode_info   = QLabel()
-        self.f2_label    = QLabel(get_text('florence2_model_label', self.lang))
-        self.f2_combo    = QComboBox()
+        self.mode_label = QLabel(); self.mode_info = QLabel()
+        self.f2_label = QLabel(get_text('florence2_model_label', self.lang))
+        self.f2_combo = QComboBox()
         self.f2_combo.addItem('Florence-2 Base (Fast)', 'florence-2-base')
         self.f2_combo.addItem('Florence-2 Large (Accurate)', 'florence-2-large')
         self.f2_task_combo = QComboBox()
@@ -637,13 +535,9 @@ class _GenerateTab(QWidget):
         self._f2_settings_widget = QFrame()
         _f2l = QHBoxLayout(self._f2_settings_widget)
         _f2l.setContentsMargins(0, 0, 0, 0)
-        _f2l.addWidget(self.f2_label)
-        _f2l.addWidget(self.f2_combo)
-        _f2l.addWidget(self.f2_task_combo)
-        _adv_lay.addWidget(self._f2_settings_widget)
+        _f2l.addWidget(self.f2_label); _f2l.addWidget(self.f2_combo); _f2l.addWidget(self.f2_task_combo)
 
-        self.preset_label = QLabel()
-        self.preset_info  = QLabel()
+        self.preset_label = QLabel(); self.preset_info = QLabel()
         self.preset_combo = QComboBox()
         self.preset_combo.addItem('', 'high_accuracy')
         self.preset_combo.addItem('', 'balanced')
@@ -651,22 +545,18 @@ class _GenerateTab(QWidget):
         self.preset_combo.addItem('', 'custom')
         self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
 
-        self.max_label    = QLabel()
-        self.max_info     = QLabel()
-        self.conf_label   = QLabel()
-        self.conf_info    = QLabel()
-        self.neg_label    = QLabel()
-        self.neg_info     = QLabel()
-        self.neg_edit     = QLineEdit()
+        self.max_label = QLabel(); self.max_info = QLabel()
+        self.conf_label = QLabel(); self.conf_info = QLabel()
+        self.neg_label = QLabel(); self.neg_info = QLabel()
+        self.neg_edit = QLineEdit()
         self.neg_edit.setText(
             "watermark, signature, text, username, artist_name, "
             "twitter_username, patreon_username, dated"
         )
 
-        self.wd14_cb      = QCheckBox()
-        self.wd14_cb.setChecked(True)
-        self.wd14_info    = QLabel()
-        self.wd14_combo   = QComboBox()
+        self.wd14_cb = QCheckBox(); self.wd14_cb.setChecked(True)
+        self.wd14_info = QLabel()
+        self.wd14_combo = QComboBox()
         self.wd14_combo.addItems([
             'SmilingWolf/wd-swinv2-tagger-v3',
             'SmilingWolf/wd-convnext-tagger-v3',
@@ -677,88 +567,428 @@ class _GenerateTab(QWidget):
         self._model_row_widget = QFrame()
         _mrl = QHBoxLayout(self._model_row_widget)
         _mrl.setContentsMargins(0, 0, 0, 0)
-        _mrl.addWidget(self.wd14_cb)
-        _mrl.addWidget(self.wd14_combo)
-        _adv_lay.addWidget(self._model_row_widget)
+        _mrl.addWidget(self.wd14_cb); _mrl.addWidget(self.wd14_combo)
 
-        self.keep_char_cb = QCheckBox()
-        self.keep_char_cb.setChecked(True)
-        self.json_cb      = QCheckBox()
-        self.trigger_label = QLabel()
-        self.trigger_info  = QLabel()
-        self.suffix_label  = QLabel()
-        self.suffix_info   = QLabel()
+        self.keep_char_cb = QCheckBox(); self.keep_char_cb.setChecked(True)
+        self.json_cb = QCheckBox()
+        self.trigger_label = QLabel(); self.trigger_info = QLabel()
+        self.suffix_label = QLabel(); self.suffix_info = QLabel()
+        self.install_btn = QPushButton()
+        self._model_lbl = QLabel("Model"); self._variant_lbl = QLabel("Variant")
+        self._mode_lbl = QLabel("Mode"); self._trigger_lbl = QLabel("Trigger Word")
+        self._suffix_lbl = QLabel("Last Words"); self._maxtags_lbl = QLabel("Max Tags")
+        self._conf_lbl = QLabel("Confidence")
 
-        # _adv is NOT added to layout — keeps it as an attribute store
-        # without contributing to the minimum width of _GenerateTab
+        for _w in [
+            self.step1_title, self.step2_title, self.step3_title,
+            self.drop_zone, self.browse_btn, self.recursive_cb, self.overwrite_cb,
+            self.image_count_label, self.model_combo, self.variant_combo, self.mode_combo,
+            self.max_tags_spin, self.conf_spin, self.mode_label, self.mode_info,
+            self._f2_settings_widget, self.preset_label, self.preset_info, self.preset_combo,
+            self.max_label, self.max_info, self.conf_label, self.conf_info,
+            self.neg_label, self.neg_info, self.neg_edit, self._model_row_widget,
+            self.keep_char_cb, self.json_cb, self.trigger_label, self.trigger_info,
+            self.suffix_label, self.suffix_info, self.install_btn,
+            self._model_lbl, self._variant_lbl, self._mode_lbl,
+            self._trigger_lbl, self._suffix_lbl, self._maxtags_lbl, self._conf_lbl,
+        ]:
+            _adv_lay.addWidget(_w)
 
-        # ── Step 3: Start / Stop / Progress ─────────────────────
-        step3_frame = QFrame()
-        step3_frame.setStyleSheet(theme.card_frame())
-        step3_layout = QVBoxLayout(step3_frame)
+        self._populate_variants('wd14')
+        self.preset_combo.setCurrentIndex(1)
+        self._on_preset_changed(1)
 
-        self.step3_title = QLabel(get_text('step3_start', self.lang))
-        self.step3_title.setFont(QFont('Arial', 14, QFont.Bold))
-        self.step3_title.setStyleSheet(theme.label_section())
-        step3_layout.addWidget(self.step3_title)
+        # ── Style helpers ────────────────────────────────────────
+        def _sl_style():
+            return (
+                f"QSlider::groove:horizontal {{height:4px;background:{theme.BORDER};border-radius:2px;}}"
+                f"QSlider::handle:horizontal {{width:14px;height:14px;background:{theme.ORANGE};"
+                f"border-radius:7px;margin:-5px 0;}}"
+                f"QSlider::sub-page:horizontal {{background:{theme.ORANGE};border-radius:2px;}}"
+            )
 
-        self._install_thread = None
+        def _mono_lbl(text):
+            lbl = QLabel(text)
+            lbl.setStyleSheet(
+                f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
+                f"background:transparent;border:none;letter-spacing:0.05em;"
+            )
+            return lbl
 
-        btn_row = QHBoxLayout()
-        self.start_btn = QPushButton(get_text('start_captioning', self.lang))
+        def _hint_lbl(text):
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(9)};background:transparent;border:none;")
+            return lbl
+
+        def _card(title, icon_char=None):
+            f = QFrame()
+            f.setStyleSheet(
+                f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:10px;}}"
+            )
+            lay = QVBoxLayout(f)
+            lay.setContentsMargins(20, 16, 20, 16)
+            lay.setSpacing(16)
+            hdr = QHBoxLayout(); hdr.setSpacing(8)
+            if icon_char:
+                ic = QLabel(icon_char)
+                ic.setStyleSheet(f"color:{theme.ORANGE};background:transparent;border:none;font-size:16px;")
+                hdr.addWidget(ic)
+            t = QLabel(title)
+            t.setStyleSheet(
+                f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(14)};font-weight:600;"
+                f"background:transparent;border:none;letter-spacing:-0.01em;"
+            )
+            hdr.addWidget(t); hdr.addStretch()
+            lay.addLayout(hdr)
+            return f
+
+        # ══════════════════════════════════════════════════════════
+        # ROOT LAYOUT
+        # ══════════════════════════════════════════════════════════
+        root_layout = QVBoxLayout()
+        root_layout.setContentsMargins(24, 20, 24, 12)
+        root_layout.setSpacing(16)
+        self.setLayout(root_layout)
+
+        # Page header
+        pg_title = QLabel("Batch Caption Generation")
+        pg_title.setStyleSheet(
+            f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(22)};font-weight:600;"
+            f"letter-spacing:-0.015em;background:transparent;border:none;"
+        )
+        pg_desc = QLabel("Configure models and settings to automatically generate captions for your dataset.")
+        pg_desc.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(12)};background:transparent;border:none;")
+        hdr_left = QVBoxLayout(); hdr_left.setSpacing(4)
+        hdr_left.addWidget(pg_title); hdr_left.addWidget(pg_desc)
+        status_badge = QFrame()
+        status_badge.setStyleSheet(
+            f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:12px;}}"
+        )
+        sb_lay = QHBoxLayout(status_badge); sb_lay.setContentsMargins(10, 4, 14, 4); sb_lay.setSpacing(6)
+        dot = QLabel("●"); dot.setStyleSheet("color:#22c55e;background:transparent;border:none;font-size:8px;")
+        sb_txt = QLabel("Harvester Idle")
+        sb_txt.setStyleSheet(
+            f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
+            f"background:transparent;border:none;"
+        )
+        sb_lay.addWidget(dot); sb_lay.addWidget(sb_txt)
+        hdr_row = QHBoxLayout()
+        hdr_row.addLayout(hdr_left); hdr_row.addStretch(); hdr_row.addWidget(status_badge)
+        root_layout.addLayout(hdr_row)
+
+        # ── BENTO ROW ────────────────────────────────────────────
+        bento = QHBoxLayout(); bento.setSpacing(16)
+
+        # ── LEFT COLUMN (stretch=8) ──────────────────────────────
+        left_col = QVBoxLayout(); left_col.setSpacing(16)
+
+        # -- Model Selection card ---------------------------------
+        model_card = _card("Model Selection", "⚙")
+        mc_lay = model_card.layout()
+
+        def _model_subcard(title, badge_text, badge_color, desc_text, sl_attr, sl_lbl_attr, sl_default, cb_attr):
+            sc = QFrame()
+            sc.setStyleSheet(
+                f"QFrame {{background:rgba(0,0,0,0.3);border:1px solid {theme.BORDER};border-radius:6px;}}"
+            )
+            scl = QVBoxLayout(sc); scl.setContentsMargins(16, 16, 16, 16); scl.setSpacing(10)
+            top_row = QHBoxLayout()
+            cb = QCheckBox(title); cb.setChecked(True)
+            cb.setStyleSheet(
+                f"QCheckBox {{color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
+                f"background:transparent;border:none;}}"
+                f"QCheckBox::indicator {{width:14px;height:14px;border:1px solid {theme.BORDER};"
+                f"border-radius:2px;background:{theme.BG_SURFACE};}}"
+                f"QCheckBox::indicator:checked {{background:{theme.ORANGE};border-color:{theme.ORANGE};}}"
+            )
+            setattr(self, cb_attr, cb)
+            top_row.addWidget(cb); top_row.addStretch()
+            badge = QLabel(badge_text)
+            badge.setStyleSheet(
+                f"color:{badge_color};font-size:10px;font-family:{theme.FONT_MONO};"
+                f"background:transparent;border:1px solid {badge_color}55;"
+                f"border-radius:3px;padding:1px 6px;"
+            )
+            top_row.addWidget(badge)
+            scl.addLayout(top_row)
+            desc = QLabel(desc_text); desc.setWordWrap(True); desc.setFixedHeight(34)
+            desc.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};background:transparent;border:none;")
+            scl.addWidget(desc)
+            conf_row = QHBoxLayout()
+            conf_row.addWidget(_mono_lbl("Confidence Threshold")); conf_row.addStretch()
+            val_lbl = QLabel(f"{sl_default/100:.2f}")
+            val_lbl.setStyleSheet(
+                f"color:{theme.ORANGE};font-size:{theme.fs(11)};font-family:{theme.FONT_MONO};"
+                f"background:transparent;border:none;"
+            )
+            setattr(self, sl_lbl_attr, val_lbl)
+            conf_row.addWidget(val_lbl)
+            scl.addLayout(conf_row)
+            sl = QSlider(Qt.Horizontal); sl.setMinimum(10); sl.setMaximum(90); sl.setValue(sl_default)
+            sl.setStyleSheet(_sl_style())
+            setattr(self, sl_attr, sl)
+            sl.valueChanged.connect(lambda v, lbl=val_lbl: lbl.setText(f"{v/100:.2f}"))
+            scl.addWidget(sl)
+            return sc
+
+        wd14_sc = _model_subcard(
+            "WD14 Tagger V2", "BOORU TAGS", "#60a5fa",
+            "Best for extracting comma-separated Danbooru style tags.",
+            "_wd14_sl", "_wd14_sl_lbl", 35, "_wd14_vis_cb",
+        )
+        f2_sc = _model_subcard(
+            "Florence-2 Large", "NATURAL LANG", "#c084fc",
+            "Generates descriptive natural language sentences for complex scenes.",
+            "_f2_sl", "_f2_sl_lbl", 70, "_f2_vis_cb",
+        )
+        self._wd14_sl.valueChanged.connect(lambda v: self.conf_spin.setValue(round(v / 100.0, 2)))
+        self._wd14_vis_cb.toggled.connect(self.wd14_cb.setChecked)
+
+        models_hbox = QHBoxLayout(); models_hbox.setSpacing(12)
+        models_hbox.addWidget(wd14_sc); models_hbox.addWidget(f2_sc)
+        mc_lay.addLayout(models_hbox)
+        left_col.addWidget(model_card)
+
+        # -- Global Formatting card -------------------------------
+        fmt_card = _card("Global Formatting", "🎛")
+        fmt_lay = fmt_card.layout()
+        grid = QGridLayout(); grid.setSpacing(16); grid.setContentsMargins(0, 0, 0, 0)
+        grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1); grid.setColumnStretch(2, 1)
+
+        def _field_col(label_text, widget, hint=None):
+            col = QVBoxLayout(); col.setSpacing(4)
+            col.addWidget(_mono_lbl(label_text))
+            col.addWidget(widget)
+            if hint:
+                col.addWidget(_hint_lbl(hint))
+            return col
+
+        self._preset_vis = QComboBox()
+        self._preset_vis.addItems([
+            "General Anime / Illustration",
+            "Photorealistic Portraits",
+            "Background / Scenery",
+            "Custom Workflow",
+        ])
+        self._preset_vis.setStyleSheet(theme.combo())
+        grid.addLayout(_field_col("Preset Configuration", self._preset_vis), 0, 0)
+
+        self.trigger_edit.setStyleSheet(theme.line_edit())
+        grid.addLayout(
+            _field_col("Activation / Trigger Word(s)", self.trigger_edit,
+                       "Automatically prepended to all captions."),
+            0, 1,
+        )
+
+        self._last_words_edit = QLineEdit()
+        self._last_words_edit.setPlaceholderText("e.g., style of Artist")
+        self._last_words_edit.setStyleSheet(theme.line_edit())
+        grid.addLayout(
+            _field_col("Last Word(s)", self._last_words_edit,
+                       "Automatically appended before global suffix."),
+            0, 2,
+        )
+
+        self.suffix_edit.setStyleSheet(theme.line_edit())
+        grid.addLayout(
+            _field_col("Global Suffix", self.suffix_edit,
+                       "Automatically appended to all captions."),
+            1, 0, 1, 2,
+        )
+
+        # Tag Mode segmented radio bar
+        tm_col = QVBoxLayout(); tm_col.setSpacing(6)
+        tm_col.addWidget(_mono_lbl("Tag Mode"))
+        seg_bar = QFrame()
+        seg_bar.setStyleSheet(
+            f"QFrame {{background:rgba(0,0,0,0.4);border:1px solid {theme.BORDER};border-radius:6px;}}"
+        )
+        seg_lay = QHBoxLayout(seg_bar); seg_lay.setContentsMargins(3, 3, 3, 3); seg_lay.setSpacing(2)
+        self._tag_mode_grp = QButtonGroup(self); self._tag_mode_grp.setExclusive(True)
+
+        def _rb_style(checked):
+            if checked:
+                return (
+                    f"QRadioButton {{background:{theme.ORANGE}22;color:{theme.ORANGE};border:none;"
+                    f"border-radius:4px;padding:6px 16px;font-size:{theme.fs(11)};}}"
+                    f"QRadioButton::indicator {{width:0;height:0;}}"
+                )
+            return (
+                f"QRadioButton {{background:transparent;color:{theme.TEXT_MUTED};border:none;"
+                f"border-radius:4px;padding:6px 16px;font-size:{theme.fs(11)};}}"
+                f"QRadioButton::indicator {{width:0;height:0;}}"
+            )
+
+        for i, lbl in enumerate(["Tag Only", "Tag First", "Combined"]):
+            rb = QRadioButton(lbl)
+            rb.setChecked(i == 1)
+            rb.setStyleSheet(_rb_style(i == 1))
+            self._tag_mode_grp.addButton(rb, i)
+            seg_lay.addWidget(rb)
+            setattr(self, f"_tag_rb_{i}", rb)
+
+        def _on_tag_mode(btn):
+            for b in [self._tag_rb_0, self._tag_rb_1, self._tag_rb_2]:
+                b.setStyleSheet(_rb_style(b.isChecked()))
+            self.mode_combo.setCurrentIndex(self._tag_mode_grp.checkedId())
+
+        self._tag_mode_grp.buttonClicked.connect(_on_tag_mode)
+        tm_col.addWidget(seg_bar)
+        grid.addLayout(tm_col, 2, 0, 1, 2)
+
+        fmt_lay.addLayout(grid)
+        left_col.addWidget(fmt_card)
+        left_col.addStretch()
+
+        left_w = QWidget(); left_w.setStyleSheet("background:transparent;")
+        left_w.setLayout(left_col)
+        bento.addWidget(left_w, stretch=8)
+
+        # ── RIGHT COLUMN (stretch=4) ─────────────────────────────
+        right_col = QVBoxLayout(); right_col.setSpacing(16)
+
+        # -- Batch Rules card ------------------------------------
+        rules_card = _card("Batch Rules", "📋")
+        rules_lay = rules_card.layout()
+        write_grp = QButtonGroup(self); write_grp.setExclusive(True)
+        self._overwrite_rb = QRadioButton(); self._overwrite_rb.setChecked(True)
+        self._overwrite_rb.toggled.connect(self.overwrite_cb.setChecked)
+        self._append_rb = QRadioButton()
+        write_grp.addButton(self._overwrite_rb, 0); write_grp.addButton(self._append_rb, 1)
+
+        _rb_indicator = (
+            f"QRadioButton {{background:transparent;border:none;}}"
+            f"QRadioButton::indicator {{width:14px;height:14px;border:1px solid {theme.BORDER};"
+            f"border-radius:7px;background:{theme.BG_SURFACE};}}"
+            f"QRadioButton::indicator:checked {{background:{theme.ORANGE};border-color:{theme.ORANGE};}}"
+        )
+
+        def _rule_row(rb, title, desc_text):
+            row = QHBoxLayout(); row.setSpacing(10); row.setAlignment(Qt.AlignTop)
+            rb.setStyleSheet(_rb_indicator)
+            row.addWidget(rb)
+            txt = QVBoxLayout(); txt.setSpacing(2)
+            t = QLabel(title)
+            t.setStyleSheet(
+                f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
+                f"background:transparent;border:none;"
+            )
+            d = QLabel(desc_text); d.setWordWrap(True)
+            d.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};background:transparent;border:none;")
+            txt.addWidget(t); txt.addWidget(d)
+            row.addLayout(txt)
+            return row
+
+        rules_lay.addLayout(_rule_row(
+            self._overwrite_rb, "Overwrite Existing",
+            "Deletes any existing .txt files in the dataset folder before writing new ones.",
+        ))
+        rules_lay.addLayout(_rule_row(
+            self._append_rb, "Append to Existing",
+            "Adds newly generated tags to existing caption files, separated by commas.",
+        ))
+        div_line = QFrame(); div_line.setFrameShape(QFrame.HLine)
+        div_line.setStyleSheet(f"background:{theme.BORDER};border:none;"); div_line.setFixedHeight(1)
+        rules_lay.addWidget(div_line)
+
+        self._auto_clean_cb = QCheckBox(); self._auto_clean_cb.setChecked(True)
+        self._auto_clean_cb.setStyleSheet(
+            f"QCheckBox {{background:transparent;border:none;}}"
+            f"QCheckBox::indicator {{width:14px;height:14px;border:1px solid {theme.BORDER};"
+            f"border-radius:2px;background:{theme.BG_SURFACE};}}"
+            f"QCheckBox::indicator:checked {{background:{theme.ORANGE};border-color:{theme.ORANGE};}}"
+        )
+        ac_row = QHBoxLayout(); ac_row.setSpacing(10); ac_row.setAlignment(Qt.AlignTop)
+        ac_row.addWidget(self._auto_clean_cb)
+        ac_txt = QVBoxLayout(); ac_txt.setSpacing(2)
+        act = QLabel("Auto-clean Tags")
+        act.setStyleSheet(
+            f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
+            f"background:transparent;border:none;"
+        )
+        acd = QLabel("Remove duplicates, underscore to space, and normalize casing.")
+        acd.setWordWrap(True)
+        acd.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};background:transparent;border:none;")
+        ac_txt.addWidget(act); ac_txt.addWidget(acd)
+        ac_row.addLayout(ac_txt)
+        rules_lay.addLayout(ac_row)
+        rules_lay.addStretch()
+        right_col.addWidget(rules_card, stretch=1)
+
+        # -- Action card (orange top border) ----------------------
+        action_card = QFrame()
+        action_card.setStyleSheet(
+            f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER};"
+            f"border-top:2px solid {theme.ORANGE};border-radius:10px;}}"
+        )
+        ac_lay = QVBoxLayout(action_card); ac_lay.setContentsMargins(20, 16, 20, 16); ac_lay.setSpacing(10)
+
+        def _info_row(key, val_widget):
+            r = QHBoxLayout()
+            k = QLabel(key)
+            k.setStyleSheet(
+                f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
+                f"background:transparent;border:none;"
+            )
+            r.addWidget(k); r.addStretch(); r.addWidget(val_widget)
+            return r
+
+        self._target_path_lbl = QLabel("—")
+        self._target_path_lbl.setStyleSheet(
+            f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
+            f"background:transparent;border:none;"
+        )
+        ac_lay.addLayout(_info_row("Target Dataset", self._target_path_lbl))
+
+        self._img_count_lbl = QLabel("—")
+        self._img_count_lbl.setStyleSheet(
+            f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:600;"
+            f"font-family:{theme.FONT_MONO};background:transparent;border:none;"
+        )
+        ac_lay.addLayout(_info_row("Images Found", self._img_count_lbl))
+
+        self.start_btn = QPushButton("Run Batch Captioning")
         self.start_btn.setEnabled(False)
-        self.start_btn.setStyleSheet(theme.btn_primary())
+        self.start_btn.setFixedHeight(48)
+        self.start_btn.setCursor(Qt.PointingHandCursor)
+        self.start_btn.setStyleSheet(
+            f"QPushButton {{background:{theme.ORANGE};color:#1a1a1a;font-size:{theme.fs(13)};"
+            f"font-weight:700;border-radius:6px;border:none;}}"
+            f"QPushButton:hover {{background:#d97720;}}"
+            f"QPushButton:disabled {{background:{theme.BG_SURFACE};color:{theme.TEXT_MUTED};}}"
+        )
         self.start_btn.clicked.connect(self.start_captioning)
+        ac_lay.addWidget(self.start_btn)
+
         self.stop_btn = QPushButton(get_text('stop_btn', self.lang))
         self.stop_btn.setEnabled(False)
         self.stop_btn.setStyleSheet(theme.btn_danger())
         self.stop_btn.clicked.connect(self.stop_captioning)
-        btn_row.addWidget(self.start_btn)
-        btn_row.addWidget(self.stop_btn)
-        btn_row.addStretch()
-        step3_layout.addLayout(btn_row)
+        self.stop_btn.hide()
+        ac_lay.addWidget(self.stop_btn)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet(theme.progress_bar())
-        step3_layout.addWidget(self.progress_bar)
+        self.progress_bar.setFixedHeight(4)
+        ac_lay.addWidget(self.progress_bar)
 
-        # ── Log ─────────────────────────────────────────────────
+        right_col.addWidget(action_card)
+        right_w = QWidget(); right_w.setStyleSheet("background:transparent;")
+        right_w.setLayout(right_col)
+        bento.addWidget(right_w, stretch=4)
+
+        root_layout.addLayout(bento, stretch=1)
+
+        # ── Log ──────────────────────────────────────────────────
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFixedHeight(140)
         self.log_text.setStyleSheet(theme.log_area())
-
-        # ── Bento assembly ──────────────────────────────────────
-        from PyQt5.QtWidgets import QScrollArea
-        left_scroll = QScrollArea(); left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QFrame.NoFrame)
-        left_scroll.setStyleSheet("background: transparent; border: none;")
-        left_inner = QWidget(); left_inner.setStyleSheet("background: transparent;")
-        left_lay = QVBoxLayout(left_inner); left_lay.setContentsMargins(0, 0, 0, 0); left_lay.setSpacing(12)
-        left_lay.addWidget(step1_frame)
-        left_lay.addWidget(step2_frame)
-        left_lay.addStretch()
-        left_scroll.setWidget(left_inner)
-
-        right_w = QWidget(); right_w.setStyleSheet("background: transparent;")
-        right_lay = QVBoxLayout(right_w); right_lay.setContentsMargins(0, 0, 0, 0); right_lay.setSpacing(10)
-        right_lay.addWidget(step3_frame)
-        right_lay.addStretch()
-
-        bento = QHBoxLayout(); bento.setSpacing(12)
-        bento.addWidget(left_scroll, stretch=2)
-        bento.addWidget(right_w, stretch=1)
-
-        root_layout = QVBoxLayout()
-        root_layout.setContentsMargins(20, 12, 20, 12)
-        root_layout.setSpacing(10)
-        root_layout.addLayout(bento, stretch=1)
         root_layout.addWidget(self.log_text)
-        self.setLayout(root_layout)
 
-        # Apply default preset (Balanced) so model/confidence/max_tags are synced
-        self.preset_combo.setCurrentIndex(1)
-        self._on_preset_changed(1)
+        # Sync mode_combo to "Tag First" (index 1) as default
+        self.mode_combo.setCurrentIndex(1)
 
     # ── Helpers ─────────────────────────────────────────────────
 
@@ -809,6 +1039,14 @@ class _GenerateTab(QWidget):
         self.image_count_label.setText(
             get_text('images_found', self.lang).format(count))
         self.start_btn.setEnabled(count > 0)
+
+        # Update action card display
+        short = folder if len(folder) <= 36 else "..." + folder[-33:]
+        if hasattr(self, '_target_path_lbl'):
+            self._target_path_lbl.setText(short)
+        if hasattr(self, '_img_count_lbl'):
+            self._img_count_lbl.setText(f"{count:,}")
+
         self.log(f"📁 {get_text('folder_selected', self.lang)}: {folder}")
         self.log(f"🖼️ {count} images found")
         self.folder_changed.emit(folder)
@@ -916,23 +1154,27 @@ class _GenerateTab(QWidget):
         self._model_row_widget.setVisible(False)
 
     def get_settings(self) -> Dict:
-        model_key = self.model_combo.currentData() or 'wd14'
-        use_wd14      = model_key in ('wd14', 'both')
-        use_florence2 = model_key in ('florence2', 'both')
+        use_wd14      = getattr(self, '_wd14_vis_cb', self.wd14_cb).isChecked()
+        use_florence2 = getattr(self, '_f2_vis_cb', None) is not None and self._f2_vis_cb.isChecked()
+        grp = getattr(self, '_tag_mode_grp', None)
+        mode_map = {0: 'tags_only', 1: 'tag_first', 2: 'combined'}
+        mode = mode_map.get(grp.checkedId() if grp else -1, 'tags_only')
+        conf = round(getattr(self, '_wd14_sl', self.conf_spin).value() / 100.0, 2) \
+            if hasattr(self, '_wd14_sl') else self.conf_spin.value()
         return {
-            'mode':          self.mode_combo.currentData() or 'tags_only',
-            'trigger_word':  self.trigger_edit.text().strip(),
+            'mode':           mode,
+            'trigger_word':   self.trigger_edit.text().strip(),
             'caption_suffix': self.suffix_edit.text().strip(),
-            'max_tags':      self.max_tags_spin.value(),
-            'min_confidence': self.conf_spin.value(),
-            'negative_tags': [t.strip() for t in self.neg_edit.text().split(',') if t.strip()],
+            'max_tags':       self.max_tags_spin.value(),
+            'min_confidence': conf,
+            'negative_tags':  [t.strip() for t in self.neg_edit.text().split(',') if t.strip()],
             'keep_character_tags': self.keep_char_cb.isChecked(),
-            'save_json':     self.json_cb.isChecked(),
-            'overwrite':     self.overwrite_cb.isChecked(),
-            'recursive':     self.recursive_cb.isChecked(),
-            'use_wd14':      use_wd14,
-            'use_florence2': use_florence2,
-            'wd14_model':    self.wd14_combo.currentText(),
+            'save_json':      self.json_cb.isChecked(),
+            'overwrite':      getattr(self, '_overwrite_rb', self.overwrite_cb).isChecked(),
+            'recursive':      self.recursive_cb.isChecked(),
+            'use_wd14':       use_wd14,
+            'use_florence2':  use_florence2,
+            'wd14_model':     self.wd14_combo.currentText(),
             'florence2_model': self.f2_combo.currentData() or 'florence-2-base',
             'florence2_task': self.f2_task_combo.currentData() or '<DETAILED_CAPTION>',
         }
