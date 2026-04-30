@@ -356,7 +356,15 @@ class DropZone(QLabel):
         self.setAlignment(Qt.AlignCenter)
         self.setMinimumHeight(120)
         self.setStyleSheet(theme.drop_zone_default())
-        self.setText("🎬 Drag & Drop Video File(s) Here\n(Supports multiple videos)\nor click 'Browse' button")
+        self.setTextFormat(Qt.RichText)
+        self.setText(
+            f"<div style='line-height:1.6;'>"
+            f"<div style='font-size:28px;'>☁</div>"
+            f"<div style='font-size:14px;font-weight:600;color:#f1dfd4;margin:4px 0 2px;'>"
+            f"Drag &amp; Drop Videos or Folders Here</div>"
+            f"<div style='font-size:11px;color:#a38c7d;'>Supports .mp4, .mkv, .avi, .mov, .webm</div>"
+            f"</div>"
+        )
         self._pulse = None
 
     def dragEnterEvent(self, event: QDragEnterEvent):
@@ -2140,12 +2148,35 @@ class VideoSmartCropperUI(QMainWindow):
     
     def update_drop_zone_text(self):
         """Update drop zone text"""
+        self.drop_zone.setTextFormat(Qt.RichText)
         if not self.video_paths:
-            self.drop_zone.setText(get_text('drop_zone', self.current_lang))
+            self.drop_zone.setText(
+                f"<div style='line-height:1.6;'>"
+                f"<div style='font-size:28px;'>☁</div>"
+                f"<div style='font-size:14px;font-weight:600;color:#f1dfd4;margin:4px 0 2px;'>"
+                f"Drag &amp; Drop Videos or Folders Here</div>"
+                f"<div style='font-size:11px;color:#a38c7d;'>Supports .mp4, .mkv, .avi, .mov, .webm</div>"
+                f"</div>"
+            )
         elif len(self.video_paths) == 1:
-            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(1))
+            p = self.video_paths[0]
+            short = p if len(p) <= 44 else "..." + p[-41:]
+            self.drop_zone.setText(
+                f"<div style='line-height:1.6;'>"
+                f"<div style='font-size:20px;color:#e8832a;'>✓</div>"
+                f"<div style='font-size:13px;font-weight:600;color:#f1dfd4;margin:2px 0;'>1 video loaded</div>"
+                f"<div style='font-size:10px;color:#a38c7d;font-family:monospace;'>{short}</div>"
+                f"</div>"
+            )
         else:
-            self.drop_zone.setText(get_text('drop_zone_success', self.current_lang).format(len(self.video_paths)))
+            self.drop_zone.setText(
+                f"<div style='line-height:1.6;'>"
+                f"<div style='font-size:20px;color:#e8832a;'>✓</div>"
+                f"<div style='font-size:13px;font-weight:600;color:#f1dfd4;margin:2px 0;'>"
+                f"{len(self.video_paths)} videos loaded</div>"
+                f"<div style='font-size:10px;color:#a38c7d;'>Drop more to add, or Browse</div>"
+                f"</div>"
+            )
 
 
 def create_app():
