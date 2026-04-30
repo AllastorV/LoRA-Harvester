@@ -533,6 +533,33 @@ class CharacterSortPage(QWidget):
             f" border-radius: 10px; padding: 2px 10px; border: none;"
         )
         res_hdr.addWidget(self._results_title); res_hdr.addWidget(self._cluster_count_badge); res_hdr.addStretch()
+
+        # View toggle buttons (grid / list)
+        _toggle_style_active = (
+            f"QPushButton {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
+            f" border-radius: 4px; color: {theme.TEXT_PRIMARY}; padding: 4px 8px; font-size: 14px; }}"
+        )
+        _toggle_style_inactive = (
+            f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER};"
+            f" border-radius: 4px; color: {theme.TEXT_MUTED}; padding: 4px 8px; font-size: 14px; }}"
+            f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY}; border-color: {theme.BORDER_LIGHT}; }}"
+        )
+        self._view_grid_btn = QPushButton("⊞")
+        self._view_grid_btn.setFixedSize(30, 26)
+        self._view_grid_btn.setStyleSheet(_toggle_style_active)
+        self._view_list_btn = QPushButton("☰")
+        self._view_list_btn.setFixedSize(30, 26)
+        self._view_list_btn.setStyleSheet(_toggle_style_inactive)
+        self._view_grid_btn.clicked.connect(lambda: [
+            self._view_grid_btn.setStyleSheet(_toggle_style_active),
+            self._view_list_btn.setStyleSheet(_toggle_style_inactive),
+        ])
+        self._view_list_btn.clicked.connect(lambda: [
+            self._view_list_btn.setStyleSheet(_toggle_style_active),
+            self._view_grid_btn.setStyleSheet(_toggle_style_inactive),
+        ])
+        res_hdr.addWidget(self._view_grid_btn)
+        res_hdr.addWidget(self._view_list_btn)
         root.addLayout(res_hdr)
 
         hline = QFrame(); hline.setFrameShape(QFrame.HLine)
