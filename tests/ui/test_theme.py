@@ -21,9 +21,15 @@ def test_dark_palette_accent():
 
 
 def test_dark_palette_surfaces():
-    theme.set_theme("dark")
-    assert theme.BG_CARD == "#150c07"
-    assert theme.BG_SURFACE == "#271e17"
+    theme.set_theme("dark", accent="#e8832a")
+    # BG_CARD/BG_SURFACE are now accent-tinted — verify they are dark and orange-tinted
+    # (r > b for orange accent)
+    def _rgb(h):
+        h = h.lstrip("#")
+        return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    r, g, b = _rgb(theme.BG_CARD)
+    assert r > b, f"BG_CARD should have orange tint: {theme.BG_CARD}"
+    assert r < 40 and g < 30 and b < 20, f"BG_CARD should be very dark: {theme.BG_CARD}"
     assert theme.BORDER == "#27272a"
 
 

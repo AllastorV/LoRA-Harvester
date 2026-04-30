@@ -690,13 +690,7 @@ class VideoSmartCropperUI(QMainWindow):
         self._update_gpu_badge()
         topbar_lay.addWidget(self._gpu_badge)
 
-        # Settings button (opens resource drawer)
-        self.res_settings_btn = QPushButton("⚙")
-        self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
-        self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
-        self.res_settings_btn.setCursor(Qt.PointingHandCursor)
-        self.res_settings_btn.clicked.connect(self._toggle_resource_drawer)
-        topbar_lay.addWidget(self.res_settings_btn)
+        # (drawer removed — settings now in sidebar Settings page)
 
         right_area.addWidget(self._topbar)
         self._topbar_monitor.start()
@@ -742,18 +736,13 @@ class VideoSmartCropperUI(QMainWindow):
         right_container.setLayout(right_area)
         root_layout.addWidget(right_container, stretch=1)
 
-        # ═══════════ RESOURCE SETTINGS DRAWER ═══════════
-        self._resource_drawer = ResourceSettingsDrawer(
-            lang=self.current_lang, parent=central_widget,
-        )
-        self._resource_drawer.settings_changed.connect(self._on_resource_settings_changed)
+        # Legacy lang_combo kept for backward compat (embed_lang_combo calls)
         self.lang_combo = QComboBox()
         self.lang_combo.addItems(['English', 'Türkçe'])
         self.lang_combo.setCurrentIndex(0)
-        self.lang_combo.setStyleSheet(theme.combo())
         self.lang_combo.currentIndexChanged.connect(self.change_language)
-        self._resource_drawer.embed_lang_combo(self.lang_combo)
-        self._resource_cfg = self._resource_drawer.get_settings()
+        from src.ui.resource_settings import load_settings
+        self._resource_cfg = load_settings()
 
         self.setStyleSheet(theme.global_stylesheet())
 
@@ -861,7 +850,7 @@ class VideoSmartCropperUI(QMainWindow):
         return theme.collapsible_btn()
 
     def _toggle_resource_drawer(self):
-        self._resource_drawer.toggle()
+        pass  # drawer removed — settings are in sidebar Settings page
 
     def _on_resource_settings_changed(self, data: dict):
         """Slot: user clicked Apply in the resource drawer."""
@@ -903,8 +892,7 @@ class VideoSmartCropperUI(QMainWindow):
         self._update_gpu_badge()
         if hasattr(self, '_topbar_monitor'):
             self._topbar_monitor.refresh_styles()
-        self.res_settings_btn.setStyleSheet(theme.btn_icon_square())
-        self._resource_drawer.refresh_styles()
+        # (drawer removed)
 
         # Video page widgets
         self.title_label.setStyleSheet(theme.label_title())
@@ -962,16 +950,7 @@ class VideoSmartCropperUI(QMainWindow):
                     self.log(f"[theme] refresh_styles failed for {attr}: {e}")
 
     def resizeEvent(self, event):
-        """Keep the resource drawer right-aligned when the window resizes."""
         super().resizeEvent(event)
-        if hasattr(self, '_resource_drawer') and self._resource_drawer._is_open:
-            cw = self.centralWidget()
-            if cw:
-                self._resource_drawer.setGeometry(
-                    cw.width() - self._resource_drawer.DRAWER_WIDTH, 0,
-                    self._resource_drawer.DRAWER_WIDTH, cw.height(),
-                )
-        # Reposition video nav badge in top-right of the button
         if hasattr(self, '_video_badge') and hasattr(self, 'page_video_btn'):
             btn = self.page_video_btn
             self._video_badge.move(btn.width() - 26, 6)
@@ -997,7 +976,24 @@ class VideoSmartCropperUI(QMainWindow):
         lay.addWidget(self._settings_section("🎨", "Appearance", self._settings_appearance_widget()))
         lay.addWidget(self._settings_section("🌐", "Language", self._settings_language_widget()))
         lay.addWidget(self._settings_section("📁", "Output Paths", self._settings_output_widget()))
+        lay.addWidget(self._settings_section("⚡", "GPU / Compute", self._settings_gpu_widget()))
+        lay.addWidget(self._settings_section("🚀", "Performance", self._settings_perf_widget()))
+        lay.addWidget(self._settings_section("🧵", "CPU / Threading", self._settings_cpu_widget()))
+        lay.addWidget(self._settings_section("💾", "Memory", self._settings_memory_widget()))
+        lay.addWidget(self._settings_section("🔧", "Misc", self._settings_misc_widget()))
         lay.addStretch()
+
+        # Apply / Reset row (bottom of settings content)
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 8, 0, 8)
+        reset_btn = QPushButton("↺  Reset Defaults")
+        reset_btn.setStyleSheet(theme.btn_secondary())
+        reset_btn.clicked.connect(self._settings_reset_defaults)
+        apply_btn = QPushButton("✓  Apply")
+        apply_btn.setStyleSheet(theme.btn_primary())
+        apply_btn.clicked.connect(self._settings_apply)
+        btn_row.addWidget(reset_btn); btn_row.addStretch(); btn_row.addWidget(apply_btn)
+        lay.addLayout(btn_row)
 
         scroll.setWidget(inner)
         outer_lay.addWidget(scroll)
@@ -1113,6 +1109,170 @@ class VideoSmartCropperUI(QMainWindow):
         lay.addWidget(lbl); lay.addStretch()
         lay.addWidget(self._output_path_lbl); lay.addWidget(browse)
         return w
+
+    # ── Settings section builders (migrated from ResourceSettingsDrawer) ──
+
+    def _settings_row(self, label_text: str, widget, suffix_lbl: QLabel = None) -> QHBoxLayout:
+        """Helper: label on left, control + optional value label on right."""
+        row = QHBoxLayout(); row.setSpacing(12)
+        lbl = QLabel(label_text)
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(12)};"
+            f" background: transparent; border: none; min-width: 160px;"
+        )
+        row.addWidget(lbl)
+        row.addWidget(widget, stretch=1)
+        if suffix_lbl:
+            row.addWidget(suffix_lbl)
+        return row
+
+    def _settings_slider(self, mn, mx, step, suffix=""):
+        """Helper: returns (QSlider, value QLabel)."""
+        sl = QSlider(Qt.Horizontal); sl.setMinimum(mn); sl.setMaximum(mx)
+        sl.setSingleStep(step); sl.setStyleSheet(theme.slider())
+        val = QLabel(f"{mn}{suffix}")
+        val.setStyleSheet(
+            f"color: {theme.ORANGE}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)};"
+            f" background: transparent; border: none; min-width: 50px; qproperty-alignment: AlignRight;"
+        )
+        sl.valueChanged.connect(lambda v, s=suffix, lbl=val: lbl.setText(f"{v}{s}"))
+        return sl, val
+
+    def _settings_gpu_widget(self) -> QWidget:
+        from src.ui.resource_settings import load_settings
+        s = load_settings()
+        w = QWidget(); w.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(w); lay.setContentsMargins(20, 12, 20, 14); lay.setSpacing(12)
+
+        self._sg_gpu_cb = QCheckBox("Enable GPU Acceleration")
+        self._sg_gpu_cb.setChecked(s.get("gpu_enabled", True))
+        self._sg_gpu_cb.setStyleSheet(
+            f"QCheckBox {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(12)};"
+            f" background: transparent; border: none; }}"
+            f"QCheckBox::indicator {{ width:14px; height:14px; border:1px solid {theme.BORDER};"
+            f" border-radius:2px; background:{theme.BG_SURFACE}; }}"
+            f"QCheckBox::indicator:checked {{ background:{theme.ORANGE}; border-color:{theme.ORANGE}; }}"
+        )
+        lay.addWidget(self._sg_gpu_cb)
+
+        self._sg_fp16_cb = QCheckBox("FP16 Half Precision")
+        self._sg_fp16_cb.setChecked(s.get("fp16_enabled", True))
+        self._sg_fp16_cb.setStyleSheet(self._sg_gpu_cb.styleSheet())
+        lay.addWidget(self._sg_fp16_cb)
+
+        self._sg_vram_sl, self._sg_vram_lbl = self._settings_slider(10, 100, 5, "%")
+        self._sg_vram_sl.setValue(s.get("gpu_mem_limit_pct", 80))
+        lay.addLayout(self._settings_row("VRAM Limit", self._sg_vram_sl, self._sg_vram_lbl))
+        return w
+
+    def _settings_perf_widget(self) -> QWidget:
+        from src.ui.resource_settings import load_settings
+        s = load_settings()
+        w = QWidget(); w.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(w); lay.setContentsMargins(20, 12, 20, 14); lay.setSpacing(12)
+
+        self._sg_batch_sl, self._sg_batch_lbl = self._settings_slider(1, 32, 1)
+        self._sg_batch_sl.setValue(s.get("batch_size", 8))
+        lay.addLayout(self._settings_row("Batch Size", self._sg_batch_sl, self._sg_batch_lbl))
+
+        self._sg_prefetch_sl, self._sg_prefetch_lbl = self._settings_slider(1, 120, 1)
+        self._sg_prefetch_sl.setValue(s.get("prefetch_frames", 32))
+        lay.addLayout(self._settings_row("Prefetch Frames", self._sg_prefetch_sl, self._sg_prefetch_lbl))
+        return w
+
+    def _settings_cpu_widget(self) -> QWidget:
+        import os
+        from src.ui.resource_settings import load_settings
+        s = load_settings()
+        cpu_count = max(1, os.cpu_count() or 4)
+        w = QWidget(); w.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(w); lay.setContentsMargins(20, 12, 20, 14); lay.setSpacing(12)
+
+        self._sg_threads_sl, self._sg_threads_lbl = self._settings_slider(1, cpu_count, 1)
+        self._sg_threads_sl.setValue(s.get("cpu_threads", min(4, cpu_count)))
+        lay.addLayout(self._settings_row("CPU Threads", self._sg_threads_sl, self._sg_threads_lbl))
+
+        self._sg_workers_sl, self._sg_workers_lbl = self._settings_slider(1, cpu_count, 1)
+        self._sg_workers_sl.setValue(s.get("decode_workers", min(2, cpu_count)))
+        lay.addLayout(self._settings_row("Decode Workers", self._sg_workers_sl, self._sg_workers_lbl))
+        return w
+
+    def _settings_memory_widget(self) -> QWidget:
+        from src.ui.resource_settings import load_settings
+        s = load_settings()
+        w = QWidget(); w.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(w); lay.setContentsMargins(20, 12, 20, 14); lay.setSpacing(12)
+
+        self._sg_ram_sl, self._sg_ram_lbl = self._settings_slider(512, 32768, 256, " MB")
+        self._sg_ram_sl.setValue(s.get("ram_limit_mb", 4096))
+        lay.addLayout(self._settings_row("RAM Limit", self._sg_ram_sl, self._sg_ram_lbl))
+        return w
+
+    def _settings_misc_widget(self) -> QWidget:
+        from src.ui.resource_settings import load_settings
+        s = load_settings()
+        w = QWidget(); w.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(w); lay.setContentsMargins(20, 12, 20, 14); lay.setSpacing(12)
+
+        _cb_ss = (
+            f"QCheckBox {{ color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(12)};"
+            f" background: transparent; border: none; }}"
+            f"QCheckBox::indicator {{ width:14px; height:14px; border:1px solid {theme.BORDER};"
+            f" border-radius:2px; background:{theme.BG_SURFACE}; }}"
+            f"QCheckBox::indicator:checked {{ background:{theme.ORANGE}; border-color:{theme.ORANGE}; }}"
+        )
+        self._sg_async_cb = QCheckBox("Async Save (non-blocking I/O)")
+        self._sg_async_cb.setChecked(s.get("async_save", True))
+        self._sg_async_cb.setStyleSheet(_cb_ss)
+        lay.addWidget(self._sg_async_cb)
+
+        self._sg_gc_cb = QCheckBox("Auto GC (garbage collect after batch)")
+        self._sg_gc_cb.setChecked(s.get("auto_gc", True))
+        self._sg_gc_cb.setStyleSheet(_cb_ss)
+        lay.addWidget(self._sg_gc_cb)
+
+        self._sg_jpeg_sl, self._sg_jpeg_lbl = self._settings_slider(50, 100, 5)
+        self._sg_jpeg_sl.setValue(s.get("jpeg_quality", 92))
+        lay.addLayout(self._settings_row("JPEG Quality", self._sg_jpeg_sl, self._sg_jpeg_lbl))
+        return w
+
+    def _settings_apply(self):
+        """Collect all settings page values and apply."""
+        from src.ui.resource_settings import save_settings
+        data = {
+            "gpu_enabled":       self._sg_gpu_cb.isChecked(),
+            "fp16_enabled":      self._sg_fp16_cb.isChecked(),
+            "gpu_mem_limit_pct": self._sg_vram_sl.value(),
+            "batch_size":        self._sg_batch_sl.value(),
+            "prefetch_frames":   self._sg_prefetch_sl.value(),
+            "cpu_threads":       self._sg_threads_sl.value(),
+            "decode_workers":    self._sg_workers_sl.value(),
+            "ram_limit_mb":      self._sg_ram_sl.value(),
+            "async_save":        self._sg_async_cb.isChecked(),
+            "auto_gc":           self._sg_gc_cb.isChecked(),
+            "jpeg_quality":      self._sg_jpeg_sl.value(),
+            "theme_mode":        theme.get_mode(),
+            "font_scale":        int(theme.get_font_scale() * 100),
+            "accent":            theme.get_accent(),
+        }
+        save_settings(data)
+        self._on_resource_settings_changed(data)
+
+    def _settings_reset_defaults(self):
+        """Reset all performance settings to defaults."""
+        from src.ui.resource_settings import load_settings, DEFAULT_SETTINGS
+        if hasattr(self, '_sg_gpu_cb'):
+            self._sg_gpu_cb.setChecked(DEFAULT_SETTINGS.get("gpu_enabled", True))
+            self._sg_fp16_cb.setChecked(DEFAULT_SETTINGS.get("fp16_enabled", True))
+            self._sg_vram_sl.setValue(DEFAULT_SETTINGS.get("gpu_mem_limit_pct", 80))
+            self._sg_batch_sl.setValue(DEFAULT_SETTINGS.get("batch_size", 8))
+            self._sg_prefetch_sl.setValue(DEFAULT_SETTINGS.get("prefetch_frames", 32))
+            self._sg_threads_sl.setValue(DEFAULT_SETTINGS.get("cpu_threads", 4))
+            self._sg_workers_sl.setValue(DEFAULT_SETTINGS.get("decode_workers", 2))
+            self._sg_ram_sl.setValue(DEFAULT_SETTINGS.get("ram_limit_mb", 4096))
+            self._sg_async_cb.setChecked(DEFAULT_SETTINGS.get("async_save", True))
+            self._sg_gc_cb.setChecked(DEFAULT_SETTINGS.get("auto_gc", True))
+            self._sg_jpeg_sl.setValue(DEFAULT_SETTINGS.get("jpeg_quality", 92))
 
     def _apply_theme_mode(self, mode: str):
         theme.set_theme(mode, theme.get_font_scale(), theme.get_accent())
@@ -2051,10 +2211,6 @@ class VideoSmartCropperUI(QMainWindow):
         for btn, (icon, key) in zip(self._nav_buttons, _nav_labels):
             btn.setText(f"{icon}{get_text(key, self.current_lang)}")
 
-        self.res_settings_btn.setText("⚙")
-        self.res_settings_btn.setToolTip(get_text('res_menu_tooltip', self.current_lang))
-        if hasattr(self, '_resource_drawer'):
-            self._resource_drawer.update_language(self.current_lang)
         if hasattr(self, '_topbar_monitor'):
             self._topbar_monitor.update_language(self.current_lang)
 

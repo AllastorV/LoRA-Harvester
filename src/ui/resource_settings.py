@@ -48,6 +48,14 @@ def _detect_gpu_mem_gb() -> float:
 
 # ─── Default values ────────────────────────────────────────────────────────
 
+DEFAULT_SETTINGS = {
+    "gpu_enabled": True, "fp16_enabled": True, "gpu_mem_limit_pct": 80,
+    "batch_size": 8, "prefetch_frames": 32,
+    "cpu_threads": 4, "decode_workers": 2,
+    "ram_limit_mb": 4096, "async_save": True, "auto_gc": True, "jpeg_quality": 92,
+    "theme_mode": "dark", "font_scale": 100, "accent": "#e8832a",
+}
+
 def _defaults() -> dict:
     gpu_gb = _detect_gpu_mem_gb()
     return {

@@ -126,6 +126,12 @@ def _darken(hex_color: str, amount: float) -> str:
     return _rgb_to_hex(r * (1 - amount), g * (1 - amount), b * (1 - amount))
 
 
+def _accent_tint(accent: str, strength: float) -> str:
+    """Create a very dark tinted background derived from the accent hue."""
+    r, g, b = _hex_to_rgb(accent)
+    return _rgb_to_hex(r * strength, g * strength, b * strength)
+
+
 def _rgba(hex_color: str, alpha: float) -> str:
     r, g, b = _hex_to_rgb(hex_color)
     return f"rgba({r},{g},{b},{alpha})"
@@ -134,15 +140,20 @@ def _rgba(hex_color: str, alpha: float) -> str:
 def _apply_accent(accent: str):
     """Derive the full accent family from a single base hex color."""
     g = globals()
-    g["ORANGE"] = accent
-    g["ORANGE_LIGHT"] = _lighten(accent, 0.15)
-    g["ORANGE_DARK"] = _darken(accent, 0.20)
-    g["ORANGE_GLOW"] = _lighten(accent, 0.10)
-    g["ORANGE_DIM"] = _darken(accent, 0.30)
+    g["ORANGE"]        = accent
+    g["ORANGE_LIGHT"]  = _lighten(accent, 0.15)
+    g["ORANGE_DARK"]   = _darken(accent, 0.20)
+    g["ORANGE_GLOW"]   = _lighten(accent, 0.10)
+    g["ORANGE_DIM"]    = _darken(accent, 0.30)
     g["ORANGE_SUBTLE"] = _rgba(accent, 0.12)
     g["BORDER_ACCENT"] = accent
-    g["TEXT_ACCENT"] = _lighten(accent, 0.10)
-    g["SIDEBAR_ACTIVE"] = _rgba(accent, 0.12)
+    g["TEXT_ACCENT"]   = _lighten(accent, 0.10)
+    g["SIDEBAR_ACTIVE"]= _rgba(accent, 0.12)
+    # Tint dark background surfaces with accent hue (dark mode only)
+    if g.get("_current_mode", "dark") == "dark":
+        g["BG_CARD"]    = _accent_tint(accent, 0.085)   # very dark: ~8% brightness
+        g["BG_SURFACE"] = _accent_tint(accent, 0.160)   # slightly lighter: ~16%
+        g["BG_PANEL"]   = _accent_tint(accent, 0.065)   # deepest tint: ~6%
 
 
 def _load_prefs():
