@@ -39,7 +39,7 @@ class _AccordionFrame(QFrame):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        self._toggle_btn = QPushButton(f"  {self._icon}  {self._title_text}")
+        self._toggle_btn = QPushButton(f"  {self._title_text}")
         self._toggle_btn.setCheckable(True)
         self._toggle_btn.setChecked(False)
         self._toggle_btn.setFixedHeight(46)
@@ -108,7 +108,7 @@ class QualitySettingsPanel(_AccordionFrame):
 
     def __init__(self, lang: str = 'en', parent=None):
         self.lang = lang
-        super().__init__("✨", get_text('quality_title', lang), parent)
+        super().__init__("", get_text('quality_title', lang), parent)
 
     def _build_content(self):
         """Build quality settings content into accordion body."""
@@ -126,16 +126,12 @@ class QualitySettingsPanel(_AccordionFrame):
         blur_row = QHBoxLayout()
         self.blur_label = QLabel(get_text('blur_threshold', self.lang))
         self.blur_label.setStyleSheet(theme.label_default())
-        self.blur_info = QLabel("ℹ️")
-        self.blur_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.blur_info.setToolTip(get_text('blur_threshold_tooltip', self.lang))
-        self.blur_info.setCursor(Qt.WhatsThisCursor)
         self.blur_spinbox = QDoubleSpinBox()
         self.blur_spinbox.setRange(10, 500)
         self.blur_spinbox.setValue(80.0)
         self.blur_spinbox.setStyleSheet(self._spinbox_style())
+        self.blur_spinbox.setToolTip(get_text('blur_threshold_tooltip', self.lang))
         blur_row.addWidget(self.blur_label)
-        blur_row.addWidget(self.blur_info)
         blur_row.addStretch()
         blur_row.addWidget(self.blur_spinbox)
         lay.addLayout(blur_row)
@@ -144,18 +140,15 @@ class QualitySettingsPanel(_AccordionFrame):
         bright_row = QHBoxLayout()
         self.bright_label = QLabel(get_text('brightness_range', self.lang))
         self.bright_label.setStyleSheet(theme.label_default())
-        self.bright_info = QLabel("ℹ️")
-        self.bright_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.bright_info.setToolTip(get_text('brightness_tooltip', self.lang))
-        self.bright_info.setCursor(Qt.WhatsThisCursor)
         self.bright_min = QSpinBox()
         self.bright_min.setRange(0, 255); self.bright_min.setValue(35)
         self.bright_min.setStyleSheet(self._spinbox_style())
+        self.bright_min.setToolTip(get_text('brightness_tooltip', self.lang))
         self.bright_max = QSpinBox()
         self.bright_max.setRange(0, 255); self.bright_max.setValue(225)
         self.bright_max.setStyleSheet(self._spinbox_style())
+        self.bright_max.setToolTip(get_text('brightness_tooltip', self.lang))
         bright_row.addWidget(self.bright_label)
-        bright_row.addWidget(self.bright_info)
         bright_row.addStretch()
         bright_row.addWidget(self.bright_min)
         bright_row.addWidget(QLabel("-"))
@@ -186,7 +179,7 @@ class QualitySettingsPanel(_AccordionFrame):
 
     def update_language(self, lang: str):
         self.lang = lang
-        self._toggle_btn.setText(f"  ✨  {get_text('quality_title', lang)}")
+        self._toggle_btn.setText(f"  {get_text('quality_title', lang)}")
         self.enable_cb.setText(get_text('quality_enabled', lang))
         self.blur_label.setText(get_text('blur_threshold', lang))
         self.bright_label.setText(get_text('brightness_range', lang))
@@ -203,7 +196,7 @@ class CaptioningSettingsPanel(_AccordionFrame):
 
     def __init__(self, lang: str = 'en', parent=None):
         self.lang = lang
-        super().__init__("🏷", get_text('caption_title', lang), parent)
+        super().__init__("", get_text('caption_title', lang), parent)
 
     def _build_content(self):
         lay = self._body_lay
@@ -220,17 +213,15 @@ class CaptioningSettingsPanel(_AccordionFrame):
         mode_row = QHBoxLayout()
         self.mode_label = QLabel(get_text('caption_mode_label', self.lang))
         self.mode_label.setStyleSheet(theme.label_default())
-        self.mode_info = QLabel("ℹ️")
-        self.mode_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.mode_info.setToolTip(get_text('caption_mode_tooltip', self.lang))
-        self.mode_info.setCursor(Qt.WhatsThisCursor)
+        self.mode_info = QLabel(""); self.mode_info.hide()
         self.mode_combo = QComboBox()
         self.mode_combo.addItem(get_text('caption_mode_tags', self.lang), 'tags_only')
         self.mode_combo.addItem(get_text('caption_mode_nlp', self.lang), 'florence2')
         self.mode_combo.addItem(get_text('caption_mode_combined', self.lang), 'combined')
         self.mode_combo.setStyleSheet(self._combo_style())
+        self.mode_combo.setToolTip(get_text('caption_mode_tooltip', self.lang))
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        mode_row.addWidget(self.mode_label); mode_row.addWidget(self.mode_info)
+        mode_row.addWidget(self.mode_label)
         mode_row.addWidget(self.mode_combo); mode_row.addStretch()
         lay.addLayout(mode_row)
 
@@ -238,18 +229,16 @@ class CaptioningSettingsPanel(_AccordionFrame):
         preset_row = QHBoxLayout()
         self.preset_label = QLabel(get_text('preset_label', self.lang))
         self.preset_label.setStyleSheet(theme.label_default())
-        self.preset_info = QLabel("ℹ️")
-        self.preset_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.preset_info.setToolTip(get_text('preset_tooltip', self.lang))
-        self.preset_info.setCursor(Qt.WhatsThisCursor)
+        self.preset_info = QLabel(""); self.preset_info.hide()
         self.preset_combo = QComboBox()
         self.preset_combo.addItem(get_text('preset_high_accuracy', self.lang), 'high_accuracy')
         self.preset_combo.addItem(get_text('preset_balanced', self.lang), 'balanced')
         self.preset_combo.addItem(get_text('preset_high_speed', self.lang), 'high_speed')
         self.preset_combo.addItem(get_text('preset_custom', self.lang), 'custom')
         self.preset_combo.setStyleSheet(self._combo_style())
+        self.preset_combo.setToolTip(get_text('preset_tooltip', self.lang))
         self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
-        preset_row.addWidget(self.preset_label); preset_row.addWidget(self.preset_info)
+        preset_row.addWidget(self.preset_label)
         preset_row.addWidget(self.preset_combo); preset_row.addStretch()
         lay.addLayout(preset_row)
 
@@ -342,7 +331,7 @@ class CaptioningSettingsPanel(_AccordionFrame):
 
     def update_language(self, lang: str):
         self.lang = lang
-        self._toggle_btn.setText(f"  🏷  {get_text('caption_title', lang)}")
+        self._toggle_btn.setText(f"  {get_text('caption_title', lang)}")
         self.enable_cb.setText(get_text('caption_enabled', lang))
         self.mode_label.setText(get_text('caption_mode_label', lang))
         for idx, key in enumerate(['caption_mode_tags', 'caption_mode_nlp', 'caption_mode_combined']):
@@ -363,7 +352,7 @@ class TagSettingsPanel(_AccordionFrame):
 
     def __init__(self, lang: str = 'en', parent=None):
         self.lang = lang
-        super().__init__("🔖", get_text('tag_settings_title', lang), parent)
+        super().__init__("", get_text('tag_settings_title', lang), parent)
 
     def _build_content(self):
         layout = self._body_lay
@@ -372,10 +361,7 @@ class TagSettingsPanel(_AccordionFrame):
         preset_layout = QHBoxLayout()
         self.preset_label = QLabel(get_text('tag_preset', self.lang))
         self.preset_label.setStyleSheet(theme.label_default())
-        self.preset_info = QLabel("ℹ️")
-        self.preset_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.preset_info.setToolTip(get_text('tag_preset_tooltip', self.lang))
-        self.preset_info.setCursor(Qt.WhatsThisCursor)
+        self.preset_info = QLabel(""); self.preset_info.hide()
         self.preset_combo = QComboBox()
         self.preset_combo.addItems([
             '-- Select Preset --',
@@ -385,9 +371,9 @@ class TagSettingsPanel(_AccordionFrame):
             'concept_art'
         ])
         self.preset_combo.setStyleSheet(self._combo_style())
+        self.preset_combo.setToolTip(get_text('tag_preset_tooltip', self.lang))
         self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
         preset_layout.addWidget(self.preset_label)
-        preset_layout.addWidget(self.preset_info)
         preset_layout.addWidget(self.preset_combo)
         preset_layout.addStretch()
         layout.addLayout(preset_layout)
@@ -396,15 +382,12 @@ class TagSettingsPanel(_AccordionFrame):
         trigger_layout = QHBoxLayout()
         self.trigger_label = QLabel(get_text('trigger_word', self.lang))
         self.trigger_label.setStyleSheet(theme.label_default())
-        self.trigger_info = QLabel("ℹ️")
-        self.trigger_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.trigger_info.setToolTip(get_text('trigger_word_tooltip', self.lang))
-        self.trigger_info.setCursor(Qt.WhatsThisCursor)
+        self.trigger_info = QLabel(""); self.trigger_info.hide()
         self.trigger_edit = QLineEdit()
         self.trigger_edit.setPlaceholderText("e.g., sks person, my_character")
         self.trigger_edit.setStyleSheet(self._edit_style())
+        self.trigger_edit.setToolTip(get_text('trigger_word_tooltip', self.lang))
         trigger_layout.addWidget(self.trigger_label)
-        trigger_layout.addWidget(self.trigger_info)
         trigger_layout.addWidget(self.trigger_edit)
         layout.addLayout(trigger_layout)
 
@@ -412,33 +395,27 @@ class TagSettingsPanel(_AccordionFrame):
         limits_layout = QHBoxLayout()
         self.max_tags_label = QLabel(get_text('max_tags', self.lang))
         self.max_tags_label.setStyleSheet(theme.label_default())
-        self.max_tags_info = QLabel("ℹ️")
-        self.max_tags_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.max_tags_info.setToolTip(get_text('max_tags_tooltip', self.lang))
-        self.max_tags_info.setCursor(Qt.WhatsThisCursor)
+        self.max_tags_info = QLabel(""); self.max_tags_info.hide()
         self.max_tags_spin = QSpinBox()
         self.max_tags_spin.setRange(5, 100)
         self.max_tags_spin.setValue(30)
         self.max_tags_spin.setStyleSheet(self._spinbox_style())
+        self.max_tags_spin.setToolTip(get_text('max_tags_tooltip', self.lang))
 
         self.conf_label = QLabel(get_text('min_confidence', self.lang))
         self.conf_label.setStyleSheet(theme.label_default())
-        self.conf_info = QLabel("ℹ️")
-        self.conf_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.conf_info.setToolTip(get_text('min_confidence_tooltip', self.lang))
-        self.conf_info.setCursor(Qt.WhatsThisCursor)
+        self.conf_info = QLabel(""); self.conf_info.hide()
         self.conf_spin = QDoubleSpinBox()
         self.conf_spin.setRange(0.1, 0.9)
         self.conf_spin.setValue(0.35)
         self.conf_spin.setSingleStep(0.05)
         self.conf_spin.setStyleSheet(self._spinbox_style())
+        self.conf_spin.setToolTip(get_text('min_confidence_tooltip', self.lang))
 
         limits_layout.addWidget(self.max_tags_label)
-        limits_layout.addWidget(self.max_tags_info)
         limits_layout.addWidget(self.max_tags_spin)
         limits_layout.addSpacing(10)
         limits_layout.addWidget(self.conf_label)
-        limits_layout.addWidget(self.conf_info)
         limits_layout.addWidget(self.conf_spin)
         limits_layout.addStretch()
         layout.addLayout(limits_layout)
@@ -448,12 +425,8 @@ class TagSettingsPanel(_AccordionFrame):
         neg_header = QHBoxLayout()
         self.neg_label = QLabel(get_text('negative_tags', self.lang))
         self.neg_label.setStyleSheet(theme.label_default())
-        self.neg_help = QLabel("ℹ️")
-        self.neg_help.setToolTip(get_text('negative_tags_tooltip', self.lang))
-        self.neg_help.setStyleSheet(theme.info_icon())
-        self.neg_help.setCursor(Qt.WhatsThisCursor)
+        self.neg_help = QLabel(""); self.neg_help.hide()
         neg_header.addWidget(self.neg_label)
-        neg_header.addWidget(self.neg_help)
         neg_header.addStretch()
         neg_layout.addLayout(neg_header)
         
@@ -472,12 +445,8 @@ class TagSettingsPanel(_AccordionFrame):
         priority_header = QHBoxLayout()
         self.priority_label = QLabel(get_text('priority_tags', self.lang))
         self.priority_label.setStyleSheet(theme.label_default())
-        self.priority_info = QLabel("ℹ️")
-        self.priority_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.priority_info.setToolTip(get_text('priority_tags_tooltip', self.lang))
-        self.priority_info.setCursor(Qt.WhatsThisCursor)
+        self.priority_info = QLabel(""); self.priority_info.hide()
         priority_header.addWidget(self.priority_label)
-        priority_header.addWidget(self.priority_info)
         priority_header.addStretch()
         priority_layout.addLayout(priority_header)
 
@@ -625,7 +594,7 @@ class TagSettingsPanel(_AccordionFrame):
 
     def update_language(self, lang: str):
         self.lang = lang
-        self._toggle_btn.setText(f"  🔖  {get_text('tag_settings_title', lang)}")
+        self._toggle_btn.setText(f"  {get_text('tag_settings_title', lang)}")
         self.preset_label.setText(get_text('tag_preset', lang))
         self.preset_info.setToolTip(get_text('tag_preset_tooltip', lang))
         self.trigger_label.setText(get_text('trigger_word', lang))

@@ -471,7 +471,7 @@ class _GenerateTab(QWidget):
         self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
         _dz_lay = QHBoxLayout(self.drop_zone)
         _dz_lay.setContentsMargins(15, 5, 15, 5)
-        self.drop_icon = QLabel("📂")
+        self.drop_icon = QLabel("▸")
         self.drop_icon.setStyleSheet(theme.icon_transparent())
         _dz_lay.addWidget(self.drop_icon)
         self.folder_label = QLabel(get_text('drag_drop_folder', self.lang))
@@ -989,6 +989,26 @@ class _GenerateTab(QWidget):
 
         # Sync mode_combo to "Tag First" (index 1) as default
         self.mode_combo.setCurrentIndex(1)
+
+        # Tooltips
+        self._wd14_sl.setToolTip("WD14 confidence threshold. Lower = more tags included. Higher = fewer but more accurate.")
+        self._f2_sl.setToolTip("Florence-2 confidence threshold for natural language captions.")
+        self.trigger_edit.setToolTip("Prepended to every caption — use your LoRA trigger word (e.g. 'ohwx man')")
+        self.suffix_edit.setToolTip("Appended to every caption (e.g. 'masterpiece, best quality, highres')")
+        self._preset_vis.setToolTip("Quick-select a caption style preset")
+        self._last_words_edit.setToolTip("Words inserted just before the global suffix")
+        self.start_btn.setToolTip("Start batch caption generation for all images in the target dataset")
+        self.stop_btn.setToolTip("Stop the running captioning process")
+        self._overwrite_rb.setToolTip("Delete existing .txt files before writing new captions")
+        self._append_rb.setToolTip("Add new tags to the end of existing caption files")
+        self._auto_clean_cb.setToolTip("Normalize tags: remove duplicates, convert underscores to spaces")
+        self._target_path_lbl.setToolTip("Drag a folder onto the page or click Select Folder to set the dataset path")
+        self.conf_spin.setToolTip("WD14 confidence threshold (synced from slider above)")
+        self.max_tags_spin.setToolTip("Maximum number of tags to keep per image")
+        self.neg_edit.setToolTip("Tags to always exclude from captions, comma-separated")
+        self.wd14_combo.setToolTip("WD14 tagger model variant")
+        self.f2_combo.setToolTip("Florence-2 model size (Base = faster, Large = more accurate)")
+        self.f2_task_combo.setToolTip("Florence-2 caption detail level")
 
     # ── Helpers ─────────────────────────────────────────────────
 
@@ -1691,6 +1711,18 @@ class _EditTab(QWidget):
 
         bento.addLayout(right_col, stretch=1)
         root.addLayout(bento, stretch=1)
+
+        # Tooltips
+        self.load_btn.setToolTip("Open a folder of images to browse and edit captions")
+        self.save_btn.setToolTip("Save all modified captions to disk")
+        self.add_tag_btn.setToolTip("Prepend a tag to ALL images in the current folder")
+        self.remove_tag_btn.setToolTip("Remove a specific tag from ALL images in the current folder")
+        self.replace_tag_btn.setToolTip("Find and replace a tag across ALL images in the current folder")
+        self.caption_edit.setToolTip("Edit the caption. Tags are comma-separated. Type for Danbooru autocomplete.")
+        self._save_one_btn.setToolTip("Save this image's caption to disk")
+        self._save_next_btn.setToolTip("Save the current caption and advance to the next image")
+        self._revert_btn.setToolTip("Discard unsaved edits and reload from disk")
+        self.image_list.setToolTip("Click an image to preview it and edit its caption")
 
     # ── Folder loading ──────────────────────────────────────────
 

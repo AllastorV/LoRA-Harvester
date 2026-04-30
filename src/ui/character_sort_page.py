@@ -354,7 +354,7 @@ class CharacterSortPage(QWidget):
         self.input_drop.layout().deleteLater()
         src_lay = QVBoxLayout(self.input_drop)
         src_lay.setAlignment(Qt.AlignCenter); src_lay.setSpacing(6); src_lay.setContentsMargins(16, 12, 16, 12)
-        src_icon = QLabel("📁"); src_icon.setAlignment(Qt.AlignCenter)
+        src_icon = QLabel("▸"); src_icon.setAlignment(Qt.AlignCenter)
         src_icon.setStyleSheet("font-size: 28px; background: transparent; border: none;")
         src_title_lbl = QLabel("Source Images"); src_title_lbl.setAlignment(Qt.AlignCenter)
         src_title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(15)}; font-weight: 600; background: transparent; border: none;")
@@ -385,7 +385,7 @@ class CharacterSortPage(QWidget):
         self.ref_drop.layout().deleteLater()
         ref_lay = QVBoxLayout(self.ref_drop)
         ref_lay.setAlignment(Qt.AlignCenter); ref_lay.setSpacing(6); ref_lay.setContentsMargins(16, 12, 16, 12)
-        ref_icon = QLabel("👤"); ref_icon.setAlignment(Qt.AlignCenter)
+        ref_icon = QLabel("◈"); ref_icon.setAlignment(Qt.AlignCenter)
         ref_icon.setStyleSheet("font-size: 28px; background: transparent; border: none;")
         ref_title_lbl = QLabel("Reference Faces (Optional)"); ref_title_lbl.setAlignment(Qt.AlignCenter)
         ref_title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(15)}; font-weight: 600; background: transparent; border: none;")
@@ -417,7 +417,7 @@ class CharacterSortPage(QWidget):
         sc_lay.setSpacing(10)
 
         sc_hdr = QHBoxLayout()
-        sc_title_lbl = QLabel("⚙  Clustering Settings")
+        sc_title_lbl = QLabel("Clustering Settings")
         sc_title_lbl.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; font-weight: 600;"
             f" background: transparent; border: none;"
@@ -448,6 +448,7 @@ class CharacterSortPage(QWidget):
         self._thresh_sl.setMinimum(10); self._thresh_sl.setMaximum(90); self._thresh_sl.setValue(65)
         self._thresh_sl.setStyleSheet(self._slider_style())
         self._thresh_sl.valueChanged.connect(lambda v: self._thresh_val_lbl.setText(f"{v/100:.2f}"))
+        self._thresh_sl.setToolTip("Face similarity threshold. Higher = stricter matching, fewer clusters. Lower = more permissive.")
         sc_lay.addWidget(self._thresh_sl)
 
         # Max Faces + Domain side by side
@@ -457,6 +458,7 @@ class CharacterSortPage(QWidget):
         self._max_faces_spin = QSpinBox()
         self._max_faces_spin.setRange(1, 10); self._max_faces_spin.setValue(3)
         self._max_faces_spin.setStyleSheet(theme.spinbox())
+        self._max_faces_spin.setToolTip("Maximum number of faces to detect per image")
         max_col.addWidget(self._max_faces_spin)
         mid_row.addLayout(max_col)
         domain_col = QVBoxLayout()
@@ -485,6 +487,7 @@ class CharacterSortPage(QWidget):
         self._dbscan_spin.setRange(2, 20); self._dbscan_spin.setValue(5)
         self._dbscan_spin.setFixedWidth(64)
         self._dbscan_spin.setStyleSheet(theme.spinbox())
+        self._dbscan_spin.setToolTip("DBSCAN min_samples: minimum faces needed to form a cluster (higher = outliers more likely)")
         db_row.addWidget(self._dbscan_spin)
         sc_lay.addLayout(db_row)
 
@@ -494,9 +497,10 @@ class CharacterSortPage(QWidget):
         div.setStyleSheet(f"background: {theme.BORDER}; border: none;"); div.setFixedHeight(1)
         sc_lay.addWidget(div)
 
-        self.start_btn = QPushButton("▶  Start Clustering")
+        self.start_btn = QPushButton("Start Clustering")
         self.start_btn.setEnabled(False)
         self.start_btn.setFixedHeight(36)
+        self.start_btn.setToolTip("Start face clustering on the source images")
         self.start_btn.setStyleSheet(
             f"QPushButton {{ background: {theme.ORANGE}; color: #1a1a1a; font-weight: 700;"
             f" font-size: {theme.fs(13)}; border: none; border-radius: 6px; }}"
@@ -506,8 +510,9 @@ class CharacterSortPage(QWidget):
         self.start_btn.clicked.connect(self._start)
         sc_lay.addWidget(self.start_btn)
 
-        self.stop_btn = QPushButton("■  Stop")
+        self.stop_btn = QPushButton("Stop")
         self.stop_btn.setEnabled(False)
+        self.stop_btn.setToolTip("Stop the clustering process")
         self.stop_btn.setStyleSheet(theme.btn_danger())
         self.stop_btn.clicked.connect(self._stop)
         sc_lay.addWidget(self.stop_btn)
@@ -544,10 +549,10 @@ class CharacterSortPage(QWidget):
             f" border-radius: 4px; color: {theme.TEXT_MUTED}; padding: 4px 8px; font-size: 14px; }}"
             f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY}; border-color: {theme.BORDER_LIGHT}; }}"
         )
-        self._view_grid_btn = QPushButton("⊞")
+        self._view_grid_btn = QPushButton("Grid")
         self._view_grid_btn.setFixedSize(30, 26)
         self._view_grid_btn.setStyleSheet(_toggle_style_active)
-        self._view_list_btn = QPushButton("☰")
+        self._view_list_btn = QPushButton("List")
         self._view_list_btn.setFixedSize(30, 26)
         self._view_list_btn.setStyleSheet(_toggle_style_inactive)
         self._view_grid_btn.clicked.connect(lambda: [
@@ -655,7 +660,7 @@ class CharacterSortPage(QWidget):
         self._preset_type_lbl.setFixedWidth(80)
         lay.addWidget(self._preset_type_lbl)
 
-        self._preset_real_btn = QPushButton("🎭  Gerçek Yüz")
+        self._preset_real_btn = QPushButton("Real Faces")
         self._preset_real_btn.setCheckable(True)
         self._preset_real_btn.setChecked(True)
         self._preset_real_btn.setFixedHeight(38)
@@ -663,7 +668,7 @@ class CharacterSortPage(QWidget):
         self._preset_real_btn.clicked.connect(lambda: self._apply_preset('real'))
         lay.addWidget(self._preset_real_btn)
 
-        self._preset_anime_btn = QPushButton("🎌  Anime")
+        self._preset_anime_btn = QPushButton("Anime")
         self._preset_anime_btn.setCheckable(True)
         self._preset_anime_btn.setChecked(False)
         self._preset_anime_btn.setFixedHeight(38)
@@ -751,7 +756,7 @@ class CharacterSortPage(QWidget):
         self.browse_input_btn.setStyleSheet(theme.btn_browse())
         self.browse_input_btn.clicked.connect(self._browse_input)
 
-        self.browse_files_btn = QPushButton("🖼️ Görseller")
+        self.browse_files_btn = QPushButton("Select Files")
         self.browse_files_btn.setStyleSheet(theme.btn_browse())
         self.browse_files_btn.setToolTip("Birden fazla görsel dosyası seç")
         self.browse_files_btn.clicked.connect(self._browse_input_files)

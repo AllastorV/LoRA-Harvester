@@ -418,9 +418,9 @@ class DropZone(QLabel):
                 parts.append(f"{len(dirs)} folder(s)")
             if txts:
                 parts.append(f"{len(txts)} list(s)")
-            self.setText(f"✅ {', '.join(parts)} dropped")
+            self.setText(f"{', '.join(parts)} dropped")
         else:
-            self.setText("❌ Invalid file type. Drop video file(s), folders, or .txt list.")
+            self.setText("Invalid file type. Drop video file(s), folders, or .txt list.")
 
 
 class VideoSmartCropperUI(QMainWindow):
@@ -592,9 +592,9 @@ class VideoSmartCropperUI(QMainWindow):
         sidebar_lay.addSpacing(4)
         self._sidebar_section_labels = [ws_label]
 
-        self.page_video_btn = QPushButton("  🎬  Video Harvester")
-        self.page_caption_studio_btn = QPushButton("  🏷  Etiketleme")
-        self.page_char_sort_btn = QPushButton("  👥  Karakterler")
+        self.page_video_btn = QPushButton("Video Harvester")
+        self.page_caption_studio_btn = QPushButton("Captioning")
+        self.page_char_sort_btn = QPushButton("Characters")
 
         self._nav_buttons = [
             self.page_video_btn,
@@ -626,7 +626,7 @@ class VideoSmartCropperUI(QMainWindow):
         sidebar_lay.addSpacing(4)
         self._sidebar_section_labels.append(lib_label)
 
-        self.page_tag_freq_btn = QPushButton("  📊  Etiket Sözlüğü")
+        self.page_tag_freq_btn = QPushButton("Tag Dictionary")
         self.page_tag_freq_btn.setCursor(Qt.PointingHandCursor)
         self.page_tag_freq_btn.setStyleSheet(self._page_btn_style(False))
         self.page_tag_freq_btn.clicked.connect(lambda: self.switch_page(3))
@@ -640,7 +640,7 @@ class VideoSmartCropperUI(QMainWindow):
         sidebar_lay.addStretch()
 
         # Settings button (footer)
-        self.page_settings_btn = QPushButton("  ⚙️  Settings")
+        self.page_settings_btn = QPushButton("Settings")
         self.page_settings_btn.setCursor(Qt.PointingHandCursor)
         self.page_settings_btn.setStyleSheet(self._page_btn_style(False))
         self.page_settings_btn.clicked.connect(lambda: self.switch_page(4))
@@ -986,10 +986,10 @@ class VideoSmartCropperUI(QMainWindow):
         # Apply / Reset row (bottom of settings content)
         btn_row = QHBoxLayout()
         btn_row.setContentsMargins(0, 8, 0, 8)
-        reset_btn = QPushButton("↺  Reset Defaults")
+        reset_btn = QPushButton("Reset Defaults")
         reset_btn.setStyleSheet(theme.btn_secondary())
         reset_btn.clicked.connect(self._settings_reset_defaults)
-        apply_btn = QPushButton("✓  Apply")
+        apply_btn = QPushButton("Apply")
         apply_btn.setStyleSheet(theme.btn_primary())
         apply_btn.clicked.connect(self._settings_apply)
         btn_row.addWidget(reset_btn); btn_row.addStretch(); btn_row.addWidget(apply_btn)
@@ -1030,8 +1030,8 @@ class VideoSmartCropperUI(QMainWindow):
         lbl = QLabel("Theme Mode")
         lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 500; background: transparent; border: none;")
         row1.addWidget(lbl); row1.addStretch()
-        dark_btn = QPushButton("☽  Dark")
-        light_btn = QPushButton("☀  Light")
+        dark_btn = QPushButton("Dark")
+        light_btn = QPushButton("Light")
         for btn, mode in [(dark_btn, "dark"), (light_btn, "light")]:
             btn.setFixedHeight(30)
             btn.clicked.connect(lambda _, m=mode: self._apply_theme_mode(m))
@@ -1560,9 +1560,9 @@ class VideoSmartCropperUI(QMainWindow):
         stats_row = QHBoxLayout(); stats_row.setSpacing(8)
         self._stat_cards = {}
         for key, icon, label_key in (
-            ('queued',    '📋', 'stat_queued'),
-            ('extracted', '⚡', 'stat_extracted'),
-            ('saved',     '💾', 'stat_saved'),
+            ('queued',    '#', 'stat_queued'),
+            ('extracted', '#', 'stat_extracted'),
+            ('saved',     '#', 'stat_saved'),
         ):
             card = QFrame()
             card.setStyleSheet(
@@ -1600,6 +1600,22 @@ class VideoSmartCropperUI(QMainWindow):
         # Hover lift + ripple
         for _btn in (self.process_btn, self.pause_btn, self.skip_btn, self.stop_btn, self.open_output_btn, self.browse_btn):
             HoverLift(_btn, lift_px=2); RippleButton(_btn)
+
+        # Tooltips
+        self.browse_btn.setToolTip("Select video files or folders to process")
+        self.interval_slider.setToolTip("Extract one frame every N frames from the video")
+        self.trim_start_spin.setToolTip("Skip this many seconds from the start of each video")
+        self.trim_end_spin.setToolTip("Stop processing this many seconds before the end")
+        self.ratio_combo.setToolTip("Crop frames to this aspect ratio (width:height)")
+        self.conf_spinbox.setToolTip("Minimum detection confidence (0–95%). Higher = fewer but more accurate crops")
+        self.ensemble_cb.setToolTip("Use multiple detection models and combine results for better accuracy")
+        self.skip_subtitle_cb.setToolTip("Skip frames that contain burned-in subtitles")
+        self.turbo_cb.setToolTip("Enable turbo mode: faster processing with minor quality trade-off")
+        self.process_btn.setToolTip("Start processing all queued videos")
+        self.pause_btn.setToolTip("Pause or resume the current processing job")
+        self.skip_btn.setToolTip("Skip the currently processing video and move to the next")
+        self.stop_btn.setToolTip("Stop all video processing")
+        self.open_output_btn.setToolTip("Open the output folder in File Explorer")
 
         # Progress card
         prog_card = self._bento_card()
@@ -2201,15 +2217,15 @@ class VideoSmartCropperUI(QMainWindow):
         """Update all UI texts with current language"""
         self.setWindowTitle(get_text('app_title', self.current_lang))
         
-        # Sidebar nav buttons (icon + label)
+        # Sidebar nav buttons
         _nav_labels = [
-            ("  🎬  ", 'page_video_processing'),
-            ("  🏷  ", 'page_caption_studio'),
-            ("  👥  ", 'page_character_sort'),
-            ("  📊  ", 'page_tag_frequency'),
+            'page_video_processing',
+            'page_caption_studio',
+            'page_character_sort',
+            'page_tag_frequency',
         ]
-        for btn, (icon, key) in zip(self._nav_buttons, _nav_labels):
-            btn.setText(f"{icon}{get_text(key, self.current_lang)}")
+        for btn, key in zip(self._nav_buttons, _nav_labels):
+            btn.setText(get_text(key, self.current_lang))
 
         if hasattr(self, '_topbar_monitor'):
             self._topbar_monitor.update_language(self.current_lang)

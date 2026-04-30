@@ -52,7 +52,7 @@ class SetupDialog(QDialog):
         lay.setContentsMargins(28, 24, 28, 24)
 
         # Title
-        title = QLabel("⬇  Downloading Default Models")
+        title = QLabel("Downloading Default Models")
         title.setFont(QFont("Inter", 20, QFont.Bold))
         title.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; background: transparent; border: none; letter-spacing: -0.015em;"

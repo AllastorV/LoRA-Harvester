@@ -43,8 +43,9 @@ class TagFrequencyPage(QWidget):
         tb = QHBoxLayout()
         tb.setSpacing(8)
 
-        self._path_btn = QPushButton("📁  Select dataset folder…")
+        self._path_btn = QPushButton("Select Folder")
         self._path_btn.setStyleSheet(theme.btn_secondary())
+        self._path_btn.setToolTip("Select the dataset folder containing .txt caption files")
         self._path_btn.clicked.connect(self._browse_folder)
         tb.addWidget(self._path_btn)
 
@@ -52,19 +53,22 @@ class TagFrequencyPage(QWidget):
         self.filter_edit.setPlaceholderText("Filter tags…")
         self.filter_edit.setStyleSheet(theme.line_edit_compact())
         self.filter_edit.setFixedWidth(200)
+        self.filter_edit.setToolTip("Filter the tag list by name")
         self.filter_edit.textChanged.connect(self._filter_table)
         tb.addWidget(self.filter_edit)
 
         tb.addStretch()
 
-        scan_btn = QPushButton("📊  Scan Dataset")
+        scan_btn = QPushButton("Scan Dataset")
         scan_btn.setStyleSheet(theme.btn_primary())
+        scan_btn.setToolTip("Scan all .txt files in the selected folder and count tag frequencies")
         scan_btn.clicked.connect(self._browse_folder)
         tb.addWidget(scan_btn)
         self.load_btn = scan_btn  # alias for update_language compat
 
-        self.apply_bl_btn = QPushButton("🗑  Apply Blacklist")
+        self.apply_bl_btn = QPushButton("Apply Blacklist")
         self.apply_bl_btn.setStyleSheet(theme.btn_danger())
+        self.apply_bl_btn.setToolTip("Remove all blacklisted tags from every caption file in the dataset")
         self.apply_bl_btn.clicked.connect(self._apply_blacklist)
         self.apply_bl_btn.setEnabled(False)
         tb.addWidget(self.apply_bl_btn)
@@ -74,10 +78,10 @@ class TagFrequencyPage(QWidget):
         # ── Stat cards ──
         stats_row = QHBoxLayout()
         stats_row.setSpacing(8)
-        self._stat_instances_lbl = self._make_stat_card(stats_row, "Total Instances", "0", "📊", theme.ORANGE)
-        self._stat_unique_lbl    = self._make_stat_card(stats_row, "Unique Tags",     "0", "🏷", theme.BLUE)
-        self._stat_blacklist_lbl = self._make_stat_card(stats_row, "Blacklisted",     "0", "🚫", theme.RED)
-        self._stat_files_lbl     = self._make_stat_card(stats_row, "Caption Files",   "0", "📄", theme.GREEN)
+        self._stat_instances_lbl = self._make_stat_card(stats_row, "Total Instances", "0", "#", theme.ORANGE)
+        self._stat_unique_lbl    = self._make_stat_card(stats_row, "Unique Tags",     "0", "#", theme.BLUE)
+        self._stat_blacklist_lbl = self._make_stat_card(stats_row, "Blacklisted",     "0", "#", theme.RED)
+        self._stat_files_lbl     = self._make_stat_card(stats_row, "Caption Files",   "0", "#", theme.GREEN)
         root.addLayout(stats_row)
 
         # ── Split: table + blacklist panel ──
@@ -142,7 +146,7 @@ class TagFrequencyPage(QWidget):
         bl_lay.setSpacing(0)
 
         # Panel header
-        bl_hdr = QLabel("  🚫  Blacklist")
+        bl_hdr = QLabel("  Blacklist")
         bl_hdr.setFixedHeight(44)
         bl_hdr.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 600;"
@@ -241,7 +245,9 @@ class TagFrequencyPage(QWidget):
         folder = QFileDialog.getExistingDirectory(
             self, get_text("tag_freq_select_folder", self.lang))
         if folder:
-            self._path_btn.setText(f"📁  {folder}")
+            short = folder if len(folder) <= 40 else "..." + folder[-37:]
+            self._path_btn.setText(short)
+            self._path_btn.setToolTip(folder)
             self._scan_folder(folder)
 
     def _scan_folder(self, folder: str):
