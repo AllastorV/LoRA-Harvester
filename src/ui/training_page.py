@@ -103,6 +103,7 @@ class TrainingPage(QWidget):
         # Section labels are stored with their translation key so update_language()
         # can re-apply get_text() to each one.
         self._section_lbls: dict = {}
+        self._spin_refs: dict = {}
 
         self._sec1_lbl = self._section_lbl('training_sec_dataset')
         left.addWidget(self._sec1_lbl)
@@ -247,9 +248,6 @@ class TrainingPage(QWidget):
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(1000)
         self._poll_timer.timeout.connect(self._poll_trainer)
-
-        # Store spin refs
-        self._spin_refs: dict = {}
 
     # ── Builder helpers ──────────────────────────────────────────────────────
 

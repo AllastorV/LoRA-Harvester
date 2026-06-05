@@ -363,7 +363,7 @@ class ProcessingThread(QThread):
             res = cfg.get('resource_settings', {})
             self.processor = UnifiedVideoProcessor(
                 video_paths=cfg['video_paths'],
-                output_dir="output",
+                output_dir=cfg.get('output_dir', 'output'),
                 detector=detector,
                 text_detector=text_detector,
                 cropper=cropper,
@@ -2069,7 +2069,9 @@ class VideoSmartCropperUI(QMainWindow):
     
     def open_output_folder(self):
         """Open output folder in file explorer"""
-        output_path = Path("output")
+        lbl = getattr(self, '_output_path_lbl', None)
+        custom = lbl.text() if lbl and lbl.text() not in ('', '—') else ''
+        output_path = Path(custom) if custom else Path("output")
         
         # Create output folder if it doesn't exist
         output_path.mkdir(exist_ok=True)
@@ -2392,8 +2394,11 @@ class VideoSmartCropperUI(QMainWindow):
         self.log(get_text('log_init', self.current_lang))
 
         # Build config dict - all heavy model loading happens in the thread
+        output_dir = getattr(self, '_output_path_lbl', None)
+        output_dir = (output_dir.text() if output_dir and output_dir.text() not in ('', '—') else 'output')
         config = {
             'video_paths': self.video_paths,
+            'output_dir': output_dir,
             'frame_interval': frame_interval,
             'skip_text': skip_text,
             'subtitle_removal': subtitle_removal,
