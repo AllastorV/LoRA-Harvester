@@ -1201,10 +1201,7 @@ class CharacterSortPage(QWidget):
             'use_gpu': self.gpu_cb.isChecked(),
             'max_characters': self.max_char_slider.value(),
             'max_per_character': self.topn_spin.value(),
-            'max_faces_per_image': getattr(self, '_max_faces_spin',
-                                           self.max_faces_spin).value()
-                                   if hasattr(self, '_max_faces_spin') or hasattr(self, 'max_faces_spin')
-                                   else 3,
+            'max_faces_per_image': self._max_faces_spin.value(),
         }
 
     # ─── Image counting ───────────────────────────────────────────────────────

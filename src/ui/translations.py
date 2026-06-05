@@ -845,6 +845,24 @@ TRANSLATIONS = {
         'setup_complete': '✅ Setup complete — launching app…',
         'setup_failed': '⚠️  Some downloads failed — you can retry later.',
         'setup_continue': 'Continue →',
+
+        # ── Bug-scan fixes: QualityTab runtime + banners ──
+        'quality_folder_set': 'Folder set: {} — click Run Audit.',
+        'quality_audit_complete': 'Audit complete — {} issues in {} images.',
+        'quality_added_trigger': 'Added trigger to {} captions.',
+        'quality_added_errors': '{} errors: {}',
+        'quality_confirm_delete_msg': 'Delete {} image(s) and their captions?',
+        'quality_deleted': 'Deleted {} image(s).',
+        'quality_issue_missing': '❌ missing .txt',
+        'quality_issue_empty': '⚠️ empty',
+        'quality_issue_no_trigger': '🔑 no trigger',
+        'quality_issue_low_tags': '📉 low tags',
+        'quality_issue_dup_tags': '🔁 dup tags',
+        'banner_frames_saved': '✅ {} frames saved',
+        'crash_oom_msg': 'A memory error (OOM) occurred in the last run. Safe Mode is recommended.',
+        'crash_error_msg': 'Error in last run: {}',
+        'crash_safe_mode_btn': 'Apply Safe Mode',
+        'crash_safe_mode_applied': '✅ Safe Mode applied: VRAM 60% cap + Auto GC',
     },
 
     'tr': {
@@ -1656,7 +1674,7 @@ TRANSLATIONS = {
         'review_select_export_dest': 'Aktarım hedefini seçin',
         'review_status_scanning': '{} taranıyor …',
         'review_status_scan_error': 'Tarama hatası: {}',
-        'review_status_loaded': '{} klasöründen {} görsel yüklendi',
+        'review_status_loaded': '{} görsel {} klasöründen yüklendi',
         'review_status_ready': 'Hazır — {} görsel, {} konsept. Kötü kareleri seçip reddetmek için Delete tuşuna basın.',
         'review_caption_unreadable': '(okunamıyor)',
         'review_confirm_delete_title': 'Silmeyi Onayla',
@@ -1688,6 +1706,24 @@ TRANSLATIONS = {
         'setup_complete': '✅ Kurulum tamamlandı — uygulama başlatılıyor…',
         'setup_failed': '⚠️  Bazı indirmeler başarısız oldu — daha sonra tekrar deneyebilirsiniz.',
         'setup_continue': 'Devam →',
+
+        # ── Bug-scan fixes: QualityTab runtime + banners ──
+        'quality_folder_set': "Klasör ayarlandı: {} — 'Denetimi Çalıştır'a tıklayın.",
+        'quality_audit_complete': 'Denetim tamamlandı — {} sorun / {} görsel.',
+        'quality_added_trigger': '{} açıklamaya tetikleyici eklendi.',
+        'quality_added_errors': '{} hata: {}',
+        'quality_confirm_delete_msg': '{} görsel ve açıklamaları silinsin mi?',
+        'quality_deleted': '{} görsel silindi.',
+        'quality_issue_missing': '❌ .txt yok',
+        'quality_issue_empty': '⚠️ boş',
+        'quality_issue_no_trigger': '🔑 tetikleyici yok',
+        'quality_issue_low_tags': '📉 az etiket',
+        'quality_issue_dup_tags': '🔁 tekrar etiket',
+        'banner_frames_saved': '✅ {} kare kaydedildi',
+        'crash_oom_msg': 'Son çalışmada bellek hatası (OOM) oluştu. Güvenli Mod öneriliyor.',
+        'crash_error_msg': 'Son çalışmada hata: {}',
+        'crash_safe_mode_btn': 'Güvenli Mod Uygula',
+        'crash_safe_mode_applied': '✅ Güvenli Mod uygulandı: VRAM %60 cap + Auto GC',
     }
 }
 

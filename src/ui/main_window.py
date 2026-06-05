@@ -337,7 +337,8 @@ class ProcessingThread(QThread):
 
             # V3.x NSFW detector — simple on/off, auto backend
             nsfw_detector = None
-            if cfg.get('nsfw_settings', {}).get('enabled', False):
+            nsfw_cfg = cfg.get('nsfw_settings', {})
+            if nsfw_cfg.get('enabled', False):
                 try:
                     import torch
                     from src.core.nsfw_detector import NsfwDetector
@@ -345,12 +346,12 @@ class ProcessingThread(QThread):
                     nsfw_detector = NsfwDetector(backend='auto', threshold=0.70, device=dev)
                     if nsfw_detector.is_available():
                         self.log_message.emit(
-                            f"✅ NSFW klasörleme aktif (backend={nsfw_detector._active_backend})"
+                            f"✅ NSFW separation active (backend={nsfw_detector._active_backend})"
                         )
                     else:
-                        self.log_message.emit("⚠️ NSFW: backend bulunamadi, heuristic ile devam")
+                        self.log_message.emit("⚠️ NSFW: backend not found, continuing with heuristic")
                 except Exception as exc:
-                    self.log_message.emit(f"⚠️ NSFW detector baslatma hatasi: {exc}")
+                    self.log_message.emit(f"⚠️ NSFW detector init error: {exc}")
                     nsfw_detector = None
 
             if not self._is_running:
@@ -2622,8 +2623,9 @@ class VideoSmartCropperUI(QMainWindow):
         ok_count = int(stats.get('total_frames_saved', stats.get('saved_frames', 0)))
         if hasattr(self, '_next_step_banner'):
             self._next_step_banner.show_suggestion(
-                f"✅ {ok_count} frame kaydedildi",
-                [("→ Caption Studio", 1), ("→ Karakter Sırala", 2)],
+                get_text('banner_frames_saved', self.current_lang).format(ok_count),
+                [(f"→ {get_text('page_caption_studio', self.current_lang)}", 1),
+                 (f"→ {get_text('page_character_sort', self.current_lang)}", 2)],
             )
 
         self._cleanup_processing_thread()
@@ -2910,9 +2912,9 @@ class VideoSmartCropperUI(QMainWindow):
 
         icon = "💾" if is_oom else "⚠️"
         msg = (
-            "Son çalışmada bellek hatası (OOM) oluştu. Güvenli Mod öneriliyor."
+            get_text('crash_oom_msg', self.current_lang)
             if is_oom
-            else f"Son çalışmada hata: {error_snippet}"
+            else get_text('crash_error_msg', self.current_lang).format(error_snippet)
         )
         lbl = QLabel(f"{icon}  {msg}")
         lbl.setStyleSheet(
@@ -2923,7 +2925,7 @@ class VideoSmartCropperUI(QMainWindow):
         banner_lay.addStretch()
 
         if is_oom:
-            apply_btn = QPushButton("Güvenli Mod Uygula")
+            apply_btn = QPushButton(get_text('crash_safe_mode_btn', self.current_lang))
             apply_btn.setStyleSheet(
                 f"QPushButton {{ background: #ff6b6b22; color: #ff6b6b; "
                 f"border: 1px solid #ff6b6b44; border-radius: 4px; padding: 4px 12px; "
@@ -2964,7 +2966,7 @@ class VideoSmartCropperUI(QMainWindow):
         banner.hide()
         try:
             ToastNotification(
-                "✅ Güvenli Mod uygulandı: VRAM %60 cap + Auto GC",
+                get_text('crash_safe_mode_applied', self.current_lang),
                 icon='✅', duration_ms=3000, accent=theme.get_accent(),
                 parent=self.centralWidget(),
             )

@@ -596,7 +596,7 @@ class TagFrequencyPage(QWidget):
                 f"Hata / Errors: {stats['errors']}"
             )
             # Rescan to refresh tag counts
-            self._browse_folder(self._folder)
+            self._scan_folder(self._folder)
         except Exception as exc:
             QMessageBox.critical(self, "Tag Cleaner", f"Temizleme hatasi:\n{exc}")
 

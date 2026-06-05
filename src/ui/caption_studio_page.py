@@ -2653,9 +2653,10 @@ class _QualityTab(QWidget):
         self._trigger_edit.setPlaceholderText(_t('quality_trigger_ph'))
         self._trigger_edit.setStyleSheet(theme.line_edit_compact())
         self._trigger_edit.setFixedWidth(180)
-        tb.addWidget(QLabel(_t('quality_trigger'))); tb.addWidget(self._trigger_edit)
+        self._trigger_lbl = QLabel(_t('quality_trigger'))
+        tb.addWidget(self._trigger_lbl); tb.addWidget(self._trigger_edit)
 
-        min_lbl = QLabel(_t('quality_min_tags'))
+        self._min_tags_lbl = min_lbl = QLabel(_t('quality_min_tags'))
         min_lbl.setStyleSheet(theme.label_default())
         self._min_tags_spin = QSpinBox()
         self._min_tags_spin.setRange(0, 50); self._min_tags_spin.setValue(3)
@@ -2700,6 +2701,8 @@ class _QualityTab(QWidget):
             lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(9)};border:none;")
             cl.addWidget(val); cl.addWidget(lbl)
             card._val = val
+            card._lbl = lbl
+            card._stat_key = key
             self._cards[key] = card
             stats_row.addWidget(card)
         stats_row.addStretch()
@@ -2735,7 +2738,7 @@ class _QualityTab(QWidget):
 
     def reload_folder(self, folder: str):
         self._folder = folder
-        self._status.setText(f"Folder set: {Path(folder).name} — click Run Audit.")
+        self._status.setText(get_text('quality_folder_set', self.lang).format(Path(folder).name))
 
     def _run_audit(self):
         if not self._folder or not Path(self._folder).exists():
@@ -2751,7 +2754,8 @@ class _QualityTab(QWidget):
         self._populate_table()
         self._update_stats(len(pairs))
         self._add_trigger_btn.setEnabled(bool(self._issues) and bool(trigger))
-        self._status.setText(f"Audit complete — {len(self._issues)} issues in {len(pairs)} images.")
+        self._status.setText(
+            get_text('quality_audit_complete', self.lang).format(len(self._issues), len(pairs)))
 
     def _populate_table(self):
         from src.core.dataset_scanner import (
@@ -2759,11 +2763,11 @@ class _QualityTab(QWidget):
             ISSUE_LOW_TAG_COUNT, ISSUE_DUPLICATE_TAGS
         )
         _ICONS = {
-            ISSUE_MISSING_CAPTION: '❌ missing .txt',
-            ISSUE_EMPTY_CAPTION:   '⚠️ empty',
-            ISSUE_NO_TRIGGER:      '🔑 no trigger',
-            ISSUE_LOW_TAG_COUNT:   '📉 low tags',
-            ISSUE_DUPLICATE_TAGS:  '🔁 dup tags',
+            ISSUE_MISSING_CAPTION: get_text('quality_issue_missing', self.lang),
+            ISSUE_EMPTY_CAPTION:   get_text('quality_issue_empty', self.lang),
+            ISSUE_NO_TRIGGER:      get_text('quality_issue_no_trigger', self.lang),
+            ISSUE_LOW_TAG_COUNT:   get_text('quality_issue_low_tags', self.lang),
+            ISSUE_DUPLICATE_TAGS:  get_text('quality_issue_dup_tags', self.lang),
         }
         self._table.setRowCount(0)
         for issue in self._issues:
@@ -2817,9 +2821,10 @@ class _QualityTab(QWidget):
             except Exception as e:
                 errors.append(f"{issue.image.name}: {e}")
 
-        msg = f"Added trigger to {fixed} captions."
+        msg = get_text('quality_added_trigger', self.lang).format(fixed)
         if errors:
-            msg += f"\n{len(errors)} errors: {'; '.join(errors[:3])}"
+            msg += "\n" + get_text('quality_added_errors', self.lang).format(
+                len(errors), '; '.join(errors[:3]))
         self._status.setText(msg)
         self._run_audit()
 
@@ -2829,8 +2834,8 @@ class _QualityTab(QWidget):
         if not rows:
             return
         reply = QMessageBox.question(
-            self, "Confirm Delete",
-            f"Delete {len(rows)} image(s) and their captions?",
+            self, get_text('review_confirm_delete_title', self.lang),
+            get_text('quality_confirm_delete_msg', self.lang).format(len(rows)),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
@@ -2844,7 +2849,7 @@ class _QualityTab(QWidget):
             except Exception:
                 pass
             self._table.removeRow(row)
-        self._status.setText(f"Deleted {len(rows)} image(s).")
+        self._status.setText(get_text('quality_deleted', self.lang).format(len(rows)))
 
     def _on_selection_changed(self):
         has_sel = bool(self._table.selectedItems())
@@ -2854,6 +2859,29 @@ class _QualityTab(QWidget):
 
     def update_language(self, lang: str):
         self.lang = lang
+        _t = lambda k: get_text(k, lang)
+        self._trigger_lbl.setText(_t('quality_trigger'))
+        self._trigger_edit.setPlaceholderText(_t('quality_trigger_ph'))
+        self._min_tags_lbl.setText(_t('quality_min_tags'))
+        self._run_btn.setText(_t('quality_run_audit'))
+        self._add_trigger_btn.setText(_t('quality_add_trigger'))
+        self._delete_btn.setText(_t('quality_delete_sel'))
+        _stat_keys = {
+            'total': 'quality_stat_total', 'missing': 'quality_stat_missing',
+            'empty': 'quality_stat_empty', 'low_tags': 'quality_stat_lowtags',
+            'no_trigger': 'quality_stat_notrigger', 'dup_tags': 'quality_stat_duptags',
+        }
+        for key, card in self._cards.items():
+            card._lbl.setText(_t(_stat_keys[key]))
+        self._table.setHorizontalHeaderLabels([
+            _t('quality_col_image'), _t('quality_col_issues'),
+            _t('quality_col_tags'), _t('quality_col_caption')])
+        # Re-localize the issue table rows if an audit has already run
+        if self._issues:
+            self._populate_table()
+        # Status: only reset idle text; preserve an active audit/result message
+        if not self._folder:
+            self._status.setText(_t('quality_status_initial'))
 
     def refresh_styles(self):
         pass
@@ -2909,6 +2937,7 @@ class CaptionStudioPage(QWidget):
         # tabs keep fixed English labels to match objectName test expectations
         self.generate_tab.update_language(lang)
         self.edit_tab.update_language(lang)
+        self.quality_tab.update_language(lang)
 
     def _tab_style(self) -> str:
         return f"""
