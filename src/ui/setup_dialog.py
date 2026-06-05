@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont
 
 from src.ui import theme
+from src.ui.translations import get_text
 
 
 def models_ready() -> bool:
@@ -34,9 +35,11 @@ def models_ready() -> bool:
 class SetupDialog(QDialog):
     """Modal progress dialog that downloads all default models on first run."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, lang=None):
         super().__init__(parent)
-        self.setWindowTitle("LoRA-Harvester — First Run Setup")
+        from src.ui import theme
+        self.lang = lang or theme.get_lang()
+        self.setWindowTitle(get_text('setup_window_title', self.lang))
         self.setModal(True)
         self.setMinimumWidth(580)
         self.setStyleSheet(
@@ -52,17 +55,14 @@ class SetupDialog(QDialog):
         lay.setContentsMargins(28, 24, 28, 24)
 
         # Title
-        title = QLabel("Downloading Default Models")
+        title = QLabel(get_text('setup_title', self.lang))
         title.setFont(QFont("Inter", 20, QFont.Bold))
         title.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; background: transparent; border: none; letter-spacing: -0.015em;"
         )
         lay.addWidget(title)
 
-        sub = QLabel(
-            "Required models are being downloaded into the  models/  folder.\n"
-            "This only happens once."
-        )
+        sub = QLabel(get_text('setup_subtitle', self.lang))
         sub.setWordWrap(True)
         sub.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; background: transparent; border: none;"
@@ -79,7 +79,7 @@ class SetupDialog(QDialog):
         lay.addWidget(self.progress_bar)
 
         # Status label
-        self.status_lbl = QLabel("Preparing…")
+        self.status_lbl = QLabel(get_text('setup_preparing', self.lang))
         self.status_lbl.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; background: transparent; border: none;"
             f"font-size: {theme.fs(10)};"
@@ -102,7 +102,7 @@ class SetupDialog(QDialog):
         # Buttons
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self.skip_btn = QPushButton("Skip (offline / manual install)")
+        self.skip_btn = QPushButton(get_text('setup_skip', self.lang))
         self.skip_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; "
             f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
@@ -134,9 +134,9 @@ class SetupDialog(QDialog):
     def _on_done(self, ok: bool, summary: str):
         self._done = True
         self.progress_bar.setValue(100)
-        self.status_lbl.setText("✅ Setup complete — launching app…" if ok else
-                                 "⚠️  Some downloads failed — you can retry later.")
-        self.skip_btn.setText("Continue →")
+        self.status_lbl.setText(get_text('setup_complete', self.lang) if ok else
+                                 get_text('setup_failed', self.lang))
+        self.skip_btn.setText(get_text('setup_continue', self.lang))
         self.skip_btn.setStyleSheet(
             f"QPushButton {{ background-color: {theme.get_accent()}; "
             f"color: #ffffff; border: none; border-radius: 6px; "

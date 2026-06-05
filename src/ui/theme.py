@@ -32,7 +32,7 @@ _DARK_PALETTE = {
     "ORANGE_SUBTLE": "rgba(232,131,42,0.12)",
     "TEXT_PRIMARY":  "#f1dfd4",
     "TEXT_SECONDARY":"#dbc2b1",
-    "TEXT_MUTED":    "#a38c7d",
+    "TEXT_MUTED":    "#c4ab9c",
     "TEXT_ACCENT":   "#ffb782",
     "BORDER":        "#27272a",
     "BORDER_LIGHT":  "#3d332b",
@@ -98,6 +98,7 @@ ACCENT_PRESETS = [
 _current_mode = "dark"
 _font_scale = 1.0
 _current_accent = _DEFAULT_ACCENT
+_current_lang = "en"
 
 
 def _hex_to_rgb(hex_color: str):
@@ -150,14 +151,21 @@ def _apply_accent(accent: str):
     g["TEXT_ACCENT"]   = _lighten(accent, 0.10)
     g["SIDEBAR_ACTIVE"]= _rgba(accent, 0.12)
     # Tint dark background surfaces with accent hue (dark mode only)
-    if g.get("_current_mode", "dark") == "dark":
-        g["BG_CARD"]    = _accent_tint(accent, 0.085)   # very dark: ~8% brightness
-        g["BG_SURFACE"] = _accent_tint(accent, 0.160)   # slightly lighter: ~16%
-        g["BG_PANEL"]   = _accent_tint(accent, 0.065)   # deepest tint: ~6%
+    import sys as _sys
+    _mod = _sys.modules[__name__]
+    if getattr(_mod, '_current_mode', 'dark') == "dark":
+        g["BG_CARD"]    = _accent_tint(accent, 0.085)
+        g["BG_SURFACE"] = _accent_tint(accent, 0.160)
+        g["BG_PANEL"]   = _accent_tint(accent, 0.065)
+    else:
+        # Restore light palette values (don't tint in light mode)
+        g["BG_CARD"]    = _LIGHT_PALETTE["BG_CARD"]
+        g["BG_SURFACE"] = _LIGHT_PALETTE["BG_SURFACE"]
+        g["BG_PANEL"]   = _LIGHT_PALETTE["BG_PANEL"]
 
 
 def _load_prefs():
-    global _current_mode, _font_scale, _current_accent
+    global _current_mode, _font_scale, _current_accent, _current_lang
     if _PREFS_PATH.exists():
         try:
             d = json.loads(_PREFS_PATH.read_text("utf-8"))
@@ -166,6 +174,9 @@ def _load_prefs():
             acc = d.get("accent", _DEFAULT_ACCENT)
             if isinstance(acc, str) and acc.startswith("#") and len(acc) in (4, 7):
                 _current_accent = acc
+            lang = d.get("lang", "en")
+            if lang in ("en", "tr"):
+                _current_lang = lang
         except Exception:
             pass
 
@@ -176,6 +187,7 @@ def save_prefs():
             "mode": _current_mode,
             "font_scale": _font_scale,
             "accent": _current_accent,
+            "lang": _current_lang,
         }, indent=2), "utf-8")
     except Exception:
         pass
@@ -204,10 +216,20 @@ def get_font_scale() -> float:
 def get_accent() -> str:
     return _current_accent
 
+def get_lang() -> str:
+    return _current_lang
+
+def set_lang(lang: str):
+    """Persist the UI language choice ('en' or 'tr')."""
+    global _current_lang
+    if lang in ("en", "tr"):
+        _current_lang = lang
+        save_prefs()
+
 _FONT_BASELINE = 1.30
 
 def fs(base: int) -> str:
-    return f"{max(9, int(base * _FONT_BASELINE * _font_scale))}px"
+    return f"{max(12, int(base * _FONT_BASELINE * _font_scale))}px"
 
 set_theme(_current_mode, _font_scale, _current_accent)
 
@@ -312,6 +334,26 @@ def global_stylesheet() -> str:
         }}
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
             width: 0px;
+        }}
+        QComboBox {{
+            combobox-popup: 0;
+        }}
+        QComboBox QAbstractItemView {{
+            background-color: {BG_ELEVATED};
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER};
+            selection-background-color: {ORANGE};
+            selection-color: white;
+            border-radius: 0px;
+            padding: 2px;
+            outline: 0px;
+        }}
+        QComboBox QAbstractItemView::item {{
+            padding: 6px 12px;
+            min-height: 28px;
+        }}
+        QComboBox QAbstractItemView::item:hover {{
+            background-color: {BG_HOVER};
         }}
     """
 
@@ -515,6 +557,18 @@ def combo() -> str:
             selection-color: white;
             border-radius: {R_SM};
             padding: 4px;
+            outline: 0px;
+        }}
+        QComboBox QAbstractItemView::item {{
+            min-height: 28px;
+            padding: 4px 10px;
+        }}
+        QComboBox QAbstractItemView::item:selected {{
+            background-color: {ORANGE};
+            color: white;
+        }}
+        QComboBox QAbstractItemView::item:hover {{
+            background-color: {BG_HOVER};
         }}
     """
 
@@ -537,6 +591,17 @@ def combo_compact() -> str:
             color: {TEXT_PRIMARY};
             selection-background-color: {ORANGE};
             selection-color: white;
+        }}
+        QComboBox QAbstractItemView::item {{
+            min-height: 26px;
+            padding: 3px 8px;
+        }}
+        QComboBox QAbstractItemView::item:selected {{
+            background-color: {ORANGE};
+            color: white;
+        }}
+        QComboBox QAbstractItemView::item:hover {{
+            background-color: {BG_HOVER};
         }}
     """
 
@@ -936,11 +1001,11 @@ def drop_zone_frame_default() -> str:
     return f"""
         QFrame {{
             background: {BG_PANEL};
-            border: 2px dashed {BORDER_LIGHT};
+            border: 2px dashed {BORDER_ACCENT};
             border-radius: {R};
         }}
         QFrame:hover {{
-            border-color: {ORANGE_DIM};
+            border-color: {ORANGE};
             background: {BG_SURFACE};
         }}
     """
@@ -972,7 +1037,7 @@ def card_frame() -> str:
     return f"""
         QFrame {{
             background-color: {BG_CARD};
-            border: 1px solid {BORDER};
+            border: 1px solid {BORDER_LIGHT};
             border-radius: {R};
             padding: 14px;
         }}

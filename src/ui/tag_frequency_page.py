@@ -43,45 +43,65 @@ class TagFrequencyPage(QWidget):
         tb = QHBoxLayout()
         tb.setSpacing(8)
 
-        self._path_btn = QPushButton("Select Folder")
+        self._path_btn = QPushButton(get_text("tag_freq_select_folder_btn", self.lang))
         self._path_btn.setStyleSheet(theme.btn_secondary())
-        self._path_btn.setToolTip("Select the dataset folder containing .txt caption files")
+        self._path_btn.setToolTip(get_text("tag_freq_select_folder_btn_tooltip", self.lang))
         self._path_btn.clicked.connect(self._browse_folder)
         tb.addWidget(self._path_btn)
 
         self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Filter tags…")
+        self.filter_edit.setPlaceholderText(get_text("tag_freq_filter", self.lang))
         self.filter_edit.setStyleSheet(theme.line_edit_compact())
         self.filter_edit.setFixedWidth(200)
-        self.filter_edit.setToolTip("Filter the tag list by name")
+        self.filter_edit.setToolTip(get_text("tag_freq_filter_tooltip", self.lang))
         self.filter_edit.textChanged.connect(self._filter_table)
         tb.addWidget(self.filter_edit)
 
         tb.addStretch()
 
-        scan_btn = QPushButton("Scan Dataset")
+        scan_btn = QPushButton(get_text("tag_freq_scan", self.lang))
         scan_btn.setStyleSheet(theme.btn_primary())
-        scan_btn.setToolTip("Scan all .txt files in the selected folder and count tag frequencies")
+        scan_btn.setToolTip(get_text("tag_freq_scan_tooltip", self.lang))
         scan_btn.clicked.connect(self._browse_folder)
         tb.addWidget(scan_btn)
         self.load_btn = scan_btn  # alias for update_language compat
 
-        self.apply_bl_btn = QPushButton("Apply Blacklist")
+        self.apply_bl_btn = QPushButton(get_text("tag_freq_apply_bl", self.lang))
         self.apply_bl_btn.setStyleSheet(theme.btn_danger())
-        self.apply_bl_btn.setToolTip("Remove all blacklisted tags from every caption file in the dataset")
+        self.apply_bl_btn.setToolTip(get_text("tag_freq_apply_bl_tooltip", self.lang))
         self.apply_bl_btn.clicked.connect(self._apply_blacklist)
         self.apply_bl_btn.setEnabled(False)
         tb.addWidget(self.apply_bl_btn)
+
+        # Tag cleaner button
+        self.clean_btn = QPushButton(get_text("tag_freq_clean", self.lang))
+        self.clean_btn.setStyleSheet(theme.btn_secondary())
+        self.clean_btn.setToolTip(get_text("tag_freq_clean_tooltip", self.lang))
+        self.clean_btn.clicked.connect(self._run_tag_cleaner)
+        self.clean_btn.setEnabled(False)
+        tb.addWidget(self.clean_btn)
+
+        # Readiness checker button
+        self.readiness_btn = QPushButton(get_text("tag_freq_readiness", self.lang))
+        self.readiness_btn.setStyleSheet(theme.btn_secondary())
+        self.readiness_btn.setToolTip(get_text("tag_freq_readiness_tooltip", self.lang))
+        self.readiness_btn.clicked.connect(self._run_readiness_check)
+        self.readiness_btn.setEnabled(False)
+        tb.addWidget(self.readiness_btn)
 
         root.addLayout(tb)
 
         # ── Stat cards ──
         stats_row = QHBoxLayout()
         stats_row.setSpacing(8)
-        self._stat_instances_lbl = self._make_stat_card(stats_row, "Total Instances", "0", "#", theme.ORANGE)
-        self._stat_unique_lbl    = self._make_stat_card(stats_row, "Unique Tags",     "0", "#", theme.BLUE)
-        self._stat_blacklist_lbl = self._make_stat_card(stats_row, "Blacklisted",     "0", "#", theme.RED)
-        self._stat_files_lbl     = self._make_stat_card(stats_row, "Caption Files",   "0", "#", theme.GREEN)
+        self._stat_instances_card = self._make_stat_card(stats_row, get_text("tag_freq_stat_instances", self.lang), "0", "#", theme.ORANGE)
+        self._stat_unique_card    = self._make_stat_card(stats_row, get_text("tag_freq_stat_unique", self.lang),    "0", "#", theme.BLUE)
+        self._stat_blacklist_card = self._make_stat_card(stats_row, get_text("tag_freq_stat_blacklisted", self.lang), "0", "#", theme.RED)
+        self._stat_files_card     = self._make_stat_card(stats_row, get_text("tag_freq_stat_files", self.lang),   "0", "#", theme.GREEN)
+        self._stat_instances_lbl = self._stat_instances_card[1]
+        self._stat_unique_lbl    = self._stat_unique_card[1]
+        self._stat_blacklist_lbl = self._stat_blacklist_card[1]
+        self._stat_files_lbl     = self._stat_files_card[1]
         root.addLayout(stats_row)
 
         # ── Split: table + blacklist panel ──
@@ -91,7 +111,7 @@ class TagFrequencyPage(QWidget):
         # Frequency table
         self.table = QTableWidget(0, 4)
         self.table.setObjectName("freq_table")
-        self.table.setHorizontalHeaderLabels(["Tag", "Count", "%", "Frequency"])
+        self.table.setHorizontalHeaderLabels(self._table_headers())
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -146,7 +166,7 @@ class TagFrequencyPage(QWidget):
         bl_lay.setSpacing(0)
 
         # Panel header
-        bl_hdr = QLabel("  Blacklist")
+        bl_hdr = QLabel("  " + get_text("tag_freq_bl_title", self.lang))
         bl_hdr.setFixedHeight(44)
         bl_hdr.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 600;"
@@ -159,15 +179,15 @@ class TagFrequencyPage(QWidget):
         bl_input_row = QHBoxLayout()
         bl_input_row.setContentsMargins(8, 6, 8, 4)
         self._bl_input = QLineEdit()
-        self._bl_input.setPlaceholderText("Add tag to blacklist…")
+        self._bl_input.setPlaceholderText(get_text("tag_freq_bl_input_ph", self.lang))
         self._bl_input.setStyleSheet(theme.line_edit_compact())
         self._bl_input.returnPressed.connect(self._add_tag_to_blacklist)
         bl_input_row.addWidget(self._bl_input)
-        add_btn = QPushButton("+")
-        add_btn.setFixedSize(28, 28)
-        add_btn.setStyleSheet(theme.btn_primary())
-        add_btn.clicked.connect(self._add_tag_to_blacklist)
-        bl_input_row.addWidget(add_btn)
+        self._bl_add_btn = QPushButton("+")
+        self._bl_add_btn.setFixedSize(28, 28)
+        self._bl_add_btn.setStyleSheet(theme.btn_primary())
+        self._bl_add_btn.clicked.connect(self._add_tag_to_blacklist)
+        bl_input_row.addWidget(self._bl_add_btn)
         bl_lay.addLayout(bl_input_row)
 
         # Blacklist items list
@@ -193,13 +213,15 @@ class TagFrequencyPage(QWidget):
         bl_footer.setContentsMargins(8, 4, 8, 8)
         bl_footer.setSpacing(4)
 
-        apply_btn2 = QPushButton("Apply to Dataset")
+        self._apply_to_ds_btn = QPushButton(get_text("tag_freq_apply_to_dataset", self.lang))
+        apply_btn2 = self._apply_to_ds_btn
         apply_btn2.setStyleSheet(theme.btn_danger())
         apply_btn2.clicked.connect(self._apply_blacklist)
-        save_bl_btn = QPushButton("Save Blacklist as .txt")
+        self._save_bl_btn = QPushButton(get_text("tag_freq_save_bl", self.lang))
+        save_bl_btn = self._save_bl_btn
         save_bl_btn.setStyleSheet(theme.btn_secondary())
         save_bl_btn.clicked.connect(self._save_blacklist)
-        self._add_sel_btn = QPushButton("Add Selected from Table")
+        self._add_sel_btn = QPushButton(get_text("tag_freq_add_selected", self.lang))
         self._add_sel_btn.setStyleSheet(theme.btn_secondary())
         self._add_sel_btn.clicked.connect(self._add_selected_to_blacklist)
 
@@ -212,16 +234,17 @@ class TagFrequencyPage(QWidget):
         root.addLayout(split, stretch=1)
 
         # Status
-        self.status_lbl = QLabel("No dataset loaded.")
+        self.status_lbl = QLabel(get_text("tag_freq_no_data", self.lang))
         self.status_lbl.setStyleSheet(theme.label_muted())
         root.addWidget(self.status_lbl)
 
     # ─── Stat card helper ───────────────────────────────────────────────
 
-    def _make_stat_card(self, layout: QHBoxLayout, title: str, value: str, icon: str, color: str) -> QLabel:
+    def _make_stat_card(self, layout: QHBoxLayout, title: str, value: str, icon: str, color: str):
         card = QFrame()
+        card.setProperty("lhCard", True)
         card.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER};"
+            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER_LIGHT};"
             f" border-radius: 10px; padding: 12px; }}"
         )
         cl = QHBoxLayout(card)
@@ -237,7 +260,7 @@ class TagFrequencyPage(QWidget):
         info.addWidget(t); info.addWidget(v)
         cl.addWidget(ico); cl.addLayout(info)
         layout.addWidget(card)
-        return v  # return the value label for updates
+        return (t, v)  # (title label, value label) for updates
 
     # ─── Folder loading ─────────────────────────────────────────────────
 
@@ -272,7 +295,10 @@ class TagFrequencyPage(QWidget):
             self._tag_counts.update(tags)
 
         self._populate_table()
-        self.apply_bl_btn.setEnabled(bool(self._tag_counts))
+        _has_data = bool(self._tag_counts)
+        self.apply_bl_btn.setEnabled(_has_data)
+        self.clean_btn.setEnabled(_has_data)
+        self.readiness_btn.setEnabled(_has_data)
 
         # Update stat cards
         self._stat_instances_lbl.setText(f"{total_tags:,}")
@@ -351,7 +377,7 @@ class TagFrequencyPage(QWidget):
             f" border: 1px solid {theme.BORDER_LIGHT}; border-radius: 6px; padding: 4px; }}"
             f" QMenu::item:selected {{ background: {theme.ORANGE_SUBTLE}; }}"
         )
-        act = menu.addAction(f"Add '{tag}' to blacklist")
+        act = menu.addAction(get_text("tag_freq_ctx_add", self.lang).format(tag))
         action = menu.exec_(self.table.viewport().mapToGlobal(pos))
         if action == act:
             self._add_tag_str_to_blacklist(tag)
@@ -380,7 +406,7 @@ class TagFrequencyPage(QWidget):
             f"QMenu {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER_LIGHT}; border-radius: 6px; padding: 4px; }}"
         )
-        rm = menu.addAction("Remove from blacklist")
+        rm = menu.addAction(get_text("tag_freq_ctx_remove", self.lang))
         action = menu.exec_(self._bl_list.viewport().mapToGlobal(pos))
         if action == rm:
             self._blacklist.discard(item.text().lower())
@@ -429,16 +455,60 @@ class TagFrequencyPage(QWidget):
             self._scan_folder(self._folder)
 
     def _save_blacklist(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Save Blacklist", "blacklist.txt", "Text files (*.txt)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, get_text("tag_freq_save_bl_title", self.lang),
+            "blacklist.txt", get_text("tag_freq_txt_filter", self.lang))
         if path:
             Path(path).write_text("\n".join(sorted(self._blacklist)), encoding="utf-8")
 
     # ─── Language ───────────────────────────────────────────────────────
 
+    def _table_headers(self) -> list:
+        return [
+            get_text("tag_freq_col_tag", self.lang),
+            get_text("tag_freq_col_count", self.lang),
+            get_text("tag_freq_col_pct", self.lang),
+            get_text("tag_freq_col_freq", self.lang),
+        ]
+
     def update_language(self, lang: str):
         self.lang = lang
-        self.filter_edit.setPlaceholderText("Filter tags…")
-        self.table.setHorizontalHeaderLabels(["Tag", "Count", "%", "Frequency"])
+
+        # Toolbar buttons + tooltips
+        self._path_btn.setText(get_text("tag_freq_select_folder_btn", self.lang))
+        # Only reset the path button tooltip when no folder is loaded (it holds the path otherwise)
+        if not self._folder:
+            self._path_btn.setToolTip(get_text("tag_freq_select_folder_btn_tooltip", self.lang))
+        self.filter_edit.setPlaceholderText(get_text("tag_freq_filter", self.lang))
+        self.filter_edit.setToolTip(get_text("tag_freq_filter_tooltip", self.lang))
+        self.load_btn.setText(get_text("tag_freq_scan", self.lang))
+        self.load_btn.setToolTip(get_text("tag_freq_scan_tooltip", self.lang))
+        self.apply_bl_btn.setText(get_text("tag_freq_apply_bl", self.lang))
+        self.apply_bl_btn.setToolTip(get_text("tag_freq_apply_bl_tooltip", self.lang))
+        self.clean_btn.setText(get_text("tag_freq_clean", self.lang))
+        self.clean_btn.setToolTip(get_text("tag_freq_clean_tooltip", self.lang))
+        self.readiness_btn.setText(get_text("tag_freq_readiness", self.lang))
+        self.readiness_btn.setToolTip(get_text("tag_freq_readiness_tooltip", self.lang))
+
+        # Stat-card titles
+        self._stat_instances_card[0].setText(get_text("tag_freq_stat_instances", self.lang))
+        self._stat_unique_card[0].setText(get_text("tag_freq_stat_unique", self.lang))
+        self._stat_blacklist_card[0].setText(get_text("tag_freq_stat_blacklisted", self.lang))
+        self._stat_files_card[0].setText(get_text("tag_freq_stat_files", self.lang))
+
+        # Table headers
+        self.table.setHorizontalHeaderLabels(self._table_headers())
+
+        # Blacklist panel
+        self._bl_title.setText("  " + get_text("tag_freq_bl_title", self.lang))
+        self._bl_input.setPlaceholderText(get_text("tag_freq_bl_input_ph", self.lang))
+        self._add_sel_btn.setText(get_text("tag_freq_add_selected", self.lang))
+        self._apply_to_ds_btn.setText(get_text("tag_freq_apply_to_dataset", self.lang))
+        self._save_bl_btn.setText(get_text("tag_freq_save_bl", self.lang))
+
+        # Status label (only reset when no data is loaded)
+        if not self._tag_counts:
+            self.status_lbl.setText(get_text("tag_freq_no_data", self.lang))
 
     # ─── Theme ──────────────────────────────────────────────────────────
 
@@ -461,3 +531,164 @@ class TagFrequencyPage(QWidget):
             }}
         """)
         self.status_lbl.setStyleSheet(theme.label_muted())
+        if hasattr(self, '_bl_add_btn'):
+            self._bl_add_btn.setStyleSheet(theme.btn_primary())
+        if hasattr(self, '_add_sel_btn'):
+            self._add_sel_btn.setStyleSheet(theme.btn_secondary())
+        if hasattr(self, '_bl_input'):
+            self._bl_input.setStyleSheet(theme.line_edit_compact())
+
+    # ── Tag Cleaner ──────────────────────────────────────────────────────────
+
+    def _run_tag_cleaner(self):
+        if not self._folder:
+            return
+        from PyQt5.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
+        # Preview first
+        try:
+            from src.core.tag_cleaner import TagCleaner
+            cleaner = TagCleaner(remove_noise=False)
+            preview = cleaner.preview(self._folder)
+        except Exception as exc:
+            QMessageBox.critical(self, "Tag Cleaner", f"Hata / Error:\n{exc}")
+            return
+
+        if not preview:
+            QMessageBox.information(
+                self, "Tag Cleaner",
+                "Temizlenecek tekrar veya örtüşen tag bulunamadi.\n"
+                "No duplicate or redundant tags found."
+            )
+            return
+
+        # Build preview message
+        total_removable = sum(p['original_count'] - p['cleaned_count'] for p in preview)
+        files_affected = len(preview)
+        examples = []
+        for p in preview[:5]:
+            fname = p['path'].name
+            removed = ", ".join(p['removed_tags'][:5])
+            examples.append(f"  {fname}: -{p['original_count'] - p['cleaned_count']} tag ({removed})")
+
+        msg = (
+            f"{files_affected} dosyada {total_removable} gereksiz tag bulundu.\n"
+            f"{files_affected} files, {total_removable} tags to remove.\n\n"
+            + "\n".join(examples)
+            + ("\n  ..." if len(preview) > 5 else "")
+            + "\n\nDevam etmek istiyor musunuz? / Proceed?"
+        )
+        reply = QMessageBox.question(
+            self, "Tag Cleaner", msg,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            stats = cleaner.clean_folder(self._folder)
+            QMessageBox.information(
+                self, "Tag Cleaner",
+                f"Tamamlandi / Done!\n\n"
+                f"Taranan dosya / Files scanned: {stats['files_scanned']}\n"
+                f"Degistirilen / Changed: {stats['files_changed']}\n"
+                f"Kaldirilan tag / Tags removed: {stats['tags_removed']}\n"
+                f"Hata / Errors: {stats['errors']}"
+            )
+            # Rescan to refresh tag counts
+            self._browse_folder(self._folder)
+        except Exception as exc:
+            QMessageBox.critical(self, "Tag Cleaner", f"Temizleme hatasi:\n{exc}")
+
+    # ── Readiness Checker ────────────────────────────────────────────────────
+
+    def _run_readiness_check(self):
+        if not self._folder:
+            return
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea, QWidget
+        try:
+            from src.core.readiness_checker import ReadinessChecker
+            report = ReadinessChecker().check(self._folder)
+        except Exception as exc:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Readiness Check", f"Hata / Error:\n{exc}")
+            return
+
+        # Build dialog
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Dataset Readiness Check")
+        dlg.setMinimumWidth(560)
+        dlg.setMinimumHeight(420)
+        dlg.setStyleSheet(f"background: {theme.BG_DARK}; color: {theme.TEXT_PRIMARY};")
+
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(10)
+
+        # Grade header
+        grade_colors = {"A": theme.GREEN, "B": "#7ec87e", "C": theme.YELLOW,
+                        "D": "#ffa94d", "F": theme.RED}
+        gc = grade_colors.get(report.grade, theme.TEXT_PRIMARY)
+        header = QLabel(
+            f"<span style='font-size:32px;color:{gc};font-weight:900;'>{report.grade}</span>"
+            f"&nbsp;&nbsp;<span style='font-size:18px;font-weight:600;'>"
+            f"Score: {report.score}/100</span>"
+        )
+        header.setTextFormat(Qt.RichText)
+        lay.addWidget(header)
+
+        # Stats grid
+        stats_html = (
+            f"<table style='color:{theme.TEXT_PRIMARY};font-size:13px;'>"
+            f"<tr><td>Images</td><td>&nbsp;<b>{report.image_count}</b></td>"
+            f"<td>&nbsp;&nbsp;&nbsp;Captioned</td><td>&nbsp;<b>{report.captioned_count} "
+            f"({report.captioned_count/max(1,report.image_count)*100:.0f}%)</b></td></tr>"
+            f"<tr><td>Avg tags</td><td>&nbsp;<b>{report.avg_tags:.1f}</b></td>"
+            f"<td>&nbsp;&nbsp;&nbsp;Vocabulary</td><td>&nbsp;<b>{report.vocabulary_size}</b></td></tr>"
+            f"<tr><td>Duplicates</td><td>&nbsp;<b>{report.duplicate_count}</b></td>"
+            f"<td>&nbsp;&nbsp;&nbsp;Suggested repeats</td>"
+            f"<td>&nbsp;<b style='color:{theme.ORANGE};'>{report.suggested_repeats}</b></td></tr>"
+            f"</table>"
+        )
+        stats_lbl = QLabel(stats_html)
+        stats_lbl.setTextFormat(Qt.RichText)
+        stats_lbl.setStyleSheet(f"background:{theme.BG_CARD};border:1px solid {theme.BORDER};"
+                                f"border-radius:6px;padding:12px;")
+        lay.addWidget(stats_lbl)
+
+        # Issues
+        if report.issues:
+            issues_inner = QWidget()
+            issues_lay = QVBoxLayout(issues_inner)
+            issues_lay.setContentsMargins(0, 0, 0, 0)
+            issues_lay.setSpacing(4)
+            for iss in report.issues:
+                lbl = QLabel(f"{iss.emoji}  {iss.message}")
+                lbl.setWordWrap(True)
+                lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:12px;"
+                                  f"background:transparent;border:none;padding:2px 0;")
+                issues_lay.addWidget(lbl)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(0)
+            scroll.setWidget(issues_inner)
+            scroll.setMaximumHeight(160)
+            scroll.setStyleSheet(f"background:{theme.BG_CARD};border:1px solid {theme.BORDER};"
+                                 f"border-radius:6px;")
+            lay.addWidget(scroll)
+
+        # Top tags
+        if report.top_tags:
+            top_str = "  ".join(f"{t} ({c})" for t, c in report.top_tags[:10])
+            top_lbl = QLabel(f"<b>Top tags:</b> {top_str}")
+            top_lbl.setWordWrap(True)
+            top_lbl.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:11px;"
+                                  f"background:transparent;border:none;")
+            lay.addWidget(top_lbl)
+
+        close_btn = QPushButton("Kapat / Close")
+        close_btn.setStyleSheet(theme.btn_primary())
+        close_btn.clicked.connect(dlg.accept)
+        lay.addWidget(close_btn)
+
+        dlg.exec_()

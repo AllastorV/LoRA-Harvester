@@ -722,10 +722,8 @@ class ResourceSettingsDrawer(QFrame):
         root.addLayout(btn_row)
 
         # ── GPU Install button ───────────────────────────────────
-        self._gpu_install_btn = QPushButton("⚡  Install GPU Packages")
-        self._gpu_install_btn.setToolTip(
-            "Installs onnxruntime-gpu and PyTorch CUDA — requires internet & restarts the app"
-        )
+        self._gpu_install_btn = QPushButton(get_text("res_gpu_install", self.lang))
+        self._gpu_install_btn.setToolTip(get_text("res_gpu_install_tooltip", self.lang))
         self._gpu_install_btn.setStyleSheet(
             f"QPushButton {{ background-color: {theme.BG_ELEVATED}; "
             f"color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER}; "
@@ -923,8 +921,8 @@ class ResourceSettingsDrawer(QFrame):
             return
         from src.core.model_installer import GpuInstallThread
         self._gpu_install_btn.setEnabled(False)
-        self._gpu_install_btn.setText("⚡  Installing…")
-        self._gpu_install_log.setText("Starting GPU package install…")
+        self._gpu_install_btn.setText(get_text("res_gpu_installing", self.lang))
+        self._gpu_install_log.setText(get_text("res_gpu_install_starting", self.lang))
         self._gpu_install_thread = GpuInstallThread(parent=self)
         self._gpu_install_thread.log_message.connect(
             lambda msg: self._gpu_install_log.setText(msg))
@@ -933,7 +931,7 @@ class ResourceSettingsDrawer(QFrame):
 
     def _on_gpu_install_done(self, ok: bool, summary: str):
         self._gpu_install_log.setText(summary)
-        self._gpu_install_btn.setText("⚡  Install GPU Packages")
+        self._gpu_install_btn.setText(get_text("res_gpu_install", self.lang))
         self._gpu_install_btn.setEnabled(True)
 
     def embed_lang_combo(self, combo):
@@ -1048,6 +1046,9 @@ class ResourceSettingsDrawer(QFrame):
         self._subtitle.setText(get_text("res_subtitle", lang))
         self._reset_btn.setText(get_text("res_reset", lang))
         self._apply_btn.setText(get_text("res_apply", lang))
+        if hasattr(self, "_gpu_install_btn"):
+            self._gpu_install_btn.setText(get_text("res_gpu_install", lang))
+            self._gpu_install_btn.setToolTip(get_text("res_gpu_install_tooltip", lang))
         if hasattr(self, "_accent_label"):
             self._accent_label.setText(get_text("res_accent_color", lang))
             self._custom_accent_btn.setToolTip(get_text("res_accent_custom", lang))

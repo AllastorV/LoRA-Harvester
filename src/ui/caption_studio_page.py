@@ -20,6 +20,7 @@ from PyQt5.QtGui import (
 from typing import Dict, List, Optional
 from src.ui.translations import get_text
 from src.ui import theme
+from src.ui.animations import ToggleSwitch, Chip, SearchCombo, ThumbnailGrid
 
 _IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
 
@@ -494,9 +495,9 @@ class _GenerateTab(QWidget):
 
         # Hidden combos / spinboxes referenced by backend
         self.model_combo = QComboBox()
-        self.model_combo.addItem("WD14 Tagger", 'wd14')
-        self.model_combo.addItem("Florence-2", 'florence2')
-        self.model_combo.addItem("WD14 + Florence-2", 'both')
+        self.model_combo.addItem(get_text('model_wd14', self.lang), 'wd14')
+        self.model_combo.addItem(get_text('model_florence2', self.lang), 'florence2')
+        self.model_combo.addItem(get_text('model_both', self.lang), 'both')
         self.model_combo.currentIndexChanged.connect(self._on_model_combo_changed)
 
         self.variant_combo = QComboBox()
@@ -509,11 +510,11 @@ class _GenerateTab(QWidget):
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
 
         self.trigger_edit = QLineEdit()
-        self.trigger_edit.setPlaceholderText("e.g., ohwx, 1girl")
+        self.trigger_edit.setPlaceholderText(get_text('trigger_placeholder', self.lang))
         self.trigger_edit.setStyleSheet(theme.line_edit())
 
         self.suffix_edit = QLineEdit()
-        self.suffix_edit.setPlaceholderText("e.g., high quality, masterpiece, 4k")
+        self.suffix_edit.setPlaceholderText(get_text('suffix_placeholder', self.lang))
         self.suffix_edit.setStyleSheet(theme.line_edit())
 
         self.max_tags_spin = QSpinBox()
@@ -526,8 +527,8 @@ class _GenerateTab(QWidget):
         self.mode_label = QLabel(); self.mode_info = QLabel()
         self.f2_label = QLabel(get_text('florence2_model_label', self.lang))
         self.f2_combo = QComboBox()
-        self.f2_combo.addItem('Florence-2 Base (Fast)', 'florence-2-base')
-        self.f2_combo.addItem('Florence-2 Large (Accurate)', 'florence-2-large')
+        self.f2_combo.addItem(get_text('f2_base', self.lang), 'florence-2-base')
+        self.f2_combo.addItem(get_text('f2_large', self.lang), 'florence-2-large')
         self.f2_task_combo = QComboBox()
         self.f2_task_combo.addItem(get_text('florence2_task_detailed', self.lang), '<DETAILED_CAPTION>')
         self.f2_task_combo.addItem(get_text('florence2_task_more', self.lang), '<MORE_DETAILED_CAPTION>')
@@ -574,10 +575,13 @@ class _GenerateTab(QWidget):
         self.trigger_label = QLabel(); self.trigger_info = QLabel()
         self.suffix_label = QLabel(); self.suffix_info = QLabel()
         self.install_btn = QPushButton()
-        self._model_lbl = QLabel("Model"); self._variant_lbl = QLabel("Variant")
-        self._mode_lbl = QLabel("Mode"); self._trigger_lbl = QLabel("Trigger Word")
-        self._suffix_lbl = QLabel("Last Words"); self._maxtags_lbl = QLabel("Max Tags")
-        self._conf_lbl = QLabel("Confidence")
+        self._model_lbl = QLabel(get_text('gen_model_lbl', self.lang))
+        self._variant_lbl = QLabel(get_text('gen_variant_lbl', self.lang))
+        self._mode_lbl = QLabel(get_text('gen_mode_lbl', self.lang))
+        self._trigger_lbl = QLabel(get_text('gen_trigger_lbl', self.lang))
+        self._suffix_lbl = QLabel(get_text('gen_lastwords_lbl', self.lang))
+        self._maxtags_lbl = QLabel(get_text('gen_maxtags_lbl', self.lang))
+        self._conf_lbl = QLabel(get_text('gen_conf_lbl', self.lang))
 
         for _w in [
             self.step1_title, self.step2_title, self.step3_title,
@@ -623,8 +627,9 @@ class _GenerateTab(QWidget):
 
         def _card(title, icon_char=None):
             f = QFrame()
+            f.setProperty("lhCard", True)
             f.setStyleSheet(
-                f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:10px;}}"
+                f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};border-radius:10px;}}"
             )
             lay = QVBoxLayout(f)
             lay.setContentsMargins(20, 16, 20, 16)
@@ -704,12 +709,7 @@ class _GenerateTab(QWidget):
             )
             setattr(self, cb_attr, cb)
             top_row.addWidget(cb); top_row.addStretch()
-            badge = QLabel(badge_text)
-            badge.setStyleSheet(
-                f"color:{badge_color};font-size:10px;font-family:{theme.FONT_MONO};"
-                f"background:transparent;border:1px solid {badge_color}55;"
-                f"border-radius:3px;padding:1px 6px;"
-            )
+            badge = Chip(badge_text, accent=badge_color)
             top_row.addWidget(badge)
             scl.addLayout(top_row)
             desc = QLabel(desc_text); desc.setWordWrap(True); desc.setFixedHeight(34)
@@ -742,12 +742,65 @@ class _GenerateTab(QWidget):
             "Generates descriptive natural language sentences for complex scenes.",
             "_f2_sl", "_f2_sl_lbl", 70, "_f2_vis_cb",
         )
+        self._f2_vis_cb.setChecked(False)
         self._wd14_sl.valueChanged.connect(lambda v: self.conf_spin.setValue(round(v / 100.0, 2)))
         self._wd14_vis_cb.toggled.connect(self.wd14_cb.setChecked)
 
         models_hbox = QHBoxLayout(); models_hbox.setSpacing(12)
         models_hbox.addWidget(wd14_sc); models_hbox.addWidget(f2_sc)
         mc_lay.addLayout(models_hbox)
+
+        # Model variant search-combo (visible, synced to hidden wd14_combo)
+        mc_lay.addWidget(_mono_lbl("Model Variant"))
+        self._wd14_search_combo = SearchCombo()
+        self._wd14_search_combo.addItems([
+            'SmilingWolf/wd-swinv2-tagger-v3',
+            'SmilingWolf/wd-convnext-tagger-v3',
+            'SmilingWolf/wd-vit-tagger-v3',
+            'SmilingWolf/wd-v1-4-moat-tagger-v2',
+            'SmilingWolf/wd-v1-4-swinv2-tagger-v2',
+        ])
+        self._wd14_search_combo.apply_theme()
+        self._wd14_search_combo.currentTextChanged.connect(
+            lambda t: self.wd14_combo.setCurrentText(t)
+        )
+        mc_lay.addWidget(self._wd14_search_combo)
+
+        def _update_variant_combo():
+            use_wd14 = self._wd14_vis_cb.isChecked()
+            use_f2 = self._f2_vis_cb.isChecked()
+            self._wd14_search_combo.blockSignals(True)
+            self._wd14_search_combo.clear()
+            if use_wd14 and not use_f2:
+                # WD14 only
+                self._wd14_search_combo.addItems([
+                    'SmilingWolf/wd-swinv2-tagger-v3',
+                    'SmilingWolf/wd-convnext-tagger-v3',
+                    'SmilingWolf/wd-vit-tagger-v3',
+                    'SmilingWolf/wd-v1-4-moat-tagger-v2',
+                    'SmilingWolf/wd-v1-4-swinv2-tagger-v2',
+                ])
+                self._wd14_search_combo.setPlaceholderText(get_text('wd14_variant_ph', self.lang))
+            elif use_f2 and not use_wd14:
+                # Florence-2 only
+                self._wd14_search_combo.addItems([
+                    'microsoft/Florence-2-base',
+                    'microsoft/Florence-2-large',
+                ])
+                self._wd14_search_combo.setPlaceholderText(get_text('f2_variant_ph', self.lang))
+            else:
+                # Both or neither
+                self._wd14_search_combo.addItems([
+                    'SmilingWolf/wd-swinv2-tagger-v3',
+                    'SmilingWolf/wd-convnext-tagger-v3',
+                    'SmilingWolf/wd-vit-tagger-v3',
+                ])
+                self._wd14_search_combo.setPlaceholderText(get_text('wd14_variant_ph', self.lang))
+            self._wd14_search_combo.blockSignals(False)
+
+        self._wd14_vis_cb.toggled.connect(lambda _: _update_variant_combo())
+        self._f2_vis_cb.toggled.connect(lambda _: _update_variant_combo())
+
         left_col.addWidget(model_card)
 
         # -- Global Formatting card -------------------------------
@@ -765,13 +818,28 @@ class _GenerateTab(QWidget):
             return col
 
         self._preset_vis = QComboBox()
-        self._preset_vis.addItems([
-            "General Anime / Illustration",
-            "Photorealistic Portraits",
-            "Background / Scenery",
-            "Custom Workflow",
-        ])
+        self._preset_vis.addItem(get_text('qpreset_high', self.lang),   {'thresh': 25, 'max_tags': 35})
+        self._preset_vis.addItem(get_text('qpreset_normal', self.lang), {'thresh': 35, 'max_tags': 25})
+        self._preset_vis.addItem(get_text('qpreset_speed', self.lang),  {'thresh': 45, 'max_tags': 15})
+        self._preset_vis.addItem(get_text('qpreset_custom', self.lang), None)
+        self._preset_vis.setCurrentIndex(1)
         self._preset_vis.setStyleSheet(theme.combo())
+
+        def _apply_quality_preset(idx):
+            data = self._preset_vis.itemData(idx)
+            if data:
+                thresh = data['thresh']
+                max_tags = data['max_tags']
+                self._wd14_sl.setValue(thresh)
+                if hasattr(self, '_f2_sl'):
+                    self._f2_sl.setValue(thresh)
+                if hasattr(self, '_max_tags_vis'):
+                    self._max_tags_vis.setValue(max_tags)
+                self.max_tags_spin.setValue(max_tags)
+                self.conf_spin.setValue(round(thresh / 100.0, 2))
+
+        self._preset_vis.currentIndexChanged.connect(_apply_quality_preset)
+        _apply_quality_preset(1)   # apply Normal on init
         grid.addLayout(_field_col(get_text('preset_label', self.lang), self._preset_vis), 0, 0)
 
         self.trigger_edit.setStyleSheet(theme.line_edit())
@@ -782,7 +850,7 @@ class _GenerateTab(QWidget):
         )
 
         self._last_words_edit = QLineEdit()
-        self._last_words_edit.setPlaceholderText("e.g., style of Artist")
+        self._last_words_edit.setPlaceholderText(get_text('last_words_placeholder', self.lang))
         self._last_words_edit.setStyleSheet(theme.line_edit())
         grid.addLayout(
             _field_col(get_text('last_words_label', self.lang), self._last_words_edit,
@@ -790,19 +858,34 @@ class _GenerateTab(QWidget):
             0, 2,
         )
 
-        self.suffix_edit.setStyleSheet(theme.line_edit())
-        grid.addLayout(
-            _field_col(get_text('global_suffix_label', self.lang), self.suffix_edit,
-                       get_text('global_suffix_hint', self.lang)),
-            1, 0, 1, 2,
-        )
+        self._neg_prompt_edit = QLineEdit()
+        self._neg_prompt_edit.setPlaceholderText(get_text('neg_prompt_placeholder', self.lang))
+        self._neg_prompt_edit.setStyleSheet(theme.line_edit())
+        self._neg_prompt_edit.setText(self.neg_edit.text())  # sync from hidden
+        self._neg_prompt_edit.textChanged.connect(self.neg_edit.setText)
+        self._neg_prompt_field_lbl = _mono_lbl(get_text('negative_prompt_label', self.lang))
+        _neg_col = QVBoxLayout(); _neg_col.setSpacing(4)
+        _neg_col.addWidget(self._neg_prompt_field_lbl)
+        _neg_col.addWidget(self._neg_prompt_edit)
+        grid.addLayout(_neg_col, 1, 0, 1, 2)
+
+        self._max_tags_vis = QSpinBox()
+        self._max_tags_vis.setRange(5, 150)
+        self._max_tags_vis.setValue(self.max_tags_spin.value())
+        self._max_tags_vis.setStyleSheet(theme.spinbox_compact())
+        self._max_tags_vis.valueChanged.connect(self.max_tags_spin.setValue)
+        self._max_tags_field_lbl = _mono_lbl(get_text('max_tags_field', self.lang))
+        _mt_col = QVBoxLayout(); _mt_col.setSpacing(4)
+        _mt_col.addWidget(self._max_tags_field_lbl)
+        _mt_col.addWidget(self._max_tags_vis)
+        grid.addLayout(_mt_col, 1, 2)
 
         # Tag Mode segmented radio bar
         tm_col = QVBoxLayout(); tm_col.setSpacing(6)
         tm_col.addWidget(_mono_lbl(get_text('tag_mode_label', self.lang)))
         seg_bar = QFrame()
         seg_bar.setStyleSheet(
-            f"QFrame {{background:rgba(0,0,0,0.4);border:1px solid {theme.BORDER};border-radius:6px;}}"
+            f"QFrame {{background:{theme.BG_SURFACE};border:1px solid {theme.BORDER};border-radius:6px;}}"
         )
         seg_lay = QHBoxLayout(seg_bar); seg_lay.setContentsMargins(3, 3, 3, 3); seg_lay.setSpacing(2)
         self._tag_mode_grp = QButtonGroup(self); self._tag_mode_grp.setExclusive(True)
@@ -810,13 +893,14 @@ class _GenerateTab(QWidget):
         def _rb_style(checked):
             if checked:
                 return (
-                    f"QRadioButton {{background:{theme.ORANGE}22;color:{theme.ORANGE};border:none;"
-                    f"border-radius:4px;padding:6px 16px;font-size:{theme.fs(11)};}}"
+                    f"QRadioButton {{background:{theme.ORANGE};color:#ffffff;font-weight:700;"
+                    f"border:none;border-radius:4px;padding:6px 4px;font-size:{theme.fs(12)};"
+                    f"text-align:center;}}"
                     f"QRadioButton::indicator {{width:0;height:0;}}"
                 )
             return (
-                f"QRadioButton {{background:transparent;color:{theme.TEXT_MUTED};border:none;"
-                f"border-radius:4px;padding:6px 16px;font-size:{theme.fs(11)};}}"
+                f"QRadioButton {{background:transparent;color:{theme.TEXT_PRIMARY};border:none;"
+                f"border-radius:4px;padding:6px 4px;font-size:{theme.fs(12)};text-align:center;}}"
                 f"QRadioButton::indicator {{width:0;height:0;}}"
             )
 
@@ -827,6 +911,8 @@ class _GenerateTab(QWidget):
         ]
         for i, lbl in enumerate(_tag_mode_labels):
             rb = QRadioButton(lbl)
+            rb.setFixedWidth(139)
+            rb.setFixedHeight(34)
             rb.setChecked(i == 1)
             rb.setStyleSheet(_rb_style(i == 1))
             self._tag_mode_grp.addButton(rb, i)
@@ -839,7 +925,9 @@ class _GenerateTab(QWidget):
             self.mode_combo.setCurrentIndex(self._tag_mode_grp.checkedId())
 
         self._tag_mode_grp.buttonClicked.connect(_on_tag_mode)
-        tm_col.addWidget(seg_bar)
+        _seg_row = QHBoxLayout(); _seg_row.setContentsMargins(0, 0, 0, 0); _seg_row.setSpacing(0)
+        _seg_row.addWidget(seg_bar); _seg_row.addStretch()
+        tm_col.addLayout(_seg_row)
         grid.addLayout(tm_col, 2, 0, 1, 2)
 
         fmt_lay.addLayout(grid)
@@ -899,13 +987,7 @@ class _GenerateTab(QWidget):
         div_line.setStyleSheet(f"background:{theme.BORDER};border:none;"); div_line.setFixedHeight(1)
         rules_lay.addWidget(div_line)
 
-        self._auto_clean_cb = QCheckBox(); self._auto_clean_cb.setChecked(True)
-        self._auto_clean_cb.setStyleSheet(
-            f"QCheckBox {{background:transparent;border:none;}}"
-            f"QCheckBox::indicator {{width:14px;height:14px;border:1px solid {theme.BORDER};"
-            f"border-radius:2px;background:{theme.BG_SURFACE};}}"
-            f"QCheckBox::indicator:checked {{background:{theme.ORANGE};border-color:{theme.ORANGE};}}"
-        )
+        self._auto_clean_cb = ToggleSwitch(checked=True)
         ac_row = QHBoxLayout(); ac_row.setSpacing(10); ac_row.setAlignment(Qt.AlignTop)
         ac_row.addWidget(self._auto_clean_cb)
         ac_txt = QVBoxLayout(); ac_txt.setSpacing(2)
@@ -925,11 +1007,51 @@ class _GenerateTab(QWidget):
 
         # -- Action card (orange top border) ----------------------
         action_card = QFrame()
+        action_card.setProperty("lhActionCard", True)
         action_card.setStyleSheet(
-            f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER};"
+            f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};"
             f"border-top:2px solid {theme.ORANGE};border-radius:10px;}}"
         )
         ac_lay = QVBoxLayout(action_card); ac_lay.setContentsMargins(20, 16, 20, 16); ac_lay.setSpacing(10)
+
+        # ── Drop zone for dataset folder ──────────────────────────
+        self._gen_drop_zone = QFrame()
+        self._gen_drop_zone.setMinimumHeight(72)
+        self._gen_drop_zone.setCursor(Qt.PointingHandCursor)
+        self._gen_drop_zone.setStyleSheet(
+            f"QFrame {{background:{theme.BG_SURFACE};border:2px dashed {theme.BORDER_ACCENT};"
+            f"border-radius:8px;}}"
+            f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}"
+        )
+        _dz_lay = QVBoxLayout(self._gen_drop_zone)
+        _dz_lay.setAlignment(Qt.AlignCenter); _dz_lay.setSpacing(4)
+        self._gen_dz_icon = QLabel("▸")
+        self._gen_dz_icon.setAlignment(Qt.AlignCenter)
+        self._gen_dz_icon.setStyleSheet(
+            f"color:{theme.TEXT_MUTED};font-size:22px;background:transparent;border:none;"
+        )
+        self._gen_dz_title = QLabel(get_text('gen_drop_dataset', self.lang))
+        self._gen_dz_title.setAlignment(Qt.AlignCenter)
+        self._gen_dz_title.setStyleSheet(
+            f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(12)};font-weight:600;"
+            f"background:transparent;border:none;"
+        )
+        _dz_lay.addWidget(self._gen_dz_icon); _dz_lay.addWidget(self._gen_dz_title)
+        self._gen_drop_zone.mousePressEvent = lambda e: self.select_folder()
+        ac_lay.addWidget(self._gen_drop_zone)
+
+        # Browse button
+        self._gen_browse_btn = QPushButton(get_text('gen_browse_folder', self.lang))
+        self._gen_browse_btn.setFixedHeight(32)
+        self._gen_browse_btn.setCursor(Qt.PointingHandCursor)
+        self._gen_browse_btn.setStyleSheet(theme.btn_browse())
+        self._gen_browse_btn.clicked.connect(self.select_folder)
+        ac_lay.addWidget(self._gen_browse_btn)
+
+        # Separator
+        _sep = QFrame(); _sep.setFrameShape(QFrame.HLine)
+        _sep.setStyleSheet(f"background:{theme.BORDER};border:none;"); _sep.setFixedHeight(1)
+        ac_lay.addWidget(_sep)
 
         def _info_row(key, val_widget):
             r = QHBoxLayout()
@@ -998,24 +1120,24 @@ class _GenerateTab(QWidget):
         self.mode_combo.setCurrentIndex(1)
 
         # Tooltips
-        self._wd14_sl.setToolTip("WD14 confidence threshold. Lower = more tags included. Higher = fewer but more accurate.")
-        self._f2_sl.setToolTip("Florence-2 confidence threshold for natural language captions.")
-        self.trigger_edit.setToolTip("Prepended to every caption — use your LoRA trigger word (e.g. 'ohwx man')")
-        self.suffix_edit.setToolTip("Appended to every caption (e.g. 'masterpiece, best quality, highres')")
-        self._preset_vis.setToolTip("Quick-select a caption style preset")
-        self._last_words_edit.setToolTip("Words inserted just before the global suffix")
-        self.start_btn.setToolTip("Start batch caption generation for all images in the target dataset")
-        self.stop_btn.setToolTip("Stop the running captioning process")
-        self._overwrite_rb.setToolTip("Delete existing .txt files before writing new captions")
-        self._append_rb.setToolTip("Add new tags to the end of existing caption files")
-        self._auto_clean_cb.setToolTip("Normalize tags: remove duplicates, convert underscores to spaces")
-        self._target_path_lbl.setToolTip("Drag a folder onto the page or click Select Folder to set the dataset path")
-        self.conf_spin.setToolTip("WD14 confidence threshold (synced from slider above)")
-        self.max_tags_spin.setToolTip("Maximum number of tags to keep per image")
-        self.neg_edit.setToolTip("Tags to always exclude from captions, comma-separated")
-        self.wd14_combo.setToolTip("WD14 tagger model variant")
-        self.f2_combo.setToolTip("Florence-2 model size (Base = faster, Large = more accurate)")
-        self.f2_task_combo.setToolTip("Florence-2 caption detail level")
+        self._wd14_sl.setToolTip(get_text('gen_tt_wd14_sl', self.lang))
+        self._f2_sl.setToolTip(get_text('gen_tt_f2_sl', self.lang))
+        self.trigger_edit.setToolTip(get_text('gen_tt_trigger', self.lang))
+        self.suffix_edit.setToolTip(get_text('gen_tt_suffix', self.lang))
+        self._preset_vis.setToolTip(get_text('gen_tt_preset', self.lang))
+        self._last_words_edit.setToolTip(get_text('gen_tt_last_words', self.lang))
+        self.start_btn.setToolTip(get_text('gen_tt_start', self.lang))
+        self.stop_btn.setToolTip(get_text('gen_tt_stop', self.lang))
+        self._overwrite_rb.setToolTip(get_text('gen_tt_overwrite', self.lang))
+        self._append_rb.setToolTip(get_text('gen_tt_append', self.lang))
+        self._auto_clean_cb.setToolTip(get_text('gen_tt_auto_clean', self.lang))
+        self._target_path_lbl.setToolTip(get_text('gen_tt_target_path', self.lang))
+        self.conf_spin.setToolTip(get_text('gen_tt_conf_spin', self.lang))
+        self.max_tags_spin.setToolTip(get_text('gen_tt_max_tags', self.lang))
+        self.neg_edit.setToolTip(get_text('gen_tt_neg', self.lang))
+        self.wd14_combo.setToolTip(get_text('gen_tt_wd14_combo', self.lang))
+        self.f2_combo.setToolTip(get_text('gen_tt_f2_combo', self.lang))
+        self.f2_task_combo.setToolTip(get_text('gen_tt_f2_task', self.lang))
 
     # ── Helpers ─────────────────────────────────────────────────
 
@@ -1030,12 +1152,24 @@ class _GenerateTab(QWidget):
             if urls and urls[0].isLocalFile():
                 if os.path.isdir(urls[0].toLocalFile()):
                     event.acceptProposedAction()
+                    # highlight both drop zones
                     self.drop_zone.setStyleSheet(theme.drop_zone_frame_active())
+                    if hasattr(self, '_gen_drop_zone'):
+                        self._gen_drop_zone.setStyleSheet(
+                            f"QFrame {{background:{theme.ORANGE_SUBTLE};"
+                            f"border:2px dashed {theme.ORANGE};border-radius:8px;}}"
+                        )
                     return
         event.ignore()
 
     def dragLeaveEvent(self, event):
         self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
+        if hasattr(self, '_gen_drop_zone') and not self.selected_folder:
+            self._gen_drop_zone.setStyleSheet(
+                f"QFrame {{background:{theme.BG_SURFACE};border:2px dashed {theme.BORDER_ACCENT};"
+                f"border-radius:8px;}}"
+                f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}"
+            )
 
     def dropEvent(self, event: QDropEvent):
         if event.mimeData().hasUrls():
@@ -1073,6 +1207,25 @@ class _GenerateTab(QWidget):
             self._target_path_lbl.setText(short)
         if hasattr(self, '_img_count_lbl'):
             self._img_count_lbl.setText(f"{count:,}")
+
+        # Update visible drop zone to show success state
+        if hasattr(self, '_gen_drop_zone'):
+            name = Path(folder).name
+            self._gen_dz_icon.setText("✅")
+            self._gen_dz_icon.setStyleSheet(
+                f"color:{theme.GREEN};font-size:22px;background:transparent;border:none;"
+            )
+            self._gen_dz_title.setText(name)
+            self._gen_dz_title.setStyleSheet(
+                f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:600;"
+                f"background:transparent;border:none;"
+            )
+            self._gen_drop_zone.setStyleSheet(
+                f"QFrame {{background:{theme.BG_SURFACE};border:2px solid {theme.GREEN};"
+                f"border-radius:8px;}}"
+                f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}"
+            )
+            self._gen_drop_zone.setToolTip(folder)
 
         self.log(f"📁 {get_text('folder_selected', self.lang)}: {folder}")
         self.log(f"🖼️ {count} images found")
@@ -1191,10 +1344,12 @@ class _GenerateTab(QWidget):
         return {
             'mode':           mode,
             'trigger_word':   self.trigger_edit.text().strip(),
-            'caption_suffix': self.suffix_edit.text().strip(),
-            'max_tags':       self.max_tags_spin.value(),
+            'caption_suffix': getattr(self, '_last_words_edit', self.suffix_edit).text().strip(),
+            'max_tags':       getattr(self, '_max_tags_vis', self.max_tags_spin).value(),
             'min_confidence': conf,
-            'negative_tags':  [t.strip() for t in self.neg_edit.text().split(',') if t.strip()],
+            'negative_tags':  [t.strip() for t in
+                               getattr(self, '_neg_prompt_edit', self.neg_edit).text().split(',')
+                               if t.strip()],
             'keep_character_tags': self.keep_char_cb.isChecked(),
             'save_json':      self.json_cb.isChecked(),
             'overwrite':      getattr(self, '_overwrite_rb', self.overwrite_cb).isChecked(),
@@ -1414,28 +1569,45 @@ class _GenerateTab(QWidget):
         _s(getattr(self, 'step1_title', None), get_text('step1_select_folder', lang))
         _s(getattr(self, 'step3_title', None), get_text('step3_start', lang))
 
-        # Visible labels in the clean settings card
-        _s(getattr(self, '_model_lbl',   None), "Model")
-        _s(getattr(self, '_mode_lbl',    None), "Mode")
-        _s(getattr(self, '_trigger_lbl', None), "Trigger Word")
-        _s(getattr(self, '_suffix_lbl',  None), "Last Words")
-        _s(getattr(self, '_maxtags_lbl', None), "Max Tags")
-        _s(getattr(self, '_conf_lbl',    None), "Confidence")
+        def _combo_items(combo, keys):
+            if not combo:
+                return
+            idx = combo.currentIndex()
+            combo.blockSignals(True)
+            for i, key in enumerate(keys):
+                if i < combo.count():
+                    # preserve userData — setItemText only changes the label
+                    combo.setItemText(i, get_text(key, lang))
+            combo.setCurrentIndex(idx)
+            combo.blockSignals(False)
 
-        # Mode combo items
-        mc = getattr(self, 'mode_combo', None)
-        if mc:
-            idx = mc.currentIndex()
-            mc.blockSignals(True)
-            for i, key in enumerate(['caption_mode_tags', 'caption_mode_tag_first',
-                                      'caption_mode_combined']):
-                if i < mc.count():
-                    mc.setItemText(i, get_text(key, lang))
-            mc.setCurrentIndex(idx)
-            mc.blockSignals(False)
+        # Hidden advanced labels (kept for backend, refreshed for completeness)
+        _s(getattr(self, '_model_lbl',   None), get_text('gen_model_lbl', lang))
+        _s(getattr(self, '_variant_lbl', None), get_text('gen_variant_lbl', lang))
+        _s(getattr(self, '_mode_lbl',    None), get_text('gen_mode_lbl', lang))
+        _s(getattr(self, '_trigger_lbl', None), get_text('gen_trigger_lbl', lang))
+        _s(getattr(self, '_suffix_lbl',  None), get_text('gen_lastwords_lbl', lang))
+        _s(getattr(self, '_maxtags_lbl', None), get_text('gen_maxtags_lbl', lang))
+        _s(getattr(self, '_conf_lbl',    None), get_text('gen_conf_lbl', lang))
+
+        # Visible formatting-card field labels
+        _s(getattr(self, '_neg_prompt_field_lbl', None), get_text('negative_prompt_label', lang))
+        _s(getattr(self, '_max_tags_field_lbl',   None), get_text('max_tags_field', lang))
+
+        # Combo item texts (userData preserved)
+        _combo_items(getattr(self, 'mode_combo', None),
+                     ['caption_mode_tags', 'caption_mode_tag_first', 'caption_mode_combined'])
+        _combo_items(getattr(self, 'model_combo', None),
+                     ['model_wd14', 'model_florence2', 'model_both'])
+        _combo_items(getattr(self, 'f2_combo', None),
+                     ['f2_base', 'f2_large'])
+        _combo_items(getattr(self, '_preset_vis', None),
+                     ['qpreset_high', 'qpreset_normal', 'qpreset_speed', 'qpreset_custom'])
 
         # Buttons & misc
         _s(getattr(self, 'browse_btn',  None), get_text('select_input_folder', lang))
+        _s(getattr(self, '_gen_browse_btn', None), get_text('gen_browse_folder', lang))
+        _s(getattr(self, '_gen_dz_title',   None), get_text('gen_drop_dataset', lang))
         _s(getattr(self, 'start_btn',   None), get_text('start_captioning', lang))
         _s(getattr(self, 'stop_btn',    None), get_text('stop_btn', lang))
         if not self.selected_folder:
@@ -1445,9 +1617,41 @@ class _GenerateTab(QWidget):
         _s(getattr(self, 'recursive_cb',   None), get_text('recursive_search', lang))
         _s(getattr(self, 'overwrite_cb',   None), get_text('overwrite_existing', lang))
 
+        # Placeholders
+        _trig = getattr(self, 'trigger_edit', None)
+        if _trig:
+            _trig.setPlaceholderText(get_text('trigger_placeholder', lang))
+        _suf = getattr(self, 'suffix_edit', None)
+        if _suf:
+            _suf.setPlaceholderText(get_text('suffix_placeholder', lang))
+        _lw = getattr(self, '_last_words_edit', None)
+        if _lw:
+            _lw.setPlaceholderText(get_text('last_words_placeholder', lang))
+        _np = getattr(self, '_neg_prompt_edit', None)
+        if _np:
+            _np.setPlaceholderText(get_text('neg_prompt_placeholder', lang))
+
         # Tooltips
         _tt(getattr(self, 'recursive_cb',  None), get_text('recursive_tooltip', lang))
         _tt(getattr(self, 'overwrite_cb',  None), get_text('overwrite_tooltip', lang))
+        _tt(getattr(self, '_wd14_sl',          None), get_text('gen_tt_wd14_sl', lang))
+        _tt(getattr(self, '_f2_sl',            None), get_text('gen_tt_f2_sl', lang))
+        _tt(getattr(self, 'trigger_edit',      None), get_text('gen_tt_trigger', lang))
+        _tt(getattr(self, 'suffix_edit',       None), get_text('gen_tt_suffix', lang))
+        _tt(getattr(self, '_preset_vis',       None), get_text('gen_tt_preset', lang))
+        _tt(getattr(self, '_last_words_edit',  None), get_text('gen_tt_last_words', lang))
+        _tt(getattr(self, 'start_btn',         None), get_text('gen_tt_start', lang))
+        _tt(getattr(self, 'stop_btn',          None), get_text('gen_tt_stop', lang))
+        _tt(getattr(self, '_overwrite_rb',     None), get_text('gen_tt_overwrite', lang))
+        _tt(getattr(self, '_append_rb',        None), get_text('gen_tt_append', lang))
+        _tt(getattr(self, '_auto_clean_cb',    None), get_text('gen_tt_auto_clean', lang))
+        _tt(getattr(self, '_target_path_lbl',  None), get_text('gen_tt_target_path', lang))
+        _tt(getattr(self, 'conf_spin',         None), get_text('gen_tt_conf_spin', lang))
+        _tt(getattr(self, 'max_tags_spin',     None), get_text('gen_tt_max_tags', lang))
+        _tt(getattr(self, 'neg_edit',          None), get_text('gen_tt_neg', lang))
+        _tt(getattr(self, 'wd14_combo',        None), get_text('gen_tt_wd14_combo', lang))
+        _tt(getattr(self, 'f2_combo',          None), get_text('gen_tt_f2_combo', lang))
+        _tt(getattr(self, 'f2_task_combo',     None), get_text('gen_tt_f2_task', lang))
 
         # Florence-2 task combo (hidden but kept for backend)
         f2t = getattr(self, 'f2_task_combo', None)
@@ -1463,12 +1667,25 @@ class _GenerateTab(QWidget):
         self.f2_task_combo.blockSignals(False)
 
     def refresh_styles(self):
+        _card_ss = (
+            f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};"
+            f"border-radius:10px;}}"
+        )
         for frame in self.findChildren(QFrame):
-            if frame is self.drop_zone:
+            if frame is getattr(self, 'drop_zone', None):
                 continue
-            ss = frame.styleSheet()
-            if "border-radius: 10px" in ss:
-                frame.setStyleSheet(theme.card_frame())
+            # Refresh by property (new approach) or by style pattern (old approach)
+            if frame.property("lhCard"):
+                frame.setStyleSheet(_card_ss)
+            elif frame.property("lhActionCard"):
+                frame.setStyleSheet(
+                    f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};"
+                    f"border-top:2px solid {theme.ORANGE};border-radius:10px;}}"
+                )
+            else:
+                ss = frame.styleSheet()
+                if "border-radius: 10px" in ss or "border-radius:10px" in ss:
+                    frame.setStyleSheet(_card_ss)
         self.step1_title.setStyleSheet(theme.label_section())
         if self.selected_folder:
             self.drop_zone.setStyleSheet(theme.drop_zone_frame_success())
@@ -1516,6 +1733,9 @@ class _GenerateTab(QWidget):
         self.stop_btn.setStyleSheet(theme.btn_danger())
         self.progress_bar.setStyleSheet(theme.progress_bar())
         self.log_text.setStyleSheet(theme.log_area())
+        # Refresh visible bento-layout elements
+        if hasattr(self, '_wd14_search_combo'):
+            self._wd14_search_combo.apply_theme()
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1549,11 +1769,13 @@ class _EditTab(QWidget):
 
         self.load_btn = QPushButton(get_text('ce_load_folder', self.lang))
         self.load_btn.setStyleSheet(theme.btn_primary())
+        self.load_btn.setMinimumWidth(140)
         self.load_btn.clicked.connect(self._browse_folder)
         toolbar.addWidget(self.load_btn)
 
         self.save_btn = QPushButton(get_text('ce_save_all', self.lang))
         self.save_btn.setStyleSheet(theme.btn_secondary())
+        self.save_btn.setMinimumWidth(130)
         self.save_btn.clicked.connect(self._save_all)
         self.save_btn.setEnabled(False)
         toolbar.addWidget(self.save_btn)
@@ -1564,18 +1786,21 @@ class _EditTab(QWidget):
 
         self.add_tag_btn = QPushButton(get_text('ce_add_tag', self.lang))
         self.add_tag_btn.setStyleSheet(theme.btn_secondary())
+        self.add_tag_btn.setMinimumWidth(130)
         self.add_tag_btn.clicked.connect(self._bulk_add_tag)
         self.add_tag_btn.setEnabled(False)
         toolbar.addWidget(self.add_tag_btn)
 
         self.remove_tag_btn = QPushButton(get_text('ce_remove_tag', self.lang))
         self.remove_tag_btn.setStyleSheet(theme.btn_secondary())
+        self.remove_tag_btn.setMinimumWidth(130)
         self.remove_tag_btn.clicked.connect(self._bulk_remove_tag)
         self.remove_tag_btn.setEnabled(False)
         toolbar.addWidget(self.remove_tag_btn)
 
         self.replace_tag_btn = QPushButton(get_text('ce_replace_tag', self.lang))
         self.replace_tag_btn.setStyleSheet(theme.btn_secondary())
+        self.replace_tag_btn.setMinimumWidth(120)
         self.replace_tag_btn.clicked.connect(self._bulk_replace_tag)
         self.replace_tag_btn.setEnabled(False)
         toolbar.addWidget(self.replace_tag_btn)
@@ -1593,32 +1818,58 @@ class _EditTab(QWidget):
         bento.setSpacing(12)
 
         # Left panel — file list card (fixed 220px)
-        left_card = QFrame()
-        left_card.setFixedWidth(220)
-        left_card.setStyleSheet(
+        self._left_card = QFrame()
+        self._left_card.setFixedWidth(220)
+        self._left_card.setStyleSheet(
             f"QFrame {{ background: {theme.BG_CARD}; "
             f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
         )
-        left_card_lay = QVBoxLayout(left_card)
+        left_card_lay = QVBoxLayout(self._left_card)
         left_card_lay.setContentsMargins(0, 0, 0, 0)
         left_card_lay.setSpacing(0)
 
-        list_hdr = QLabel("  Images")
+        # File list header with grid/list toggle
+        list_hdr_row = QHBoxLayout()
+        list_hdr_row.setContentsMargins(8, 0, 4, 0)
+        list_hdr_row.setSpacing(4)
+        list_hdr = QLabel(get_text('edit_images_hdr', self.lang))
+        self._list_hdr = list_hdr
         list_hdr.setFixedHeight(36)
         list_hdr.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-weight: 600; "
-            f"letter-spacing: 0.08em; text-transform: uppercase; "
-            f"border-bottom: 1px solid {theme.BORDER}; "
-            f"background: transparent; padding-left: 8px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; font-weight: 600; "
+            f"letter-spacing: 0.05em; background: transparent; border: none;"
         )
-        left_card_lay.addWidget(list_hdr)
+        list_hdr_row.addWidget(list_hdr, stretch=1)
+        self._edit_list_btn = QPushButton("≡")
+        self._edit_list_btn.setFixedSize(24, 24)
+        self._edit_list_btn.setCheckable(True); self._edit_list_btn.setChecked(True)
+        self._edit_list_btn.setStyleSheet(
+            f"QPushButton {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE};"
+            f" border: none; border-radius: 4px; font-size: 14px; }}"
+            f"QPushButton:!checked {{ background: transparent; color: {theme.TEXT_MUTED}; }}"
+        )
+        self._edit_grid_btn = QPushButton("⊞")
+        self._edit_grid_btn.setFixedSize(24, 24)
+        self._edit_grid_btn.setCheckable(True)
+        self._edit_grid_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
+            f" border: none; border-radius: 4px; font-size: 14px; }}"
+            f"QPushButton:checked {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE}; }}"
+        )
+        list_hdr_row.addWidget(self._edit_list_btn)
+        list_hdr_row.addWidget(self._edit_grid_btn)
+        list_hdr_wrap = QWidget()
+        list_hdr_wrap.setStyleSheet(f"border-bottom: 1px solid {theme.BORDER}; background: transparent;")
+        list_hdr_wrap.setLayout(list_hdr_row)
+        list_hdr_wrap.setFixedHeight(37)
+        left_card_lay.addWidget(list_hdr_wrap)
 
         self.image_list = QListWidget()
         self.image_list.setIconSize(QSize(48, 48))
         self.image_list.setSpacing(2)
         self.image_list.setStyleSheet(
             f"QListWidget {{ background: transparent; border: none; "
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(10)}; }}"
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; }}"
             f"QListWidget::item {{ padding: 6px 8px; border-radius: 4px; }}"
             f"QListWidget::item:selected {{ background: {theme.ORANGE}22; "
             f"color: {theme.ORANGE_LIGHT}; }}"
@@ -1627,19 +1878,40 @@ class _EditTab(QWidget):
         self.image_list.currentRowChanged.connect(self._on_item_selected)
         left_card_lay.addWidget(self.image_list)
 
-        bento.addWidget(left_card)
+        self._thumb_grid = ThumbnailGrid(thumb_size=62, columns=3)
+        self._thumb_grid.item_clicked.connect(self._on_thumb_clicked)
+        self._thumb_grid.hide()
+        left_card_lay.addWidget(self._thumb_grid)
+
+        def _toggle_edit_view(to_grid: bool):
+            self._edit_grid_btn.setChecked(to_grid)
+            self._edit_list_btn.setChecked(not to_grid)
+            if to_grid:
+                self.image_list.hide()
+                self._thumb_grid.show()
+                # Populate grid with current paths
+                paths = [img_path for img_path, _ in self._items]
+                self._thumb_grid.set_paths(paths)
+            else:
+                self._thumb_grid.hide()
+                self.image_list.show()
+
+        self._edit_list_btn.clicked.connect(lambda: _toggle_edit_view(False))
+        self._edit_grid_btn.clicked.connect(lambda: _toggle_edit_view(True))
+
+        bento.addWidget(self._left_card)
 
         # Right area — preview card (top) + editor card (bottom)
         right_col = QVBoxLayout()
         right_col.setSpacing(10)
 
         # Preview card
-        preview_card = QFrame()
-        preview_card.setStyleSheet(
+        self._preview_card = QFrame()
+        self._preview_card.setStyleSheet(
             f"QFrame {{ background: {theme.BG_CARD}; "
             f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
         )
-        preview_lay = QVBoxLayout(preview_card)
+        preview_lay = QVBoxLayout(self._preview_card)
         preview_lay.setContentsMargins(12, 10, 12, 10)
         preview_lay.setSpacing(6)
 
@@ -1660,20 +1932,21 @@ class _EditTab(QWidget):
         )
         preview_lay.addWidget(self.preview_lbl, stretch=1)
 
-        right_col.addWidget(preview_card, stretch=55)
+        right_col.addWidget(self._preview_card, stretch=55)
 
         # Editor card
-        editor_card = QFrame()
-        editor_card.setStyleSheet(
+        self._editor_card = QFrame()
+        self._editor_card.setStyleSheet(
             f"QFrame {{ background: {theme.BG_CARD}; "
             f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
         )
-        editor_lay = QVBoxLayout(editor_card)
+        editor_lay = QVBoxLayout(self._editor_card)
         editor_lay.setContentsMargins(12, 10, 12, 10)
         editor_lay.setSpacing(8)
 
         editor_hdr = QHBoxLayout()
-        editor_title = QLabel("Tags / Caption")
+        editor_title = QLabel(get_text('edit_tags_caption', self.lang))
+        self._editor_title = editor_title
         editor_title.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(10)}; "
             f"font-weight: 600; background: transparent; border: none;"
@@ -1681,26 +1954,26 @@ class _EditTab(QWidget):
         editor_hdr.addWidget(editor_title)
         editor_hdr.addStretch()
 
-        self._save_one_btn = QPushButton("Save")
-        self._save_one_btn.setFixedHeight(26)
+        self._save_one_btn = QPushButton(get_text('edit_save', self.lang))
+        self._save_one_btn.setMinimumWidth(70)
         self._save_one_btn.setStyleSheet(theme.btn_primary())
         self._save_one_btn.clicked.connect(self._save_current)
         self._save_one_btn.setEnabled(False)
         editor_hdr.addWidget(self._save_one_btn)
 
-        self._save_next_btn = QPushButton("Save & Next")
-        self._save_next_btn.setFixedHeight(26)
+        self._save_next_btn = QPushButton(get_text('edit_save_next', self.lang))
+        self._save_next_btn.setMinimumWidth(150)
         self._save_next_btn.setStyleSheet(theme.btn_secondary())
         self._save_next_btn.clicked.connect(self._save_and_next)
         self._save_next_btn.setEnabled(False)
         editor_hdr.addWidget(self._save_next_btn)
 
-        self._revert_btn = QPushButton("Revert")
-        self._revert_btn.setFixedHeight(26)
+        self._revert_btn = QPushButton(get_text('edit_revert', self.lang))
+        self._revert_btn.setMinimumWidth(70)
         self._revert_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER}; "
-            f"color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 0 10px; "
-            f"font-size: {theme.fs(10)}; }}"
+            f"color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 6px 12px; "
+            f"font-size: {theme.fs(11)}; }}"
             f"QPushButton:hover {{ border-color: {theme.BORDER_LIGHT}; color: {theme.TEXT_SECONDARY}; }}"
         )
         self._revert_btn.clicked.connect(self._revert_current)
@@ -1709,27 +1982,90 @@ class _EditTab(QWidget):
 
         editor_lay.addLayout(editor_hdr)
 
-        self.caption_edit = TagCompleterTextEdit()
-        self.caption_edit.setStyleSheet(theme.log_area())
-        self.caption_edit.textChanged.connect(self._on_caption_changed)
-        editor_lay.addWidget(self.caption_edit, stretch=1)
+        # Tag chip toolbar
+        chip_toolbar = QHBoxLayout()
+        chip_toolbar.setSpacing(6)
 
-        right_col.addWidget(editor_card, stretch=45)
+        self._chip_search = QLineEdit()
+        self._chip_search.setPlaceholderText(get_text('edit_search_tags_ph', self.lang))
+        self._chip_search.setFixedHeight(26)
+        self._chip_search.setStyleSheet(
+            f"QLineEdit {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
+            f" border-radius: 5px; padding: 2px 8px; color: {theme.TEXT_PRIMARY};"
+            f" font-size: {theme.fs(11)}; }}"
+            f"QLineEdit:focus {{ border-color: {theme.ORANGE}; }}"
+        )
+        self._chip_search.textChanged.connect(self._filter_chips)
+        chip_toolbar.addWidget(self._chip_search, stretch=1)
+
+        self._clear_all_btn = QPushButton(get_text('edit_clear_all', self.lang))
+        self._clear_all_btn.setFixedHeight(26)
+        self._clear_all_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER};"
+            f" color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 0 10px;"
+            f" font-size: {theme.fs(10)}; }}"
+            f"QPushButton:hover {{ border-color: {theme.RED}; color: {theme.RED}; }}"
+        )
+        self._clear_all_btn.setToolTip(get_text('edit_tt_clear_all', self.lang))
+        self._clear_all_btn.clicked.connect(self._clear_all_tags)
+        chip_toolbar.addWidget(self._clear_all_btn)
+
+        editor_lay.addLayout(chip_toolbar)
+
+        # Chip flow area
+        self._chip_scroll = QScrollArea()
+        self._chip_scroll.setWidgetResizable(True)
+        self._chip_scroll.setFrameShape(QFrame.NoFrame)
+        self._chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._chip_scroll.setMinimumHeight(80)
+        self._chip_scroll.setMaximumHeight(240)
+        self._chip_scroll.setStyleSheet("background: transparent; border: none;")
+
+        self._chip_container = QWidget()
+        self._chip_container.setStyleSheet("background: transparent;")
+        self._chip_flow = QVBoxLayout(self._chip_container)
+        self._chip_flow.setContentsMargins(2, 4, 2, 4)
+        self._chip_flow.setSpacing(4)
+        self._chip_scroll.setWidget(self._chip_container)
+        editor_lay.addWidget(self._chip_scroll, stretch=1)
+
+        # Single-line tag-add input with Danbooru autocomplete
+        self._tag_add_input = QLineEdit()
+        self._tag_add_input.setFixedHeight(34)
+        self._tag_add_input.setPlaceholderText(get_text('edit_add_tag_ph', self.lang))
+        self._tag_add_input.setStyleSheet(
+            f"QLineEdit {{background:{theme.BG_SURFACE};border:1px solid {theme.BORDER};"
+            f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};padding:4px 8px;}}"
+            f"QLineEdit:focus {{border-color:{theme.ORANGE};}}"
+        )
+        self._tag_add_input.returnPressed.connect(self._add_typed_tag)
+        editor_lay.addWidget(self._tag_add_input)
+
+        # Hidden backing store — keeps the comma-separated text, synced from chips
+        # Must be created before _attach_tag_add_completer so _shared_tag_model is initialized
+        self.caption_edit = TagCompleterTextEdit()
+        self.caption_edit.hide()
+        self.caption_edit.textChanged.connect(self._on_caption_changed)
+
+        # Attach autocomplete to _tag_add_input now that _shared_tag_model exists
+        self._attach_tag_add_completer()
+
+        right_col.addWidget(self._editor_card, stretch=45)
 
         bento.addLayout(right_col, stretch=1)
         root.addLayout(bento, stretch=1)
 
         # Tooltips
-        self.load_btn.setToolTip("Open a folder of images to browse and edit captions")
-        self.save_btn.setToolTip("Save all modified captions to disk")
-        self.add_tag_btn.setToolTip("Prepend a tag to ALL images in the current folder")
-        self.remove_tag_btn.setToolTip("Remove a specific tag from ALL images in the current folder")
-        self.replace_tag_btn.setToolTip("Find and replace a tag across ALL images in the current folder")
-        self.caption_edit.setToolTip("Edit the caption. Tags are comma-separated. Type for Danbooru autocomplete.")
-        self._save_one_btn.setToolTip("Save this image's caption to disk")
-        self._save_next_btn.setToolTip("Save the current caption and advance to the next image")
-        self._revert_btn.setToolTip("Discard unsaved edits and reload from disk")
-        self.image_list.setToolTip("Click an image to preview it and edit its caption")
+        self.load_btn.setToolTip(get_text('edit_tt_load', self.lang))
+        self.save_btn.setToolTip(get_text('edit_tt_save_all', self.lang))
+        self.add_tag_btn.setToolTip(get_text('edit_tt_add_tag', self.lang))
+        self.remove_tag_btn.setToolTip(get_text('edit_tt_remove_tag', self.lang))
+        self.replace_tag_btn.setToolTip(get_text('edit_tt_replace_tag', self.lang))
+        self.caption_edit.setToolTip(get_text('edit_tt_caption', self.lang))
+        self._save_one_btn.setToolTip(get_text('edit_tt_save_one', self.lang))
+        self._save_next_btn.setToolTip(get_text('edit_tt_save_next', self.lang))
+        self._revert_btn.setToolTip(get_text('edit_tt_revert', self.lang))
+        self.image_list.setToolTip(get_text('edit_tt_image_list', self.lang))
 
     # ── Folder loading ──────────────────────────────────────────
 
@@ -1785,6 +2121,9 @@ class _EditTab(QWidget):
             get_text('ce_loaded', self.lang).format(len(self._items), existing_captions))
         if self._items:
             self.image_list.setCurrentRow(0)
+            # Refresh thumbnail grid if it's visible
+            if hasattr(self, '_thumb_grid') and self._thumb_grid.isVisible():
+                self._thumb_grid.set_paths([p for p, _ in self._items])
         self.folder_changed.emit(folder)
 
     def _commit_current(self):
@@ -1792,8 +2131,200 @@ class _EditTab(QWidget):
             _, cap_path = self._items[self._current_idx]
             self._captions[cap_path] = self.caption_edit.toPlainText()
 
+    def _attach_tag_add_completer(self):
+        """Attach Danbooru completer to _tag_add_input (call after caption_edit is created)."""
+        global _shared_tag_model
+        if _shared_tag_model is None:
+            _shared_tag_model = QStringListModel([])
+        _c = QCompleter(_shared_tag_model, self._tag_add_input)
+        _c.setFilterMode(Qt.MatchStartsWith)
+        _c.setCaseSensitivity(Qt.CaseInsensitive)
+        _c.setModelSorting(QCompleter.CaseInsensitivelySortedModel)
+        _c.setCompletionMode(QCompleter.PopupCompletion)
+        _c.setMaxVisibleItems(10)
+        self._tag_add_completer = _c
+        _c.popup().setStyleSheet(self._tag_popup_style())
+        _c.activated[str].connect(self._on_tag_add_completed)
+        self._tag_add_input.setCompleter(_c)
+        # Disconnect Qt's auto full-text connections — we manage prefix per-word ourselves
+        try:
+            self._tag_add_input.textEdited.disconnect(_c.setCompletionPrefix)
+        except TypeError:
+            pass
+        try:
+            self._tag_add_input.textEdited.disconnect(_c.complete)
+        except TypeError:
+            pass
+        self._tag_add_input.textEdited.connect(self._on_tag_add_edited)
+
+    def _tag_popup_style(self) -> str:
+        return (
+            f"QListView {{background:{theme.BG_ELEVATED};color:{theme.TEXT_PRIMARY};"
+            f"border:1px solid {theme.get_accent()};border-radius:4px;font-size:{theme.fs(11)};padding:2px;}}"
+            f"QListView::item:selected {{background:{theme.get_accent()};color:#ffffff;}}"
+            f"QListView::item:hover {{background:{theme.BG_HOVER};}}"
+        )
+
+    def _on_tag_add_edited(self, text: str):
+        """Drive autocomplete prefix from the word after the last comma."""
+        c = self._tag_add_input.completer()
+        if not c:
+            return
+        parts = text.split(',')
+        prefix = parts[-1].strip()
+        c.setCompletionPrefix(prefix)
+        if prefix:
+            c.complete()
+
+    def _on_tag_add_completed(self, completion: str):
+        """Insert completed tag, add it to caption and clear the input."""
+        text = self._tag_add_input.text()
+        parts = text.split(',')
+        parts[-1] = completion
+        new_text = ', '.join(p.strip() for p in parts if p.strip())
+        self._tag_add_input.blockSignals(True)
+        self._tag_add_input.setText(new_text)
+        self._tag_add_input.blockSignals(False)
+        self._add_typed_tag()
+
+    def _add_typed_tag(self):
+        """Add tag(s) from the QLineEdit input field (supports comma-separated)."""
+        text = self._tag_add_input.text().strip()
+        if not text:
+            return
+        new_tags = [t.strip() for t in text.split(',') if t.strip()]
+        current = self.caption_edit.toPlainText().strip()
+        existing = [t.strip() for t in current.split(',') if t.strip()]
+        merged = existing + [t for t in new_tags if t not in existing]
+        self._set_caption_text(', '.join(merged))
+        self._tag_add_input.clear()
+
     def _on_caption_changed(self):
         self._dirty = True
+        if hasattr(self, '_chip_scroll') and not getattr(self, '_syncing_input', False):
+            self._build_chips(self.caption_edit.toPlainText())
+
+    # ── Tag chip helpers ────────────────────────────────────────
+
+    def _build_chips(self, text: str):
+        """Parse caption text into chip widgets."""
+        # Clear existing chips
+        while self._chip_flow.count():
+            item = self._chip_flow.takeAt(0)
+            if item.layout():
+                while item.layout().count():
+                    w = item.layout().takeAt(0).widget()
+                    if w:
+                        w.deleteLater()
+            elif item.widget():
+                item.widget().deleteLater()
+
+        raw = text.strip()
+        if not raw:
+            placeholder = QLabel(get_text('edit_no_tags', self.lang))
+            placeholder.setStyleSheet(
+                f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;"
+            )
+            self._chip_flow.addWidget(placeholder)
+            self._chip_flow.addStretch()
+            return
+
+        tags = [t.strip() for t in raw.split(',') if t.strip()]
+
+        row_lay = QHBoxLayout()
+        row_lay.setSpacing(4)
+        row_lay.setContentsMargins(0, 0, 0, 0)
+        row_count = 0
+
+        filter_text = self._chip_search.text().lower().strip() if hasattr(self, '_chip_search') else ''
+
+        for tag in tags:
+            if filter_text and filter_text not in tag.lower():
+                continue
+
+            chip = self._make_chip(tag)
+            row_lay.addWidget(chip)
+            row_count += 1
+
+            if row_count >= 4:
+                row_lay.addStretch()
+                self._chip_flow.addLayout(row_lay)
+                row_lay = QHBoxLayout()
+                row_lay.setSpacing(4)
+                row_lay.setContentsMargins(0, 0, 0, 0)
+                row_count = 0
+
+        if row_count > 0:
+            row_lay.addStretch()
+            self._chip_flow.addLayout(row_lay)
+
+        self._chip_flow.addStretch()
+
+    def _make_chip(self, tag: str) -> QFrame:
+        chip = QFrame()
+        chip.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
+            f" border-radius: 12px; }}"
+            f"QFrame:hover {{ border-color: {theme.ORANGE}44; }}"
+        )
+        lay = QHBoxLayout(chip)
+        lay.setContentsMargins(8, 3, 4, 3)
+        lay.setSpacing(4)
+
+        lbl = QLabel(tag)
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; background: transparent; border: none;"
+        )
+        lay.addWidget(lbl)
+
+        rm_btn = QPushButton("×")
+        rm_btn.setFixedSize(16, 16)
+        rm_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: none; color: {theme.TEXT_MUTED};"
+            f" font-size: 14px; font-weight: 700; padding: 0; }}"
+            f"QPushButton:hover {{ color: {theme.RED}; }}"
+        )
+        rm_btn.setToolTip(f"Remove '{tag}'")
+        rm_btn.clicked.connect(lambda checked=False, t=tag: self._remove_chip_tag(t))
+        lay.addWidget(rm_btn)
+
+        return chip
+
+    def _remove_chip_tag(self, tag: str):
+        """Remove a single tag from the caption."""
+        current = self.caption_edit.toPlainText()
+        tags = [t.strip() for t in current.split(',')]
+        tags = [t for t in tags if t and t != tag]
+        new_text = ', '.join(tags)
+        self._set_caption_text(new_text)
+
+    def _clear_all_tags(self):
+        """Remove all tags from caption."""
+        self._set_caption_text("")
+
+    def _set_caption_text(self, text: str):
+        """Update all caption storage locations atomically."""
+        self._syncing_input = True
+        self.caption_edit.blockSignals(True)
+        self.caption_edit.setPlainText(text)
+        self.caption_edit.blockSignals(False)
+        if 0 <= self._current_idx < len(self._items):
+            _, cap_path = self._items[self._current_idx]
+            self._captions[cap_path] = text
+        self._dirty = True
+        self._build_chips(text)
+        self._syncing_input = False
+
+    def _filter_chips(self, _):
+        """Rebuild chip display with current filter."""
+        self._build_chips(self.caption_edit.toPlainText())
+
+    def _on_thumb_clicked(self, path: str):
+        """Select image by path when thumbnail is clicked in grid view."""
+        for i, (img_path, _) in enumerate(self._items):
+            if img_path == path:
+                self.image_list.setCurrentRow(i)
+                break
 
     # ── Item selection + per-item save ─────────────────────────
 
@@ -1817,9 +2348,12 @@ class _EditTab(QWidget):
         except Exception:
             self.preview_lbl.setText("(preview error)")
         self.filename_lbl.setText(Path(img_path).name)
+        cap_text = self._captions.get(cap_path, "")
         self.caption_edit.blockSignals(True)
-        self.caption_edit.setPlainText(self._captions.get(cap_path, ""))
+        self.caption_edit.setPlainText(cap_text)
         self.caption_edit.blockSignals(False)
+        if hasattr(self, '_chip_scroll'):
+            self._build_chips(cap_text)
 
     # ── Save ────────────────────────────────────────────────────
 
@@ -1855,6 +2389,8 @@ class _EditTab(QWidget):
             self.caption_edit.blockSignals(True)
             self.caption_edit.setPlainText(text)
             self.caption_edit.blockSignals(False)
+            if hasattr(self, '_chip_scroll'):
+                self._build_chips(text)
             self._dirty = False
 
     def _save_all(self):
@@ -1872,43 +2408,49 @@ class _EditTab(QWidget):
     def _refresh_editor(self):
         if 0 <= self._current_idx < len(self._items):
             _, cap_path = self._items[self._current_idx]
+            text = self._captions.get(cap_path, "")
             self.caption_edit.blockSignals(True)
-            self.caption_edit.setPlainText(self._captions.get(cap_path, ""))
+            self.caption_edit.setPlainText(text)
             self.caption_edit.blockSignals(False)
+            if hasattr(self, '_chip_scroll'):
+                self._build_chips(text)
 
     def _bulk_add_tag(self):
-        tag, ok = QInputDialog.getText(
+        raw, ok = QInputDialog.getText(
             self, get_text('ce_add_tag_title', self.lang),
             get_text('ce_add_tag_prompt', self.lang))
-        if not ok or not tag.strip():
+        if not ok or not raw.strip():
             return
-        tag = tag.strip()
+        new_tags = [t.strip() for t in raw.split(',') if t.strip()]
         self._commit_current()
         for cp in list(self._captions):
-            text = self._captions[cp].strip()
-            self._captions[cp] = f"{tag}, {text}" if text else tag
+            existing = [t.strip() for t in self._captions[cp].split(',') if t.strip()]
+            merged = [t for t in new_tags if t not in existing] + existing
+            self._captions[cp] = ', '.join(merged)
         self._refresh_editor()
+        label = ', '.join(new_tags)
         self.status_lbl.setText(
-            get_text('ce_add_tag_result', self.lang).format(tag, len(self._captions)))
+            get_text('ce_add_tag_result', self.lang).format(label, len(self._captions)))
 
     def _bulk_remove_tag(self):
-        tag, ok = QInputDialog.getText(
+        raw, ok = QInputDialog.getText(
             self, get_text('ce_remove_tag_title', self.lang),
             get_text('ce_remove_tag_prompt', self.lang))
-        if not ok or not tag.strip():
+        if not ok or not raw.strip():
             return
-        tag = tag.strip()
+        remove_set = {t.strip().lower() for t in raw.split(',') if t.strip()}
         self._commit_current()
         removed = 0
         for cp in list(self._captions):
             parts = [t.strip() for t in self._captions[cp].split(',')]
-            new_parts = [t for t in parts if t.lower() != tag.lower()]
+            new_parts = [t for t in parts if t.lower() not in remove_set]
             if len(new_parts) != len(parts):
                 removed += 1
-            self._captions[cp] = ', '.join(new_parts)
+            self._captions[cp] = ', '.join(p for p in new_parts if p)
         self._refresh_editor()
+        label = ', '.join(t for t in raw.split(',') if t.strip())
         self.status_lbl.setText(
-            get_text('ce_remove_tag_result', self.lang).format(tag, removed))
+            get_text('ce_remove_tag_result', self.lang).format(label, removed))
 
     def _bulk_replace_tag(self):
         old, ok1 = QInputDialog.getText(
@@ -1938,27 +2480,383 @@ class _EditTab(QWidget):
 
     def update_language(self, lang: str):
         self.lang = lang
-        self.load_btn.setText(get_text('ce_load_folder', lang))
-        self.save_btn.setText(get_text('ce_save_all', lang))
-        self.add_tag_btn.setText(get_text('ce_add_tag', lang))
-        self.remove_tag_btn.setText(get_text('ce_remove_tag', lang))
-        self.replace_tag_btn.setText(get_text('ce_replace_tag', lang))
+
+        def _s(widget, text):
+            if widget and hasattr(widget, 'setText'):
+                widget.setText(text)
+
+        def _tt(widget, text):
+            if widget and hasattr(widget, 'setToolTip'):
+                widget.setToolTip(text)
+
+        def _ph(widget, text):
+            if widget and hasattr(widget, 'setPlaceholderText'):
+                widget.setPlaceholderText(text)
+
+        # Toolbar buttons (built with get_text but never refreshed)
+        _s(getattr(self, 'load_btn',        None), get_text('ce_load_folder', lang))
+        _s(getattr(self, 'save_btn',        None), get_text('ce_save_all', lang))
+        _s(getattr(self, 'add_tag_btn',     None), get_text('ce_add_tag', lang))
+        _s(getattr(self, 'remove_tag_btn',  None), get_text('ce_remove_tag', lang))
+        _s(getattr(self, 'replace_tag_btn', None), get_text('ce_replace_tag', lang))
+
+        # Editor labels / buttons
+        _s(getattr(self, '_list_hdr',       None), get_text('edit_images_hdr', lang))
+        _s(getattr(self, '_editor_title',   None), get_text('edit_tags_caption', lang))
+        _s(getattr(self, '_save_one_btn',   None), get_text('edit_save', lang))
+        _s(getattr(self, '_save_next_btn',  None), get_text('edit_save_next', lang))
+        _s(getattr(self, '_revert_btn',     None), get_text('edit_revert', lang))
+        _s(getattr(self, '_clear_all_btn',  None), get_text('edit_clear_all', lang))
+
+        # Status label — preserve loaded-count message when a folder is open
+        if getattr(self, 'status_lbl', None):
+            if self._items:
+                existing = sum(1 for v in self._captions.values() if v.strip())
+                self.status_lbl.setText(
+                    get_text('ce_loaded', lang).format(len(self._items), existing))
+            else:
+                self.status_lbl.setText(get_text('ce_no_images', lang))
+
+        # Placeholders
+        _ph(getattr(self, '_chip_search',   None), get_text('edit_search_tags_ph', lang))
+        _ph(getattr(self, '_tag_add_input', None), get_text('edit_add_tag_ph', lang))
+
+        # Tooltips
+        _tt(getattr(self, 'load_btn',        None), get_text('edit_tt_load', lang))
+        _tt(getattr(self, 'save_btn',        None), get_text('edit_tt_save_all', lang))
+        _tt(getattr(self, 'add_tag_btn',     None), get_text('edit_tt_add_tag', lang))
+        _tt(getattr(self, 'remove_tag_btn',  None), get_text('edit_tt_remove_tag', lang))
+        _tt(getattr(self, 'replace_tag_btn', None), get_text('edit_tt_replace_tag', lang))
+        _tt(getattr(self, 'caption_edit',    None), get_text('edit_tt_caption', lang))
+        _tt(getattr(self, '_save_one_btn',   None), get_text('edit_tt_save_one', lang))
+        _tt(getattr(self, '_save_next_btn',  None), get_text('edit_tt_save_next', lang))
+        _tt(getattr(self, '_revert_btn',     None), get_text('edit_tt_revert', lang))
+        _tt(getattr(self, 'image_list',      None), get_text('edit_tt_image_list', lang))
+        _tt(getattr(self, '_clear_all_btn',  None), get_text('edit_tt_clear_all', lang))
+
+        # Rebuild chips so the "no tags" placeholder follows the language
+        if hasattr(self, 'caption_edit') and hasattr(self, '_chip_scroll'):
+            self._build_chips(self.caption_edit.toPlainText())
 
     def refresh_styles(self):
+        _card_ss = (
+            f"QFrame {{ background: {theme.BG_CARD}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+        )
+        for attr in ('_left_card', '_preview_card', '_editor_card'):
+            w = getattr(self, attr, None)
+            if w:
+                w.setStyleSheet(_card_ss)
+
         self.load_btn.setStyleSheet(theme.btn_primary())
         self.save_btn.setStyleSheet(theme.btn_primary())
         self.add_tag_btn.setStyleSheet(theme.btn_secondary())
         self.remove_tag_btn.setStyleSheet(theme.btn_secondary())
         self.replace_tag_btn.setStyleSheet(theme.btn_secondary())
         self.image_list.setStyleSheet(
-            f"background-color: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: 6px;")
+            f"QListWidget {{ background: transparent; border: none; "
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; }}"
+            f"QListWidget::item {{ padding: 6px 8px; border-radius: 4px; }}"
+            f"QListWidget::item:selected {{ background: {theme.ORANGE}22; "
+            f"color: {theme.ORANGE_LIGHT}; }}"
+            f"QListWidget::item:hover:!selected {{ background: {theme.BG_SURFACE}; }}"
+        )
         self.preview_lbl.setStyleSheet(
-            f"background-color: {theme.BG_DARK}; border-radius: 6px;")
+            f"background: {theme.BG_DEEPEST}; border-radius: 6px; border: none;")
         self.filename_lbl.setStyleSheet(
-            f"color: {theme.ORANGE_LIGHT}; font-weight: bold; margin-top: 6px;")
+            f"color: {theme.TEXT_PRIMARY}; font-weight: 600; "
+            f"font-size: {theme.fs(11)}; background: transparent; border: none;")
         self.caption_edit.setStyleSheet(theme.log_area())
         self.status_lbl.setStyleSheet(theme.label_muted())
+        if hasattr(self, '_chip_search'):
+            self._chip_search.setStyleSheet(
+                f"QLineEdit {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
+                f" border-radius: 5px; padding: 2px 8px; color: {theme.TEXT_PRIMARY};"
+                f" font-size: {theme.fs(11)}; }}"
+                f"QLineEdit:focus {{ border-color: {theme.ORANGE}; }}"
+            )
+        if hasattr(self, '_clear_all_btn'):
+            self._clear_all_btn.setStyleSheet(
+                f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER};"
+                f" color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 0 10px;"
+                f" font-size: {theme.fs(10)}; }}"
+                f"QPushButton:hover {{ border-color: {theme.RED}; color: {theme.RED}; }}"
+            )
+        if hasattr(self, '_tag_add_input'):
+            self._tag_add_input.setStyleSheet(
+                f"QLineEdit {{background:{theme.BG_SURFACE};border:1px solid {theme.BORDER};"
+                f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};padding:4px 8px;}}"
+                f"QLineEdit:focus {{border-color:{theme.ORANGE};}}"
+            )
+        if hasattr(self, '_tag_add_completer'):
+            self._tag_add_completer.popup().setStyleSheet(self._tag_popup_style())
+        if hasattr(self, '_edit_list_btn'):
+            self._edit_list_btn.setStyleSheet(
+                f"QPushButton {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE};"
+                f" border: none; border-radius: 4px; font-size: 14px; }}"
+                f"QPushButton:!checked {{ background: transparent; color: {theme.TEXT_MUTED}; }}"
+            )
+        if hasattr(self, '_edit_grid_btn'):
+            self._edit_grid_btn.setStyleSheet(
+                f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
+                f" border: none; border-radius: 4px; font-size: 14px; }}"
+                f"QPushButton:checked {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE}; }}"
+            )
+        if hasattr(self, '_save_one_btn'):
+            self._save_one_btn.setStyleSheet(theme.btn_primary())
+        if hasattr(self, '_save_next_btn'):
+            self._save_next_btn.setStyleSheet(theme.btn_secondary())
+        if hasattr(self, '_revert_btn'):
+            self._revert_btn.setStyleSheet(
+                f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER}; "
+                f"color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 6px 12px; "
+                f"font-size: {theme.fs(11)}; }}"
+                f"QPushButton:hover {{ border-color: {theme.BORDER_LIGHT}; color: {theme.TEXT_SECONDARY}; }}"
+            )
+        # Rebuild chips so chip colors reflect new theme
+        if hasattr(self, 'caption_edit') and hasattr(self, '_chip_scroll'):
+            self._build_chips(self.caption_edit.toPlainText())
+
+
+# ════════════════════════════════════════════════════════════════
+#  _QualityTab — caption quality audit
+# ════════════════════════════════════════════════════════════════
+
+from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QMessageBox
+
+class _QualityTab(QWidget):
+    """
+    Caption quality audit: scan for missing/empty captions, missing
+    trigger words, low tag count, duplicate tags. Bulk-fix actions.
+    """
+
+    def __init__(self, lang: str = 'en', parent=None):
+        super().__init__(parent)
+        self.lang = lang
+        self._folder: Optional[str] = None
+        self._issues: list = []
+        self._init_ui()
+
+    # ── UI ────────────────────────────────────────────────────
+
+    def _init_ui(self):
+        root = QVBoxLayout(self)
+        root.setSpacing(10)
+        root.setContentsMargins(16, 14, 16, 14)
+
+        _t = lambda k: get_text(k, self.lang)
+
+        # ── Toolbar ──
+        tb = QHBoxLayout(); tb.setSpacing(8)
+
+        self._trigger_edit = QLineEdit()
+        self._trigger_edit.setPlaceholderText(_t('quality_trigger_ph'))
+        self._trigger_edit.setStyleSheet(theme.line_edit_compact())
+        self._trigger_edit.setFixedWidth(180)
+        tb.addWidget(QLabel(_t('quality_trigger'))); tb.addWidget(self._trigger_edit)
+
+        min_lbl = QLabel(_t('quality_min_tags'))
+        min_lbl.setStyleSheet(theme.label_default())
+        self._min_tags_spin = QSpinBox()
+        self._min_tags_spin.setRange(0, 50); self._min_tags_spin.setValue(3)
+        self._min_tags_spin.setStyleSheet(theme.spinbox_compact())
+        tb.addWidget(min_lbl); tb.addWidget(self._min_tags_spin)
+
+        tb.addStretch()
+
+        self._run_btn = QPushButton(_t('quality_run_audit'))
+        self._run_btn.setStyleSheet(theme.btn_primary())
+        self._run_btn.clicked.connect(self._run_audit)
+        tb.addWidget(self._run_btn)
+
+        self._add_trigger_btn = QPushButton(_t('quality_add_trigger'))
+        self._add_trigger_btn.setStyleSheet(theme.btn_secondary())
+        self._add_trigger_btn.clicked.connect(self._bulk_add_trigger)
+        self._add_trigger_btn.setEnabled(False)
+        tb.addWidget(self._add_trigger_btn)
+
+        self._delete_btn = QPushButton(_t('quality_delete_sel'))
+        self._delete_btn.setStyleSheet(theme.btn_danger())
+        self._delete_btn.clicked.connect(self._delete_selected)
+        self._delete_btn.setEnabled(False)
+        tb.addWidget(self._delete_btn)
+
+        root.addLayout(tb)
+
+        # ── Stat cards ──
+        stats_row = QHBoxLayout(); stats_row.setSpacing(8)
+        self._cards = {}
+        for key, label in [('total', _t('quality_stat_total')), ('missing', _t('quality_stat_missing')),
+                            ('empty', _t('quality_stat_empty')), ('low_tags', _t('quality_stat_lowtags')),
+                            ('no_trigger', _t('quality_stat_notrigger')), ('dup_tags', _t('quality_stat_duptags'))]:
+            card = QFrame()
+            card.setFixedSize(100, 52)
+            card.setStyleSheet(
+                f"QFrame{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}")
+            cl = QVBoxLayout(card); cl.setContentsMargins(6, 4, 6, 4)
+            val = QLabel("0"); val.setAlignment(Qt.AlignCenter)
+            val.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(15)};font-weight:700;border:none;")
+            lbl = QLabel(label); lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(9)};border:none;")
+            cl.addWidget(val); cl.addWidget(lbl)
+            card._val = val
+            self._cards[key] = card
+            stats_row.addWidget(card)
+        stats_row.addStretch()
+        root.addLayout(stats_row)
+
+        # ── Table ──
+        self._table = QTableWidget(0, 4)
+        self._table.setHorizontalHeaderLabels([
+            _t('quality_col_image'), _t('quality_col_issues'),
+            _t('quality_col_tags'), _t('quality_col_caption')])
+        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self._table.setColumnWidth(2, 55)
+        self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._table.setStyleSheet(f"""
+            QTableWidget{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}
+            QHeaderView::section{{background:{theme.BG_CARD};color:{theme.TEXT_SECONDARY};
+                border:none;padding:6px 8px;font-size:{theme.fs(11)};font-weight:600;}}
+            QTableWidget::item:selected{{background:{theme.ORANGE};color:#fff;}}
+        """)
+        self._table.itemSelectionChanged.connect(self._on_selection_changed)
+        root.addWidget(self._table, 1)
+
+        # ── Status ──
+        self._status = QLabel(_t('quality_status_initial'))
+        self._status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(11)};padding:2px 0;")
+        root.addWidget(self._status)
+
+    # ── Audit ─────────────────────────────────────────────────
+
+    def reload_folder(self, folder: str):
+        self._folder = folder
+        self._status.setText(f"Folder set: {Path(folder).name} — click Run Audit.")
+
+    def _run_audit(self):
+        if not self._folder or not Path(self._folder).exists():
+            self._status.setText(get_text('quality_status_nofolder', self.lang))
+            return
+
+        from src.core.dataset_scanner import scan_dataset, validate_captions
+        pairs = scan_dataset(self._folder)
+        trigger = self._trigger_edit.text().strip()
+        min_tags = self._min_tags_spin.value()
+        self._issues = validate_captions(pairs, trigger_word=trigger, min_tags=min_tags)
+
+        self._populate_table()
+        self._update_stats(len(pairs))
+        self._add_trigger_btn.setEnabled(bool(self._issues) and bool(trigger))
+        self._status.setText(f"Audit complete — {len(self._issues)} issues in {len(pairs)} images.")
+
+    def _populate_table(self):
+        from src.core.dataset_scanner import (
+            ISSUE_MISSING_CAPTION, ISSUE_EMPTY_CAPTION, ISSUE_NO_TRIGGER,
+            ISSUE_LOW_TAG_COUNT, ISSUE_DUPLICATE_TAGS
+        )
+        _ICONS = {
+            ISSUE_MISSING_CAPTION: '❌ missing .txt',
+            ISSUE_EMPTY_CAPTION:   '⚠️ empty',
+            ISSUE_NO_TRIGGER:      '🔑 no trigger',
+            ISSUE_LOW_TAG_COUNT:   '📉 low tags',
+            ISSUE_DUPLICATE_TAGS:  '🔁 dup tags',
+        }
+        self._table.setRowCount(0)
+        for issue in self._issues:
+            row = self._table.rowCount()
+            self._table.insertRow(row)
+            self._table.setItem(row, 0, QTableWidgetItem(issue.image.name))
+            self._table.setItem(row, 1, QTableWidgetItem(
+                ', '.join(_ICONS.get(i, i) for i in issue.issues)))
+            self._table.setItem(row, 2, QTableWidgetItem(str(issue.tag_count)))
+            preview = issue.caption_text[:80] + ('…' if len(issue.caption_text) > 80 else '')
+            self._table.setItem(row, 3, QTableWidgetItem(preview))
+            # Store issue ref for bulk ops
+            self._table.item(row, 0).setData(Qt.UserRole, issue)
+
+    def _update_stats(self, total: int):
+        from src.core.dataset_scanner import (
+            ISSUE_MISSING_CAPTION, ISSUE_EMPTY_CAPTION, ISSUE_NO_TRIGGER,
+            ISSUE_LOW_TAG_COUNT, ISSUE_DUPLICATE_TAGS
+        )
+        def _count(key): return sum(1 for i in self._issues if key in i.issues)
+        self._cards['total']._val.setText(str(total))
+        self._cards['missing']._val.setText(str(_count(ISSUE_MISSING_CAPTION)))
+        self._cards['empty']._val.setText(str(_count(ISSUE_EMPTY_CAPTION)))
+        self._cards['low_tags']._val.setText(str(_count(ISSUE_LOW_TAG_COUNT)))
+        self._cards['no_trigger']._val.setText(str(_count(ISSUE_NO_TRIGGER)))
+        self._cards['dup_tags']._val.setText(str(_count(ISSUE_DUPLICATE_TAGS)))
+
+    # ── Bulk actions ──────────────────────────────────────────
+
+    def _bulk_add_trigger(self):
+        trigger = self._trigger_edit.text().strip()
+        if not trigger:
+            return
+        from src.core.dataset_scanner import ISSUE_NO_TRIGGER, ISSUE_EMPTY_CAPTION
+        fixed = 0
+        errors = []
+        for issue in self._issues:
+            if ISSUE_NO_TRIGGER not in issue.issues and ISSUE_EMPTY_CAPTION not in issue.issues:
+                continue
+            caption_path = issue.caption
+            try:
+                if caption_path is None or not caption_path.exists():
+                    # Create a new .txt
+                    caption_path = issue.image.with_suffix('.txt')
+                    caption_path.write_text(trigger, encoding='utf-8')
+                else:
+                    current = caption_path.read_text(encoding='utf-8').strip()
+                    new_text = f"{trigger}, {current}" if current else trigger
+                    caption_path.write_text(new_text, encoding='utf-8')
+                fixed += 1
+            except Exception as e:
+                errors.append(f"{issue.image.name}: {e}")
+
+        msg = f"Added trigger to {fixed} captions."
+        if errors:
+            msg += f"\n{len(errors)} errors: {'; '.join(errors[:3])}"
+        self._status.setText(msg)
+        self._run_audit()
+
+    def _delete_selected(self):
+        selected = self._table.selectedItems()
+        rows = sorted({self._table.row(i) for i in selected}, reverse=True)
+        if not rows:
+            return
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f"Delete {len(rows)} image(s) and their captions?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        for row in rows:
+            issue = self._table.item(row, 0).data(Qt.UserRole)
+            try:
+                issue.image.unlink(missing_ok=True)
+                if issue.caption and issue.caption.exists():
+                    issue.caption.unlink(missing_ok=True)
+            except Exception:
+                pass
+            self._table.removeRow(row)
+        self._status.setText(f"Deleted {len(rows)} image(s).")
+
+    def _on_selection_changed(self):
+        has_sel = bool(self._table.selectedItems())
+        self._delete_btn.setEnabled(has_sel)
+
+    # ── Theme ─────────────────────────────────────────────────
+
+    def update_language(self, lang: str):
+        self.lang = lang
+
+    def refresh_styles(self):
+        pass
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1984,6 +2882,7 @@ class CaptionStudioPage(QWidget):
         self.tabs.setObjectName("caption_tabs")
         self.generate_tab = _GenerateTab(self.lang, self)
         self.edit_tab = _EditTab(self.lang, self)
+        self.quality_tab = _QualityTab(self.lang, self)
 
         gen_scroll = QScrollArea()
         gen_scroll.setWidgetResizable(True)
@@ -1993,10 +2892,12 @@ class CaptionStudioPage(QWidget):
 
         self.tabs.addTab(gen_scroll, "Generate")
         self.tabs.addTab(self.edit_tab, "Edit")
+        self.tabs.addTab(self.quality_tab, get_text('quality_tab', self.lang))
         self.tabs.setStyleSheet(self._tab_style())
         root.addWidget(self.tabs, stretch=1)
 
         self.generate_tab.folder_changed.connect(self.edit_tab.reload_folder)
+        self.generate_tab.folder_changed.connect(self.quality_tab.reload_folder)
         self.generate_tab.captioning_finished.connect(self._on_generation_done)
 
     def _on_generation_done(self, folder: str):
@@ -2022,7 +2923,8 @@ class CaptionStudioPage(QWidget):
             QTabBar::tab {{
                 background: transparent;
                 color: {theme.TEXT_MUTED};
-                padding: 12px 20px;
+                padding: 10px 24px;
+                min-width: 80px;
                 border-bottom: 2px solid transparent;
                 font-size: {theme.fs(12)};
                 font-weight: 700;
@@ -2039,3 +2941,4 @@ class CaptionStudioPage(QWidget):
         self.tabs.setStyleSheet(self._tab_style())
         self.generate_tab.refresh_styles()
         self.edit_tab.refresh_styles()
+        self.quality_tab.refresh_styles()

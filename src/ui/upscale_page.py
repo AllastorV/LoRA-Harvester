@@ -10,6 +10,7 @@ are missing, the page reports it clearly instead of silently doing nothing.
 """
 
 import os
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -22,6 +23,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from src.ui import theme
+from src.ui.translations import get_text
 
 
 _IMG_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff', '.tif'}
@@ -29,6 +31,13 @@ _IMG_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff', '.tif'}
 # Max-resolution cap presets (longest side, px). Mirrors
 # advanced_settings.MAX_RES_PRESETS so both screens offer the same choices.
 _MAX_RES_PRESETS = [1024, 1080, 2048, 3840, 4096]
+
+# Preset configs: tile size and maxres combo index (0=Off, 1=1024, 2=1080, 3=2048, …)
+_PRESETS = {
+    'safe':     {'tile': 256, 'max_res_idx': 2, 'tile_val': 256},
+    'balanced': {'tile': 512, 'max_res_idx': 3, 'tile_val': 512},
+    'fast':     {'tile': 0,   'max_res_idx': 0, 'tile_val': 0},
+}
 
 # Minimal bilingual strings — kept local so the page is self-contained.
 _TX = {
@@ -86,7 +95,7 @@ _TX = {
         'log_ready': 'Hazır. Girdi ve inmiş bir model seç, sonra Başlat.',
         'err_no_input': '⚠️ Görsel seçilmedi.',
         'err_no_model': '⚠️ Seçili modelin ağırlıkları inmemiş. Available işaretli birini seç '
-                        'veya Ayarlar → Upscale’den indir.',
+                        'veya Ayarlar → Upscale\'den indir.',
         'err_deps': '❌ Real-ESRGAN bağımlılıkları eksik. Kur: pip install realesrgan basicsr',
         'done': '✅ Bitti. {ok}/{total} büyütüldü → {out}',
         'model_dl': 'İnmiş',
@@ -153,9 +162,6 @@ class UpscaleThread(QThread):
             res = _load_res()   # global resource/perf settings from the drawer
 
             # Honour the global VRAM cap from Resource Settings.
-            # torch.cuda.set_per_process_memory_fraction() hard-caps how much
-            # VRAM PyTorch can allocate — the OS (and other apps) keep the rest.
-            # This is the most reliable way to prevent a full PC freeze on OOM.
             _auto_gc = res.get('auto_gc', True)
             try:
                 import torch
@@ -276,6 +282,119 @@ class UpscaleThread(QThread):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Live stat card widget
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _UpscaleStatCard(QFrame):
+    """Shows live stats during upscaling: images done, VRAM free, ETA."""
+
+    def __init__(self, parent=None, lang: str = 'en'):
+        super().__init__(parent)
+        self.lang = lang
+        self.setObjectName("upscaleStatCard")
+        self._build()
+        self.hide()
+
+    def _build(self):
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(16, 10, 16, 10)
+        lay.setSpacing(28)
+
+        # Column 1: images done
+        col1 = QVBoxLayout()
+        col1.setSpacing(2)
+        self._img_val = QLabel("0/0")
+        self._img_val.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(18)}; "
+            f"font-weight: 700; background: transparent; border: none;"
+        )
+        self._img_val.setAlignment(Qt.AlignCenter)
+        self._img_lbl = QLabel(get_text('upscale_stat_images', self.lang))
+        self._img_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"background: transparent; border: none;"
+        )
+        self._img_lbl.setAlignment(Qt.AlignCenter)
+        col1.addWidget(self._img_val)
+        col1.addWidget(self._img_lbl)
+        lay.addLayout(col1)
+
+        # Column 2: VRAM free
+        col2 = QVBoxLayout()
+        col2.setSpacing(2)
+        self._vram_val = QLabel("— MB")
+        self._vram_val.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; "
+            f"font-weight: 600; background: transparent; border: none;"
+        )
+        self._vram_val.setAlignment(Qt.AlignCenter)
+        self._vram_lbl = QLabel(get_text('upscale_stat_vram_free', self.lang))
+        self._vram_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"background: transparent; border: none;"
+        )
+        self._vram_lbl.setAlignment(Qt.AlignCenter)
+        col2.addWidget(self._vram_val)
+        col2.addWidget(self._vram_lbl)
+        lay.addLayout(col2)
+
+        # Column 3: ETA
+        col3 = QVBoxLayout()
+        col3.setSpacing(2)
+        self._eta_val = QLabel("~—")
+        self._eta_val.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; "
+            f"font-weight: 600; background: transparent; border: none;"
+        )
+        self._eta_val.setAlignment(Qt.AlignCenter)
+        self._eta_lbl = QLabel(get_text('upscale_stat_eta', self.lang))
+        self._eta_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"background: transparent; border: none;"
+        )
+        self._eta_lbl.setAlignment(Qt.AlignCenter)
+        col3.addWidget(self._eta_val)
+        col3.addWidget(self._eta_lbl)
+        lay.addLayout(col3)
+
+        lay.addStretch()
+
+        self.setStyleSheet(
+            f"QFrame#upscaleStatCard {{"
+            f"  background: {theme.BG_CARD};"
+            f"  border: 1px solid {theme.BORDER_LIGHT};"
+            f"  border-radius: 8px;"
+            f"}}"
+        )
+
+    def refresh_stats(self, current: int, total: int, vram_free_mb: float, eta_sec: float):
+        """Update all three stat columns."""
+        self._img_val.setText(f"{current}/{total}")
+        if vram_free_mb > 0:
+            self._vram_val.setText(f"{vram_free_mb:.0f} MB")
+        else:
+            self._vram_val.setText("— MB")
+        if eta_sec > 3:
+            mins = int(eta_sec / 60)
+            secs = int(eta_sec % 60)
+            _min_u = get_text('upscale_eta_min', self.lang)
+            _sec_u = get_text('upscale_eta_sec', self.lang)
+            if mins > 0:
+                self._eta_val.setText(f"~{mins}{_min_u} {secs}{_sec_u}")
+            else:
+                self._eta_val.setText(f"~{secs}{_sec_u}")
+        else:
+            self._eta_val.setText("~—")
+
+    def set_language(self, lang: str):
+        """Re-translate the stat-card labels."""
+        self.lang = lang
+        self._img_lbl.setText(get_text('upscale_stat_images', self.lang))
+        self._vram_lbl.setText(get_text('upscale_stat_vram_free', self.lang))
+        self._eta_lbl.setText(get_text('upscale_stat_eta', self.lang))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Page
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -287,8 +406,11 @@ class UpscalePage(QWidget):
         self._out_dir: Optional[str] = None
         self._input_root: Optional[str] = None
         self._thread: Optional[UpscaleThread] = None
+        self._proc_start: float = 0.0
+        self._active_preset: Optional[str] = None
         self._build_ui()
         self._refresh_input_label()
+        self._detect_gpu_info()
 
     def _t(self, key: str) -> str:
         return _TX.get(self.lang, _TX['en']).get(key, key)
@@ -330,6 +452,10 @@ class UpscalePage(QWidget):
         self.progress_bar.setValue(0)
         root.addWidget(self.progress_bar)
 
+        # Live stat card (shown during upscale)
+        self._stat_card = _UpscaleStatCard(lang=self.lang)
+        root.addWidget(self._stat_card)
+
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMinimumHeight(160)
@@ -337,7 +463,7 @@ class UpscalePage(QWidget):
         self.log_text.setText(self._t('log_ready'))
         root.addWidget(self.log_text, stretch=1)
 
-    def _card(self) -> (QFrame, QVBoxLayout):
+    def _card(self) -> tuple:
         f = QFrame()
         f.setStyleSheet(theme.card_frame())
         lay = QVBoxLayout(f)
@@ -398,6 +524,7 @@ class UpscalePage(QWidget):
         self._opt_title.setStyleSheet(theme.label_default())
         lay.addWidget(self._opt_title)
 
+        # Model row
         mrow = QHBoxLayout()
         self.model_lbl = QLabel(self._t('model'))
         self.model_lbl.setStyleSheet(theme.label_frame())
@@ -417,6 +544,55 @@ class UpscalePage(QWidget):
         self.face_cb.setStyleSheet(theme.checkbox_frame())
         lay.addWidget(self.face_cb)
 
+        # ── Preset buttons ──────────────────────────────────────────────────
+        preset_row = QHBoxLayout()
+        preset_row.setSpacing(6)
+        _inactive_ss = (
+            f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 4px 10px; "
+            f"font-size: {theme.fs(11)}; }}"
+            f" QPushButton:hover {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; }}"
+        )
+        self._preset_safe_btn = QPushButton("🔒 Güvenli / Safe")
+        self._preset_safe_btn.setCursor(Qt.PointingHandCursor)
+        self._preset_safe_btn.setStyleSheet(_inactive_ss)
+        self._preset_safe_btn.clicked.connect(lambda: self._apply_preset('safe'))
+
+        self._preset_bal_btn = QPushButton("⚖️ Dengeli / Balanced")
+        self._preset_bal_btn.setCursor(Qt.PointingHandCursor)
+        self._preset_bal_btn.setStyleSheet(_inactive_ss)
+        self._preset_bal_btn.clicked.connect(lambda: self._apply_preset('balanced'))
+
+        self._preset_fast_btn = QPushButton("⚡ Hızlı / Fast")
+        self._preset_fast_btn.setCursor(Qt.PointingHandCursor)
+        self._preset_fast_btn.setStyleSheet(_inactive_ss)
+        self._preset_fast_btn.clicked.connect(lambda: self._apply_preset('fast'))
+
+        preset_row.addWidget(self._preset_safe_btn)
+        preset_row.addWidget(self._preset_bal_btn)
+        preset_row.addWidget(self._preset_fast_btn)
+        preset_row.addStretch()
+        lay.addLayout(preset_row)
+
+        # ── Advanced toggle ─────────────────────────────────────────────────
+        self._adv_toggle_btn = QPushButton(f"▼ {get_text('upscale_advanced', self.lang)}")
+        self._adv_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self._adv_toggle_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED}; "
+            f"border: none; font-size: {theme.fs(11)}; text-align: left; padding: 2px 0; }}"
+            f" QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; }}"
+        )
+        self._adv_toggle_btn.clicked.connect(self._toggle_advanced)
+        lay.addWidget(self._adv_toggle_btn)
+
+        # ── Advanced frame (tile + maxres) — hidden by default ──────────────
+        self._adv_frame = QFrame()
+        self._adv_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
+        adv_lay = QVBoxLayout(self._adv_frame)
+        adv_lay.setContentsMargins(0, 4, 0, 4)
+        adv_lay.setSpacing(8)
+        self._adv_frame.hide()
+
         trow = QHBoxLayout()
         self.tile_lbl = QLabel(self._t('tile'))
         self.tile_lbl.setStyleSheet(theme.label_frame())
@@ -428,9 +604,9 @@ class UpscalePage(QWidget):
         trow.addWidget(self.tile_lbl)
         trow.addWidget(self.tile_spin)
         trow.addStretch()
-        lay.addLayout(trow)
+        adv_lay.addLayout(trow)
 
-        mrow = QHBoxLayout()
+        maxres_row = QHBoxLayout()
         self.maxres_lbl = QLabel(self._t('max_res'))
         self.maxres_lbl.setStyleSheet(theme.label_frame())
         self.maxres_combo = QComboBox()
@@ -438,15 +614,85 @@ class UpscalePage(QWidget):
         self.maxres_combo.addItem(self._t('max_res_off'), 0)
         for _p in _MAX_RES_PRESETS:
             self.maxres_combo.addItem(f"{_p} px", _p)
-        # Default to 2048 px cap — prevents RAM/VRAM exhaustion on large batches.
-        # Users can raise this manually if they need full 4× output.
         _default_idx = _MAX_RES_PRESETS.index(2048) + 1 if 2048 in _MAX_RES_PRESETS else 0
         self.maxres_combo.setCurrentIndex(_default_idx)
-        mrow.addWidget(self.maxres_lbl)
-        mrow.addWidget(self.maxres_combo)
-        mrow.addStretch()
-        lay.addLayout(mrow)
+        maxres_row.addWidget(self.maxres_lbl)
+        maxres_row.addWidget(self.maxres_combo)
+        maxres_row.addStretch()
+        adv_lay.addLayout(maxres_row)
+
+        lay.addWidget(self._adv_frame)
+
+        # ── GPU info label ───────────────────────────────────────────────────
+        self._gpu_info_lbl = QLabel("GPU: —")
+        self._gpu_info_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"font-family: {theme.FONT_MONO}; background: transparent; border: none;"
+        )
+        lay.addWidget(self._gpu_info_lbl)
+
         return f
+
+    # ── Preset / advanced helpers ────────────────────────────────────────────
+    def _apply_preset(self, name: str):
+        p = _PRESETS.get(name)
+        if not p:
+            return
+        self.tile_spin.setValue(p['tile_val'])
+        self.maxres_combo.setCurrentIndex(p['max_res_idx'])
+        self._active_preset = name
+        self._update_preset_btn_styles()
+
+    def _update_preset_btn_styles(self):
+        _active_ss = (
+            f"QPushButton {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE}; "
+            f"border: 1px solid {theme.ORANGE_DIM}; border-radius: 6px; padding: 4px 10px; "
+            f"font-size: {theme.fs(11)}; font-weight: 600; }}"
+        )
+        _inactive_ss = (
+            f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 4px 10px; "
+            f"font-size: {theme.fs(11)}; }}"
+            f" QPushButton:hover {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; }}"
+        )
+        for pname, btn in (
+            ('safe', self._preset_safe_btn),
+            ('balanced', self._preset_bal_btn),
+            ('fast', self._preset_fast_btn),
+        ):
+            btn.setStyleSheet(_active_ss if pname == self._active_preset else _inactive_ss)
+
+    def _toggle_advanced(self):
+        visible = self._adv_frame.isVisible()
+        self._adv_frame.setVisible(not visible)
+        self._adv_toggle_btn.setText(
+            f"▲ {get_text('upscale_advanced', self.lang)}" if not visible
+            else f"▼ {get_text('upscale_advanced', self.lang)}"
+        )
+
+    def _detect_gpu_info(self):
+        """Populate the GPU info label with device name and free VRAM."""
+        info = "GPU: CPU mode"
+        try:
+            import torch
+            if torch.cuda.is_available():
+                name = torch.cuda.get_device_properties(0).name
+                free_mb = torch.cuda.mem_get_info()[0] / 1024 / 1024
+                info = f"GPU: {name}  ·  {free_mb:.0f} MB {get_text('upscale_gpu_free', self.lang)}"
+        except Exception:
+            pass
+        if hasattr(self, '_gpu_info_lbl'):
+            self._gpu_info_lbl.setText(info)
+
+    def _get_vram_free(self) -> float:
+        """Return free VRAM in MB, or 0 if unavailable."""
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return torch.cuda.mem_get_info()[0] / 1024 / 1024
+        except Exception:
+            pass
+        return 0.0
 
     def _populate_models(self):
         self.model_combo.blockSignals(True)
@@ -458,7 +704,7 @@ class UpscalePage(QWidget):
                 scale = cfg.get('scale', '?')
                 available = cfg.get('available', False)
                 tag = self._t('model_dl') if available else self._t('model_missing')
-                self.model_combo.addItem(f"{name}  [{scale}×]  · {tag}", name)
+                self.model_combo.addItem(f"{name}  [{scale}\u00d7]  \u00b7 {tag}", name)
                 if available and first_available < 0:
                     first_available = idx
         except Exception as e:
@@ -467,8 +713,8 @@ class UpscalePage(QWidget):
             self.model_combo.setCurrentIndex(first_available)
         self.model_combo.blockSignals(False)
 
-    # ── input handling ──────────────────────────────────────────────────────
-    def _scan_dir(self, root: str, recursive: bool) -> List[str]:
+    # \u2500\u2500 input handling \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    def _scan_dir(self, root: str, recursive: bool) -> list:
         out = []
         if recursive:
             for dp, _dn, fn in os.walk(root):
@@ -524,7 +770,7 @@ class UpscalePage(QWidget):
         base = self._input_root or os.path.dirname(self._images[0])
         return os.path.join(base, 'upscaled')
 
-    # ── run / stop ──────────────────────────────────────────────────────────
+    # \u2500\u2500 run / stop \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     def _start(self):
         if not self._images:
             self.log_text.append(self._t('err_no_input'))
@@ -544,6 +790,10 @@ class UpscalePage(QWidget):
         self.stop_btn.setEnabled(True)
         self.progress_bar.setValue(0)
         self.log_text.clear()
+
+        self._proc_start = time.time()
+        self._stat_card.refresh_stats(0, len(self._images), 0.0, 0.0)
+        self._stat_card.show()
 
         self._thread = UpscaleThread(list(self._images), out_dir, settings)
         self._thread.progress.connect(self._on_progress, Qt.QueuedConnection)
@@ -565,6 +815,11 @@ class UpscalePage(QWidget):
         self.progress_bar.setValue(pct)
         if cur % 5 == 0 or cur == total:
             self.log_text.append(f"  [{cur}/{total}] {name}")
+        elapsed = time.time() - self._proc_start
+        per_img = elapsed / cur if cur > 0 else 0
+        eta_sec = per_img * (total - cur)
+        vram_free = self._get_vram_free()
+        self._stat_card.refresh_stats(cur, total, vram_free, eta_sec)
 
     def _on_log(self, msg: str):
         self.log_text.append(msg)
@@ -576,15 +831,17 @@ class UpscalePage(QWidget):
             out=stats.get('out_dir', '')))
         self.run_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self._stat_card.hide()
         self._cleanup_thread()
 
     def _on_error(self, msg: str):
         if 'realesrgan' in msg.lower() or 'basicsr' in msg.lower() or msg == 'deps':
             self.log_text.append(self._t('err_deps'))
         else:
-            self.log_text.append(f"❌ {msg}")
+            self.log_text.append(f"\u274c {msg}")
         self.run_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self._stat_card.hide()
         self._cleanup_thread()
 
     def _cleanup_thread(self):
@@ -598,7 +855,7 @@ class UpscalePage(QWidget):
             except RuntimeError:
                 pass
 
-    # ── external hooks (match other pages) ──────────────────────────────────
+    # \u2500\u2500 external hooks (match other pages) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     def update_language(self, lang: str):
         self.lang = lang if lang in _TX else 'en'
         self._title_lbl.setText(self._t('title'))
@@ -620,6 +877,14 @@ class UpscalePage(QWidget):
         self.maxres_combo.setItemText(0, self._t('max_res_off'))
         self.run_btn.setText(self._t('run'))
         self.stop_btn.setText(self._t('stop'))
+        # Advanced toggle (preserve the current ▲/▼ arrow direction)
+        _adv = get_text('upscale_advanced', self.lang)
+        _arrow = "▲" if self._adv_frame.isVisible() else "▼"
+        self._adv_toggle_btn.setText(f"{_arrow} {_adv}")
+        # Live stat-card labels
+        self._stat_card.set_language(self.lang)
+        # GPU info label (re-translates the "free" suffix)
+        self._detect_gpu_info()
         self._refresh_input_label()
         self._populate_models()
 
@@ -635,3 +900,4 @@ class UpscalePage(QWidget):
         self.model_combo.setStyleSheet(theme.combo())
         self.tile_spin.setStyleSheet(theme.spinbox())
         self.maxres_combo.setStyleSheet(theme.combo())
+        self._update_preset_btn_styles()

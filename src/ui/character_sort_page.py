@@ -40,6 +40,7 @@ class CharacterSortThread(QThread):
         settings: Dict,
         input_files: Optional[List[str]] = None,
         mode: str = 'real',   # 'real' → InsightFace   |   'anime' → ResNet+cascade
+        lang: str = 'en',
         parent=None,
     ):
         super().__init__(parent)
@@ -49,6 +50,7 @@ class CharacterSortThread(QThread):
         self.settings = settings
         self.input_files = input_files
         self.mode = mode
+        self.lang = lang
         self._running = True
         self._temp_dir: Optional[str] = None
 
@@ -60,7 +62,7 @@ class CharacterSortThread(QThread):
             actual_input = self.input_dir
             if self.input_files:
                 self._temp_dir = tempfile.mkdtemp(prefix='lora_charsort_')
-                self.log_msg.emit(f"📋 Copying {len(self.input_files)} files to temp dir...")
+                self.log_msg.emit("📋 " + get_text('char_log_copying_files', self.lang).format(len(self.input_files)))
                 for src in self.input_files:
                     if self._running:
                         dst = os.path.join(self._temp_dir, os.path.basename(src))
@@ -81,7 +83,7 @@ class CharacterSortThread(QThread):
             # ── select recognizer based on mode ───────────────────────────────
             if self.mode == 'anime':
                 from src.core.anime_character_recognizer import AnimeCharacterRecognizer
-                self.log_msg.emit("🎌 Anime modu: lbpcascade_animeface + ResNet-18")
+                self.log_msg.emit("🎌 " + get_text('char_log_anime_mode', self.lang))
                 recognizer = AnimeCharacterRecognizer(
                     similarity_threshold=s.get('threshold', 0.55),
                     match_margin=s.get('match_margin', 0.05),
@@ -95,7 +97,7 @@ class CharacterSortThread(QThread):
                 )
             else:
                 from src.core.character_recognizer import CharacterRecognizer
-                self.log_msg.emit("🎭 Gerçek yüz modu: InsightFace " + s.get('model', 'buffalo_l'))
+                self.log_msg.emit("🎭 " + get_text('char_log_real_mode', self.lang).format(s.get('model', 'buffalo_l')))
                 recognizer = CharacterRecognizer(
                     reference_dir=self.reference_dir if self.reference_dir else None,
                     similarity_threshold=s.get('threshold', 0.45),
@@ -111,12 +113,12 @@ class CharacterSortThread(QThread):
                 )
 
             if self.reference_dir:
-                self.log_msg.emit(f"📚 Loading references from {self.reference_dir} ...")
+                self.log_msg.emit("📚 " + get_text('char_log_loading_refs', self.lang).format(self.reference_dir))
                 counts = recognizer.load_references(self.reference_dir)
                 for name, cnt in counts.items():
-                    self.log_msg.emit(f"   {name}: {cnt} reference(s)")
+                    self.log_msg.emit("   " + get_text('char_log_ref_count', self.lang).format(name, cnt))
 
-            self.log_msg.emit("🔄 Scanning images...")
+            self.log_msg.emit("🔄 " + get_text('char_log_scanning', self.lang))
 
             try:
                 stats = recognizer.sort_directory(
@@ -137,8 +139,8 @@ class CharacterSortThread(QThread):
         except ImportError as e:
             self._cleanup_temp()
             self.error.emit(
-                f"Eksik bağımlılık: {e}\n"
-                "Kur: pip install insightface scikit-learn onnxruntime torchvision"
+                get_text('char_err_missing_dep', self.lang).format(e) + "\n"
+                + get_text('char_err_install_hint', self.lang)
             )
         except Exception as e:
             import traceback
@@ -346,26 +348,30 @@ class CharacterSortPage(QWidget):
         self.input_drop.setStyleSheet(self._drop_zone_card_style())
         self.input_drop.folder_dropped.connect(self._set_input)
         self.input_drop.files_dropped.connect(self._set_input_files)
-        # Rebuild DropZoneFrame layout to match mockup card design
-        for i in reversed(range(self.input_drop.layout().count())):
-            w = self.input_drop.layout().itemAt(i).widget()
-            if w:
-                w.setParent(None)
-        self.input_drop.layout().deleteLater()
-        src_lay = QVBoxLayout(self.input_drop)
-        src_lay.setAlignment(Qt.AlignCenter); src_lay.setSpacing(6); src_lay.setContentsMargins(16, 12, 16, 12)
+        # Use a container widget inside the existing HBoxLayout to avoid layout-replacement issues
+        _src_old = self.input_drop.layout()
+        while _src_old.count():
+            item = _src_old.takeAt(0)
+            if item.widget():
+                item.widget().hide()   # hide, not delete — get_label() ref must stay valid
+        _src_old.setContentsMargins(0, 0, 0, 0)
+        src_container = QWidget(); src_container.setStyleSheet("background: transparent;")
+        src_lay = QVBoxLayout(src_container)
+        src_lay.setAlignment(Qt.AlignCenter); src_lay.setSpacing(8); src_lay.setContentsMargins(16, 12, 16, 12)
+        _src_old.addWidget(src_container)
+
         src_icon = QLabel("▸"); src_icon.setAlignment(Qt.AlignCenter)
-        src_icon.setStyleSheet("font-size: 28px; background: transparent; border: none;")
+        src_icon.setStyleSheet(f"font-size: 28px; color: {theme.TEXT_MUTED}; background: transparent; border: none;")
         src_title_lbl = QLabel(get_text('source_images_label', self.lang)); src_title_lbl.setAlignment(Qt.AlignCenter)
         src_title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(15)}; font-weight: 600; background: transparent; border: none;")
         src_desc = QLabel(get_text('source_images_desc', self.lang))
         src_desc.setAlignment(Qt.AlignCenter); src_desc.setWordWrap(True)
-        src_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;")
+        src_desc.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(12)}; background: transparent; border: none;")
         self._src_path_lbl = QLabel(get_text('no_folder_selected', self.lang))
         self._src_path_lbl.setAlignment(Qt.AlignCenter)
         self._src_path_lbl.setStyleSheet(
             f"background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER}; border-radius: 3px;"
-            f" color: {theme.TEXT_SECONDARY}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(10)}; padding: 2px 8px;"
+            f" color: {theme.TEXT_SECONDARY}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)}; padding: 2px 8px;"
         )
         src_lay.addWidget(src_icon); src_lay.addWidget(src_title_lbl)
         src_lay.addWidget(src_desc); src_lay.addWidget(self._src_path_lbl)
@@ -378,24 +384,28 @@ class CharacterSortPage(QWidget):
         self.ref_drop.setMinimumHeight(160)
         self.ref_drop.setStyleSheet(self._drop_zone_card_style())
         self.ref_drop.folder_dropped.connect(self._set_ref)
-        for i in reversed(range(self.ref_drop.layout().count())):
-            w = self.ref_drop.layout().itemAt(i).widget()
-            if w:
-                w.setParent(None)
-        self.ref_drop.layout().deleteLater()
-        ref_lay = QVBoxLayout(self.ref_drop)
-        ref_lay.setAlignment(Qt.AlignCenter); ref_lay.setSpacing(6); ref_lay.setContentsMargins(16, 12, 16, 12)
+        _ref_old = self.ref_drop.layout()
+        while _ref_old.count():
+            item = _ref_old.takeAt(0)
+            if item.widget():
+                item.widget().hide()   # hide, not delete — get_label() ref must stay valid
+        _ref_old.setContentsMargins(0, 0, 0, 0)
+        ref_container = QWidget(); ref_container.setStyleSheet("background: transparent;")
+        ref_lay = QVBoxLayout(ref_container)
+        ref_lay.setAlignment(Qt.AlignCenter); ref_lay.setSpacing(8); ref_lay.setContentsMargins(16, 12, 16, 12)
+        _ref_old.addWidget(ref_container)
+
         ref_icon = QLabel("◈"); ref_icon.setAlignment(Qt.AlignCenter)
-        ref_icon.setStyleSheet("font-size: 28px; background: transparent; border: none;")
+        ref_icon.setStyleSheet(f"font-size: 28px; color: {theme.TEXT_MUTED}; background: transparent; border: none;")
         ref_title_lbl = QLabel(get_text('ref_faces_label', self.lang)); ref_title_lbl.setAlignment(Qt.AlignCenter)
         ref_title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(15)}; font-weight: 600; background: transparent; border: none;")
         ref_desc = QLabel(get_text('ref_faces_desc', self.lang))
         ref_desc.setAlignment(Qt.AlignCenter); ref_desc.setWordWrap(True)
-        ref_desc.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;")
+        ref_desc.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(12)}; background: transparent; border: none;")
         self._ref_path_lbl = QLabel(get_text('no_ref_loaded', self.lang))
         self._ref_path_lbl.setAlignment(Qt.AlignCenter)
         self._ref_path_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-style: italic; background: transparent; border: none;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; font-style: italic; background: transparent; border: none;"
         )
         ref_lay.addWidget(ref_icon); ref_lay.addWidget(ref_title_lbl)
         ref_lay.addWidget(ref_desc); ref_lay.addWidget(self._ref_path_lbl)
@@ -409,8 +419,9 @@ class CharacterSortPage(QWidget):
 
         # RIGHT — Clustering Settings card
         sc = QFrame()
+        sc.setProperty("lhCard", True)
         sc.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
+            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER_LIGHT}; border-radius: 10px; }}"
         )
         sc_lay = QVBoxLayout(sc)
         sc_lay.setContentsMargins(16, 14, 16, 14)
@@ -426,16 +437,18 @@ class CharacterSortPage(QWidget):
         sc_lay.addLayout(sc_hdr)
 
         # InsightFace Model
-        sc_lay.addWidget(self._settings_label("INSIGHTFACE MODEL"))
+        self._model_settings_lbl = self._settings_label(get_text('char_insightface_model', self.lang))
+        sc_lay.addWidget(self._model_settings_lbl)
         self.model_combo = QComboBox()
-        self.model_combo.addItem("buffalo_l (ResNet50) - Balanced",          "buffalo_l")
-        self.model_combo.addItem("antelopev2 (ResNet100) - High Accuracy",   "antelopev2")
+        self.model_combo.addItem(get_text('char_model_buffalo_l', self.lang),  "buffalo_l")
+        self.model_combo.addItem(get_text('char_model_antelopev2', self.lang), "antelopev2")
         self.model_combo.setStyleSheet(theme.combo())
         sc_lay.addWidget(self.model_combo)
 
         # Similarity Threshold slider
         th_hdr = QHBoxLayout()
-        th_hdr.addWidget(self._settings_label("SIMILARITY THRESHOLD"))
+        self._sim_thresh_lbl = self._settings_label(get_text('char_similarity_threshold', self.lang))
+        th_hdr.addWidget(self._sim_thresh_lbl)
         th_hdr.addStretch()
         self._thresh_val_lbl = QLabel("0.65")
         self._thresh_val_lbl.setStyleSheet(
@@ -445,31 +458,33 @@ class CharacterSortPage(QWidget):
         th_hdr.addWidget(self._thresh_val_lbl)
         sc_lay.addLayout(th_hdr)
         self._thresh_sl = QSlider(Qt.Horizontal)
-        self._thresh_sl.setMinimum(10); self._thresh_sl.setMaximum(90); self._thresh_sl.setValue(65)
+        self._thresh_sl.setMinimum(10); self._thresh_sl.setMaximum(90); self._thresh_sl.setValue(55)
         self._thresh_sl.setStyleSheet(self._slider_style())
         self._thresh_sl.valueChanged.connect(lambda v: self._thresh_val_lbl.setText(f"{v/100:.2f}"))
-        self._thresh_sl.setToolTip("Face similarity threshold. Higher = stricter matching, fewer clusters. Lower = more permissive.")
+        self._thresh_sl.setToolTip(get_text('char_similarity_threshold_tooltip', self.lang))
         sc_lay.addWidget(self._thresh_sl)
 
         # Max Faces + Domain side by side
         mid_row = QHBoxLayout(); mid_row.setSpacing(12)
         max_col = QVBoxLayout()
-        max_col.addWidget(self._settings_label("MAX FACES/IMG"))
+        self._max_faces_lbl = self._settings_label(get_text('char_max_faces', self.lang))
+        max_col.addWidget(self._max_faces_lbl)
         self._max_faces_spin = QSpinBox()
         self._max_faces_spin.setRange(1, 10); self._max_faces_spin.setValue(3)
         self._max_faces_spin.setStyleSheet(theme.spinbox())
-        self._max_faces_spin.setToolTip("Maximum number of faces to detect per image")
+        self._max_faces_spin.setToolTip(get_text('char_max_faces_tooltip', self.lang))
         max_col.addWidget(self._max_faces_spin)
         mid_row.addLayout(max_col)
         domain_col = QVBoxLayout()
-        domain_col.addWidget(self._settings_label("DOMAIN"))
+        self._domain_settings_lbl = self._settings_label(get_text('domain_label', self.lang))
+        domain_col.addWidget(self._domain_settings_lbl)
         domain_toggle = QFrame()
         domain_toggle.setStyleSheet(
             f"QFrame {{ background: {theme.BG_DEEPEST}; border: 1px solid {theme.BORDER}; border-radius: 4px; }}"
         )
         dtl = QHBoxLayout(domain_toggle); dtl.setContentsMargins(2, 2, 2, 2); dtl.setSpacing(0)
-        self._domain_real_btn  = QPushButton("Real")
-        self._domain_anime_btn = QPushButton("Anime")
+        self._domain_real_btn  = QPushButton(get_text('domain_real', self.lang))
+        self._domain_anime_btn = QPushButton(get_text('domain_anime', self.lang))
         self._domain_real_btn.setStyleSheet(self._domain_btn_style(True))
         self._domain_anime_btn.setStyleSheet(self._domain_btn_style(False))
         self._domain_real_btn.clicked.connect(lambda: self._set_domain('real'))
@@ -481,13 +496,14 @@ class CharacterSortPage(QWidget):
 
         # DBSCAN Min Samples
         db_row = QHBoxLayout()
-        db_row.addWidget(self._settings_label("DBSCAN MIN SAMPLES"))
+        self._dbscan_lbl = self._settings_label(get_text('char_dbscan_min_samples', self.lang))
+        db_row.addWidget(self._dbscan_lbl)
         db_row.addStretch()
         self._dbscan_spin = QSpinBox()
         self._dbscan_spin.setRange(2, 20); self._dbscan_spin.setValue(5)
         self._dbscan_spin.setFixedWidth(64)
         self._dbscan_spin.setStyleSheet(theme.spinbox())
-        self._dbscan_spin.setToolTip("DBSCAN min_samples: minimum faces needed to form a cluster (higher = outliers more likely)")
+        self._dbscan_spin.setToolTip(get_text('char_dbscan_min_samples_tooltip', self.lang))
         db_row.addWidget(self._dbscan_spin)
         sc_lay.addLayout(db_row)
 
@@ -500,7 +516,7 @@ class CharacterSortPage(QWidget):
         self.start_btn = QPushButton(get_text('start_clustering', self.lang))
         self.start_btn.setEnabled(False)
         self.start_btn.setFixedHeight(36)
-        self.start_btn.setToolTip("Start face clustering on the source images")
+        self.start_btn.setToolTip(get_text('char_start_clustering_tooltip', self.lang))
         self.start_btn.setStyleSheet(
             f"QPushButton {{ background: {theme.ORANGE}; color: #1a1a1a; font-weight: 700;"
             f" font-size: {theme.fs(13)}; border: none; border-radius: 6px; }}"
@@ -510,9 +526,9 @@ class CharacterSortPage(QWidget):
         self.start_btn.clicked.connect(self._start)
         sc_lay.addWidget(self.start_btn)
 
-        self.stop_btn = QPushButton("Stop")
+        self.stop_btn = QPushButton(get_text('char_stop', self.lang))
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setToolTip("Stop the clustering process")
+        self.stop_btn.setToolTip(get_text('char_stop_tooltip', self.lang))
         self.stop_btn.setStyleSheet(theme.btn_danger())
         self.stop_btn.clicked.connect(self._stop)
         sc_lay.addWidget(self.stop_btn)
@@ -531,7 +547,7 @@ class CharacterSortPage(QWidget):
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(18)}; font-weight: 700;"
             f" letter-spacing: -0.02em; background: transparent; border: none;"
         )
-        self._cluster_count_badge = QLabel("0 Total")
+        self._cluster_count_badge = QLabel(f"0 {get_text('char_total', self.lang)}")
         self._cluster_count_badge.setStyleSheet(
             f"background: {theme.BG_SURFACE}; color: {theme.TEXT_SECONDARY};"
             f" font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)};"
@@ -549,11 +565,13 @@ class CharacterSortPage(QWidget):
             f" border-radius: 4px; color: {theme.TEXT_MUTED}; padding: 4px 8px; font-size: 14px; }}"
             f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY}; border-color: {theme.BORDER_LIGHT}; }}"
         )
-        self._view_grid_btn = QPushButton("Grid")
-        self._view_grid_btn.setFixedSize(30, 26)
+        self._view_grid_btn = QPushButton(f"⊞ {get_text('char_view_grid', self.lang)}")
+        self._view_grid_btn.setFixedHeight(26)
+        self._view_grid_btn.setMinimumWidth(60)
         self._view_grid_btn.setStyleSheet(_toggle_style_active)
-        self._view_list_btn = QPushButton("List")
-        self._view_list_btn.setFixedSize(30, 26)
+        self._view_list_btn = QPushButton(f"☰ {get_text('char_view_list', self.lang)}")
+        self._view_list_btn.setFixedHeight(26)
+        self._view_list_btn.setMinimumWidth(60)
         self._view_list_btn.setStyleSheet(_toggle_style_inactive)
         self._view_grid_btn.clicked.connect(lambda: [
             self._view_grid_btn.setStyleSheet(_toggle_style_active),
@@ -598,8 +616,8 @@ class CharacterSortPage(QWidget):
     def _settings_label(self, text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(10)};"
-            f" font-weight: 500; letter-spacing: 0.06em; background: transparent; border: none;"
+            f"color: {theme.TEXT_SECONDARY}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)};"
+            f" font-weight: 600; letter-spacing: 0.05em; background: transparent; border: none;"
         )
         return lbl
 
@@ -621,8 +639,8 @@ class CharacterSortPage(QWidget):
     def _domain_btn_style(self, active: bool) -> str:
         if active:
             return (
-                f"QPushButton {{ background: {theme.ORANGE}22; color: {theme.ORANGE};"
-                f" border: 1px solid {theme.ORANGE}44; border-radius: 3px;"
+                f"QPushButton {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE};"
+                f" border: 1px solid {theme.ORANGE_DIM}; border-radius: 3px;"
                 f" font-size: {theme.fs(11)}; padding: 3px 10px; }}"
             )
         return (
@@ -644,7 +662,19 @@ class CharacterSortPage(QWidget):
         self.min_spin.setValue(preset['cluster_min'])
         self._thresh_sl.setValue(int(preset['threshold'] * 100))
         self._dbscan_spin.setValue(preset['cluster_min'])
-        self.model_combo.setEnabled(is_real)
+
+        # Auto-switch model based on domain
+        if hasattr(self, 'model_combo'):
+            self.model_combo.blockSignals(True)
+            self.model_combo.clear()
+            if is_real:
+                self.model_combo.addItem(get_text('char_model_buffalo_l', self.lang),  "buffalo_l")
+                self.model_combo.addItem(get_text('char_model_antelopev2', self.lang), "antelopev2")
+                self.model_combo.setEnabled(True)
+            else:
+                self.model_combo.addItem(get_text('char_model_anime_face', self.lang), "anime")
+                self.model_combo.setEnabled(False)
+            self.model_combo.blockSignals(False)
 
     # ── Preset bar ────────────────────────────────────────────────────────────
 
@@ -655,12 +685,12 @@ class CharacterSortPage(QWidget):
         lay = QHBoxLayout(frame)
         lay.setSpacing(12)
 
-        self._preset_type_lbl = QLabel("Model Tipi:")
+        self._preset_type_lbl = QLabel(get_text('char_model_type', self.lang))
         self._preset_type_lbl.setStyleSheet(theme.label_default())
         self._preset_type_lbl.setFixedWidth(80)
         lay.addWidget(self._preset_type_lbl)
 
-        self._preset_real_btn = QPushButton("Real Faces")
+        self._preset_real_btn = QPushButton(get_text('preset_real_faces', self.lang))
         self._preset_real_btn.setCheckable(True)
         self._preset_real_btn.setChecked(True)
         self._preset_real_btn.setFixedHeight(38)
@@ -668,7 +698,7 @@ class CharacterSortPage(QWidget):
         self._preset_real_btn.clicked.connect(lambda: self._apply_preset('real'))
         lay.addWidget(self._preset_real_btn)
 
-        self._preset_anime_btn = QPushButton("Anime")
+        self._preset_anime_btn = QPushButton(get_text('domain_anime', self.lang))
         self._preset_anime_btn.setCheckable(True)
         self._preset_anime_btn.setChecked(False)
         self._preset_anime_btn.setFixedHeight(38)
@@ -677,7 +707,7 @@ class CharacterSortPage(QWidget):
         lay.addWidget(self._preset_anime_btn)
 
         # Info label — changes based on active preset
-        self._preset_info_lbl = QLabel("InsightFace buffalo_l — gerçek insan yüzleri için")
+        self._preset_info_lbl = QLabel(get_text('char_preset_info_real', self.lang))
         self._preset_info_lbl.setStyleSheet(theme.label_muted())
         lay.addWidget(self._preset_info_lbl, stretch=1)
 
@@ -711,16 +741,12 @@ class CharacterSortPage(QWidget):
 
         # Update info label
         if key == 'anime':
-            self._preset_info_lbl.setText(
-                "lbpcascade_animeface + ResNet-18 — anime/çizgi film karakterleri için"
-            )
+            self._preset_info_lbl.setText(get_text('char_preset_info_anime', self.lang))
             # Anime preset: hide real-face model combo, show note
             self.model_combo.setEnabled(False)
-            self.model_combo.setToolTip("Anime modunda model seçimi kullanılmaz")
+            self.model_combo.setToolTip(get_text('char_model_anime_disabled_tooltip', self.lang))
         else:
-            self._preset_info_lbl.setText(
-                "InsightFace buffalo_l — gerçek insan yüzleri için"
-            )
+            self._preset_info_lbl.setText(get_text('char_preset_info_real', self.lang))
             self.model_combo.setEnabled(True)
             self.model_combo.setToolTip(get_text('char_model_tooltip', self.lang))
 
@@ -730,7 +756,9 @@ class CharacterSortPage(QWidget):
         self.min_spin.setValue(preset['cluster_min'])
         self.no_cluster_cb.setChecked(preset['no_cluster'])
 
-        self.log(f"✅ Preset uygulandı: {'🎌 Anime' if key == 'anime' else '🎭 Gerçek Yüz'}")
+        preset_name = ('🎌 ' + get_text('domain_anime', self.lang)) if key == 'anime' \
+            else ('🎭 ' + get_text('preset_real_faces', self.lang))
+        self.log(get_text('char_log_preset_applied', self.lang).format(preset_name))
 
     # ── Step 1 ────────────────────────────────────────────────────────────────
 
@@ -756,9 +784,9 @@ class CharacterSortPage(QWidget):
         self.browse_input_btn.setStyleSheet(theme.btn_browse())
         self.browse_input_btn.clicked.connect(self._browse_input)
 
-        self.browse_files_btn = QPushButton("Select Files")
+        self.browse_files_btn = QPushButton(get_text('char_select_files', self.lang))
         self.browse_files_btn.setStyleSheet(theme.btn_browse())
-        self.browse_files_btn.setToolTip("Birden fazla görsel dosyası seç")
+        self.browse_files_btn.setToolTip(get_text('char_select_files_tooltip', self.lang))
         self.browse_files_btn.clicked.connect(self._browse_input_files)
 
         row_in = QHBoxLayout()
@@ -1041,8 +1069,8 @@ class CharacterSortPage(QWidget):
             self._set_input(folder)
 
     def _browse_input_files(self):
-        exts = "Images (*.jpg *.jpeg *.png *.webp *.bmp)"
-        files, _ = QFileDialog.getOpenFileNames(self, "Görsel dosyaları seç", "", exts)
+        exts = get_text('char_image_filter', self.lang) + " (*.jpg *.jpeg *.png *.webp *.bmp)"
+        files, _ = QFileDialog.getOpenFileNames(self, get_text('char_select_image_files', self.lang), "", exts)
         if files:
             self._set_input_files(files)
 
@@ -1090,7 +1118,7 @@ class CharacterSortPage(QWidget):
             )
         self.input_count_lbl.setText(get_text('images_found', self.lang).format(len(files)))
         self.start_btn.setEnabled(True)
-        self.log(f"🖼️ {len(files)} görsel seçildi")
+        self.log("🖼️ " + get_text('char_log_files_selected', self.lang).format(len(files)))
 
     def _set_ref(self, path: str):
         self.ref_folder = path
@@ -1173,6 +1201,10 @@ class CharacterSortPage(QWidget):
             'use_gpu': self.gpu_cb.isChecked(),
             'max_characters': self.max_char_slider.value(),
             'max_per_character': self.topn_spin.value(),
+            'max_faces_per_image': getattr(self, '_max_faces_spin',
+                                           self.max_faces_spin).value()
+                                   if hasattr(self, '_max_faces_spin') or hasattr(self, 'max_faces_spin')
+                                   else 3,
         }
 
     # ─── Image counting ───────────────────────────────────────────────────────
@@ -1192,7 +1224,8 @@ class CharacterSortPage(QWidget):
             return
 
         self.log(f"\n{'='*40}")
-        mode_label = "🎌 Anime" if self._mode == 'anime' else "🎭 Gerçek Yüz"
+        mode_label = ("🎌 " + get_text('domain_anime', self.lang)) if self._mode == 'anime' \
+            else ("🎭 " + get_text('preset_real_faces', self.lang))
         self.log(f"{mode_label}  —  {get_text('char_start_log', self.lang)}")
         settings = self._get_settings()
         self.log(f"   Mod      : {mode_label}")
@@ -1206,7 +1239,7 @@ class CharacterSortPage(QWidget):
         if self.ref_folder:
             self.log(f"   References: {self.ref_folder}")
         if self.input_files:
-            out = self.output_folder or "görsel yanında _sorted klasörü"
+            out = self.output_folder or get_text('char_output_beside_images', self.lang)
         else:
             out = self.output_folder or str(Path(self.input_folder) / '_sorted')
         self.log(f"   Output   : {out}")
@@ -1229,6 +1262,7 @@ class CharacterSortPage(QWidget):
             settings=settings,
             input_files=self.input_files,
             mode=self._mode,
+            lang=self.lang,
         )
         self._thread.progress.connect(self._on_progress)
         self._thread.sort_finished.connect(self._on_finished)
@@ -1312,15 +1346,15 @@ class CharacterSortPage(QWidget):
                 item.widget().deleteLater()
 
         if not stats:
-            self._cluster_placeholder = QLabel("No clusters found.")
+            self._cluster_placeholder = QLabel(get_text('char_no_clusters_found', self.lang))
             self._cluster_placeholder.setAlignment(Qt.AlignCenter)
             self._cluster_placeholder.setStyleSheet(f"color: {theme.TEXT_MUTED}; background: transparent; border: none;")
             self._cluster_grid_lay.addWidget(self._cluster_placeholder, 0, 0)
-            self._cluster_count_badge.setText("0 Total")
+            self._cluster_count_badge.setText(f"0 {get_text('char_total', self.lang)}")
             return
 
         cols = 5
-        self._cluster_count_badge.setText(f"{len(stats)} Total")
+        self._cluster_count_badge.setText(f"{len(stats)} {get_text('char_total', self.lang)}")
         for idx, (name, count) in enumerate(sorted(stats.items())):
             row, col = divmod(idx, cols)
             card = self._make_cluster_card(name, count)
@@ -1392,7 +1426,11 @@ class CharacterSortPage(QWidget):
         edit_icon.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 10px; background: transparent; border: none;")
         name_row.addWidget(edit_icon)
         il.addLayout(name_row)
-        conf_lbl = QLabel("Outliers" if is_noise else f"Confidence: {confidence:.2f}" if confidence else f"{count} images")
+        conf_lbl = QLabel(
+            get_text('char_outliers', self.lang) if is_noise
+            else get_text('char_confidence', self.lang).format(confidence) if confidence
+            else get_text('char_n_images', self.lang).format(count)
+        )
         conf_lbl.setStyleSheet(
             f"color: {'#7f1d1d' if is_noise else theme.TEXT_MUTED}; font-size: {theme.fs(9)};"
             f" font-family: {theme.FONT_MONO}; background: transparent; border: none;"
@@ -1465,19 +1503,55 @@ class CharacterSortPage(QWidget):
         self.gpu_cb.setToolTip(get_text('char_use_gpu_tooltip', lang))
 
         # Preset bar — re-sync info text with current mode and language
-        self._preset_type_lbl.setText("Model Tipi:" if lang == 'tr' else "Model Type:")
+        self._preset_type_lbl.setText(get_text('char_model_type', lang))
+        self._preset_real_btn.setText(get_text('preset_real_faces', lang))
+        self._preset_anime_btn.setText(get_text('domain_anime', lang))
         if self._mode == 'anime':
-            self._preset_info_lbl.setText(
-                "lbpcascade_animeface + ResNet-18 — anime/çizgi film karakterleri için"
-                if lang == 'tr' else
-                "lbpcascade_animeface + ResNet-18 — for anime/cartoon characters"
-            )
+            self._preset_info_lbl.setText(get_text('char_preset_info_anime', lang))
+            self.model_combo.setToolTip(get_text('char_model_anime_disabled_tooltip', lang))
         else:
-            self._preset_info_lbl.setText(
-                "InsightFace buffalo_l — gerçek insan yüzleri için"
-                if lang == 'tr' else
-                "InsightFace buffalo_l — for real human faces"
-            )
+            self._preset_info_lbl.setText(get_text('char_preset_info_real', lang))
+            self.model_combo.setToolTip(get_text('char_model_tooltip', lang))
+
+        # Redesigned bento-layout widgets (init_ui)
+        if hasattr(self, '_model_settings_lbl'):
+            self._model_settings_lbl.setText(get_text('char_insightface_model', lang))
+        if hasattr(self, '_sim_thresh_lbl'):
+            self._sim_thresh_lbl.setText(get_text('char_similarity_threshold', lang))
+        if hasattr(self, '_max_faces_lbl'):
+            self._max_faces_lbl.setText(get_text('char_max_faces', lang))
+        if hasattr(self, '_max_faces_spin'):
+            self._max_faces_spin.setToolTip(get_text('char_max_faces_tooltip', lang))
+        if hasattr(self, '_domain_settings_lbl'):
+            self._domain_settings_lbl.setText(get_text('domain_label', lang))
+        if hasattr(self, '_dbscan_lbl'):
+            self._dbscan_lbl.setText(get_text('char_dbscan_min_samples', lang))
+        if hasattr(self, '_dbscan_spin'):
+            self._dbscan_spin.setToolTip(get_text('char_dbscan_min_samples_tooltip', lang))
+        if hasattr(self, '_thresh_sl'):
+            self._thresh_sl.setToolTip(get_text('char_similarity_threshold_tooltip', lang))
+        if hasattr(self, '_domain_real_btn'):
+            self._domain_real_btn.setText(get_text('domain_real', lang))
+        if hasattr(self, '_domain_anime_btn'):
+            self._domain_anime_btn.setText(get_text('domain_anime', lang))
+        if hasattr(self, '_view_grid_btn'):
+            self._view_grid_btn.setText(f"⊞ {get_text('char_view_grid', lang)}")
+        if hasattr(self, '_view_list_btn'):
+            self._view_list_btn.setText(f"☰ {get_text('char_view_list', lang)}")
+        if hasattr(self, '_results_title'):
+            self._results_title.setText(get_text('cluster_results', lang))
+        if hasattr(self, '_cluster_placeholder'):
+            self._cluster_placeholder.setText(get_text('no_clusters_placeholder', lang))
+        # start/stop in bento layout share start_btn/stop_btn refs (set below)
+        self.start_btn.setText(get_text('start_clustering', lang)
+                               if hasattr(self, '_thresh_sl') else get_text('char_start_btn', lang))
+        self.start_btn.setToolTip(get_text('char_start_clustering_tooltip', lang))
+        if hasattr(self, '_thresh_sl'):
+            self.stop_btn.setText(get_text('char_stop', lang))
+        self.stop_btn.setToolTip(get_text('char_stop_tooltip', lang))
+        if hasattr(self, 'browse_files_btn'):
+            self.browse_files_btn.setText(get_text('char_select_files', lang))
+            self.browse_files_btn.setToolTip(get_text('char_select_files_tooltip', lang))
 
         # Status labels (only if not already set by user selection)
         if not self.ref_folder:
@@ -1508,11 +1582,17 @@ class CharacterSortPage(QWidget):
         self._preset_anime_btn.setStyleSheet(self._preset_btn_style(self._mode == 'anime'))
         self._preset_info_lbl.setStyleSheet(theme.label_muted())
 
-        # Step cards (the three QFrame children built via _build_*_step)
+        _card_ss = (
+            f"QFrame {{background-color:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};"
+            f"border-radius:10px;padding:14px;}}"
+        )
         for frame in self.findChildren(QFrame):
-            ss = frame.styleSheet()
-            if "border-radius: 10px" in ss:
-                frame.setStyleSheet(theme.card_frame())
+            if frame.property("lhCard"):
+                frame.setStyleSheet(_card_ss)
+            else:
+                ss = frame.styleSheet()
+                if "border-radius: 10px" in ss or "border-radius:10px" in ss:
+                    frame.setStyleSheet(_card_ss)
 
         # Step titles
         self.step1_title.setStyleSheet(theme.label_section())
@@ -1580,6 +1660,23 @@ class CharacterSortPage(QWidget):
         self.topn_lbl.setStyleSheet(theme.label_frame())
         self.topn_info.setStyleSheet(theme.info_icon_frame())
         self.topn_spin.setStyleSheet(theme.spinbox())
+
+        # New bento-layout widgets (init_ui redesign)
+        if hasattr(self, '_thresh_sl'):
+            self._thresh_sl.setStyleSheet(self._slider_style())
+        if hasattr(self, '_thresh_val_lbl'):
+            self._thresh_val_lbl.setStyleSheet(
+                f"color: {theme.ORANGE}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)};"
+                f" background: transparent; border: none;"
+            )
+        if hasattr(self, '_domain_real_btn'):
+            self._domain_real_btn.setStyleSheet(self._domain_btn_style(getattr(self, '_mode', 'real') == 'real'))
+        if hasattr(self, '_domain_anime_btn'):
+            self._domain_anime_btn.setStyleSheet(self._domain_btn_style(getattr(self, '_mode', 'real') == 'anime'))
+        if hasattr(self, 'input_drop'):
+            self.input_drop.setStyleSheet(self._drop_zone_card_style())
+        if hasattr(self, 'ref_drop'):
+            self.ref_drop.setStyleSheet(self._drop_zone_card_style())
 
         # Step 3
         self.start_btn.setStyleSheet(theme.btn_primary())
