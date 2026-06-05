@@ -194,10 +194,10 @@ TRANSLATIONS = {
         'checkpoint_resume': 'Resume',
         'checkpoint_restart': 'Start Fresh',
         
-        # Page Navigation (NEW v2.0) — emojis live in update_ui_texts()
-        'page_video_processing': 'Video Processing',
-        'page_caption_studio': 'Caption Studio',
-        'page_character_sort': 'Character Sort',
+        # Page Navigation (NEW v2.0)
+        'page_video_processing': '🎬 Video Processing',
+        'page_caption_studio': '✏️ Caption Studio',
+        'page_character_sort': '👤 Character Sort',
 
         # Character Sort Page (NEW v2.1)
         'char_sort_title': '🎭 Character Recognition & Sorting',
@@ -366,8 +366,7 @@ TRANSLATIONS = {
         'florence2_task_detailed': 'Detailed Caption',
         'florence2_task_more': 'Very Detailed Caption',
 
-        # Tag Frequency Analyzer — emoji lives in update_ui_texts()
-        'page_tag_frequency': 'Tag Frequency',
+        'page_tag_frequency': '🏷️ Tag Frequency',
         'page_review': '🖼️ Review Grid',
         'page_upscale': '🔼 Upscale',
         'page_training': '🎓 Training',
@@ -605,8 +604,8 @@ TRANSLATIONS = {
         'library_label': 'LIBRARY',
 
         # ── i18n remediation: main_window ──
-        'page_settings': 'Settings',
-        'page_training_nav': 'Training',
+        'page_settings': '⚙️ Settings',
+        'page_training_nav': '🎓 Training',
         'browse_btn_tooltip': 'Select video files or folders to process',
         'process_btn_tooltip': 'Start processing all queued videos',
         'stop_btn_tooltip': 'Stop all video processing',
@@ -1055,10 +1054,10 @@ TRANSLATIONS = {
         'checkpoint_resume': 'Devam Et',
         'checkpoint_restart': 'Baştan Başla',
         
-        # Page Navigation (NEW v2.0) — emojis live in update_ui_texts()
-        'page_video_processing': 'Video İşleme',
-        'page_caption_studio': 'Altyazı Stüdyosu',
-        'page_character_sort': 'Karakter Sırala',
+        # Page Navigation (NEW v2.0)
+        'page_video_processing': '🎬 Video İşleme',
+        'page_caption_studio': '✏️ Altyazı Stüdyosu',
+        'page_character_sort': '👤 Karakter Sırala',
 
         # Character Sort Page (NEW v2.1)
         'char_sort_title': '🎭 Karakter Tanıma & Sıralama',
@@ -1227,8 +1226,7 @@ TRANSLATIONS = {
         'florence2_task_detailed': 'Detaylı Açıklama',
         'florence2_task_more': 'Çok Detaylı Açıklama',
 
-        # Tag Frequency Analyzer — emoji lives in update_ui_texts()
-        'page_tag_frequency': 'Etiket Sıklığı',
+        'page_tag_frequency': '🏷️ Etiket Sıklığı',
         'page_review': '🖼️ İnceleme Izgarası',
         'page_upscale': '🔼 Büyüt',
         'page_training': '🎓 Eğitim',
@@ -1466,8 +1464,8 @@ TRANSLATIONS = {
         'library_label': 'KÜTÜPHANE',
 
         # ── i18n remediation: main_window ──
-        'page_settings': 'Ayarlar',
-        'page_training_nav': 'Eğitim',
+        'page_settings': '⚙️ Ayarlar',
+        'page_training_nav': '🎓 Eğitim',
         'browse_btn_tooltip': 'İşlenecek video dosyalarını veya klasörleri seçin',
         'process_btn_tooltip': 'Sıradaki tüm videoları işlemeye başla',
         'stop_btn_tooltip': 'Tüm video işlemeyi durdur',

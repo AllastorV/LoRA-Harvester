@@ -815,6 +815,13 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_upscale_btn.clicked.connect(lambda: self.switch_page(6))
         sidebar_lay.addWidget(self.page_upscale_btn)
 
+        # Training page — index 7, visually in LIBRARY section
+        self.page_training_btn = QPushButton(get_text('page_training', self.current_lang))
+        self.page_training_btn.setCursor(Qt.PointingHandCursor)
+        self.page_training_btn.setStyleSheet(self._page_btn_style(False))
+        self.page_training_btn.clicked.connect(lambda: self.switch_page(7))
+        sidebar_lay.addWidget(self.page_training_btn)
+
         # Sliding underline indicator for the active nav button
         self._nav_indicator = NavIndicator(self._sidebar, color=theme.get_accent(), height=3)
         QTimer.singleShot(0, lambda: self._nav_indicator.move_under(self._nav_buttons[0]))
@@ -822,23 +829,14 @@ class VideoSmartCropperUI(QMainWindow):
         sidebar_lay.addStretch()
 
         # Settings button (footer)
-        self.page_settings_btn = QPushButton("Settings")
+        self.page_settings_btn = QPushButton(get_text('page_settings', self.current_lang))
         self.page_settings_btn.setCursor(Qt.PointingHandCursor)
         self.page_settings_btn.setStyleSheet(self._page_btn_style(False))
         self.page_settings_btn.clicked.connect(lambda: self.switch_page(5))
         sidebar_lay.addWidget(self.page_settings_btn)
+        # _nav_buttons list indices MUST match switch_page indices:
         self._nav_buttons.append(self.page_settings_btn)   # index 5
-        # Upscale at index 6 — button created earlier in the LIBRARY section.
         self._nav_buttons.append(self.page_upscale_btn)    # index 6
-
-        # Training page — index 7
-        self.page_training_btn = QPushButton(
-            "7  Eğitim" if self.current_lang == 'tr' else "7  Training"
-        )
-        self.page_training_btn.setCursor(Qt.PointingHandCursor)
-        self.page_training_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_training_btn.clicked.connect(lambda: self.switch_page(7))
-        sidebar_lay.addWidget(self.page_training_btn)
         self._nav_buttons.append(self.page_training_btn)   # index 7
 
         root_layout.addWidget(self._sidebar)
@@ -1206,10 +1204,11 @@ class VideoSmartCropperUI(QMainWindow):
             self.tags_panel.refresh_styles()
         if hasattr(self, 'upscale_panel') and hasattr(self.upscale_panel, 'refresh_styles'):
             self.upscale_panel.refresh_styles()
-        if hasattr(self, 'review_grid_page') and hasattr(self.review_grid_page, 'refresh_styles'):
-            self.review_grid_page.refresh_styles()
-        if hasattr(self, 'upscale_page') and hasattr(self.upscale_page, 'refresh_styles'):
-            self.upscale_page.refresh_styles()
+        for _page_attr in ('caption_studio_page', 'char_sort_page', 'tag_freq_page',
+                           'review_grid_page', 'upscale_page', 'training_page'):
+            _pg = getattr(self, _page_attr, None)
+            if _pg and hasattr(_pg, 'refresh_styles'):
+                _pg.refresh_styles()
 
         # Progress steps (video page)
         if hasattr(self, '_progress_steps'):
@@ -2779,12 +2778,12 @@ class VideoSmartCropperUI(QMainWindow):
         if hasattr(self, 'training_page'):
             self.training_page.update_language(self.current_lang)
 
-        # Settings + Training nav buttons (not covered by the loop above)
+        # Settings + Training nav buttons (not covered by the step-number loop above)
         if hasattr(self, 'page_settings_btn'):
             self.page_settings_btn.setText(get_text('page_settings', self.current_lang))
         if hasattr(self, 'page_training_btn'):
             self.page_training_btn.setText(
-                f"7  {get_text('page_training_nav', self.current_lang)}"
+                f"7  {get_text('page_training', self.current_lang)}"
             )
 
         # Video page elements
