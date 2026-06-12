@@ -761,6 +761,18 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_caption_studio_btn = QPushButton(get_text('page_caption_studio', self.current_lang))
         self.page_char_sort_btn = QPushButton(get_text('page_character_sort', self.current_lang))
 
+        # Upscale (index 6) and Training (index 7) live in WORKSPACE visually.
+        # Their _nav_buttons list indices are appended at the end to match switch_page().
+        self.page_upscale_btn = QPushButton(get_text('page_upscale', self.current_lang))
+        self.page_upscale_btn.setCursor(Qt.PointingHandCursor)
+        self.page_upscale_btn.setStyleSheet(self._page_btn_style(False))
+        self.page_upscale_btn.clicked.connect(lambda: self.switch_page(6))
+
+        self.page_training_btn = QPushButton(get_text('page_training', self.current_lang))
+        self.page_training_btn.setCursor(Qt.PointingHandCursor)
+        self.page_training_btn.setStyleSheet(self._page_btn_style(False))
+        self.page_training_btn.clicked.connect(lambda: self.switch_page(7))
+
         self._nav_buttons = [
             self.page_video_btn,
             self.page_caption_studio_btn,
@@ -771,6 +783,10 @@ class VideoSmartCropperUI(QMainWindow):
             btn.setStyleSheet(self._page_btn_style(i == 0))
             btn.clicked.connect(lambda checked, idx=i: self.switch_page(idx))
             sidebar_lay.addWidget(btn)
+
+        sidebar_lay.addSpacing(4)
+        sidebar_lay.addWidget(self.page_upscale_btn)
+        sidebar_lay.addWidget(self.page_training_btn)
 
         # Nav badge — count of queued files on the Video Harvester button
         self._video_badge = QLabel("0", self.page_video_btn)
@@ -804,23 +820,6 @@ class VideoSmartCropperUI(QMainWindow):
         self.page_review_btn.clicked.connect(lambda: self.switch_page(4))
         sidebar_lay.addWidget(self.page_review_btn)
         self._nav_buttons.append(self.page_review_btn)
-
-        # Upscale page lives at stack index 6 (added after Settings@5), so its
-        # nav index is 6 — Settings keeps index 5 unchanged. The button widget
-        # sits here visually (LIBRARY), but it is appended to _nav_buttons AFTER
-        # Settings below so its list index (6) matches switch_page(6).
-        self.page_upscale_btn = QPushButton(get_text('page_upscale', self.current_lang))
-        self.page_upscale_btn.setCursor(Qt.PointingHandCursor)
-        self.page_upscale_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_upscale_btn.clicked.connect(lambda: self.switch_page(6))
-        sidebar_lay.addWidget(self.page_upscale_btn)
-
-        # Training page — index 7, visually in LIBRARY section
-        self.page_training_btn = QPushButton(get_text('page_training', self.current_lang))
-        self.page_training_btn.setCursor(Qt.PointingHandCursor)
-        self.page_training_btn.setStyleSheet(self._page_btn_style(False))
-        self.page_training_btn.clicked.connect(lambda: self.switch_page(7))
-        sidebar_lay.addWidget(self.page_training_btn)
 
         # Sliding underline indicator for the active nav button
         self._nav_indicator = NavIndicator(self._sidebar, color=theme.get_accent(), height=3)
@@ -1236,17 +1235,15 @@ class VideoSmartCropperUI(QMainWindow):
                 f"color: {theme.ORANGE}; font-family: {theme.FONT_MONO}; font-size: {theme.fs(11)}; background: transparent; border: none; min-width: 36px;"
             )
 
-        # Sub-pages
-        for attr in (
-            'caption_studio_page', 'char_sort_page',
-            'tag_freq_page', 'training_page',
-        ):
-            page = getattr(self, attr, None)
-            if page is not None and hasattr(page, 'refresh_styles'):
-                try:
-                    page.refresh_styles()
-                except Exception as e:
-                    self.log(f"[theme] refresh_styles failed for {attr}: {e}")
+        # Force all QScrollArea viewports in page_stack to inherit new background
+        _sa_ss = f"QScrollArea {{ background: transparent; border: none; }}"
+        _vp_ss = f"background: {theme.BG_WINDOW};"
+        for _sa in self.page_stack.findChildren(QScrollArea):
+            _sa.setStyleSheet(_sa_ss)
+            _sa.viewport().setStyleSheet(_vp_ss)
+            _inner = _sa.widget()
+            if _inner:
+                _inner.setStyleSheet(f"background: {theme.BG_WINDOW};")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -2433,7 +2430,7 @@ class VideoSmartCropperUI(QMainWindow):
             self.on_error, Qt.QueuedConnection)
         self.processing_thread.frame_saved.connect(
             self._on_preview_frame, Qt.QueuedConnection)
-        self.processing_thread.start()
+        self.processing_thread.start(QThread.LowPriority)
     
     def _on_preview_frame(self, path: str):
         """Slot connected to ProcessingThread.frame_saved.
@@ -2900,9 +2897,14 @@ class VideoSmartCropperUI(QMainWindow):
             if last_ts is None:
                 return
             age = (datetime.datetime.now() - last_ts).total_seconds()
-            if age > 86400:   # older than 24 h — skip
+            if age > 3600:   # older than 1 h — skip (was 24 h, caused stale banners)
                 return
             is_oom = any(w in last_error for w in ('CUDA out of memory', 'OOM', 'RuntimeError'))
+            # Clear log immediately after reading so banner won't reappear on next startup
+            try:
+                log_path.write_text('', encoding='utf-8')
+            except Exception:
+                pass
             self._show_crash_banner(last_error[:120], is_oom)
         except Exception:
             pass

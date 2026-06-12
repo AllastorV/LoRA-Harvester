@@ -15,10 +15,12 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QColor, QPainter, QBrush, QPen, QLinearGradient, QFontMetrics,
+    QPixmap, QIcon, QFont,
 )
 from PyQt5.QtWidgets import (
     QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
     QWidget, QPushButton, QFrame, QVBoxLayout, QHBoxLayout, QLabel,
+    QScrollArea, QGridLayout, QComboBox, QCompleter, QSizePolicy,
 )
 
 
@@ -899,8 +901,15 @@ class ProgressGlow(QObject):
     def __init__(self, widget: QWidget, color: str = "#D97757", parent=None):
         super().__init__(parent or widget)
         self._widget = widget
-        self._effect = QGraphicsDropShadowEffect(widget)
-        self._effect.setColor(QColor(color))
+        self._color = QColor(color)
+        self._effect = None
+        self._anim = None
+        self._build_effect()
+
+    def _build_effect(self):
+        """Create the drop-shadow effect + pulse animation from scratch."""
+        self._effect = QGraphicsDropShadowEffect(self._widget)
+        self._effect.setColor(self._color)
         self._effect.setOffset(0, 0)
         self._effect.setBlurRadius(0)
         self._anim = QPropertyAnimation(self._effect, b"blurRadius", self)
@@ -911,17 +920,51 @@ class ProgressGlow(QObject):
         self._anim.setLoopCount(-1)
         self._anim.setEasingCurve(QEasingCurve.InOutSine)
 
+    def _effect_alive(self) -> bool:
+        """True if the underlying C++ effect object still exists.
+
+        ``stop()`` calls ``setGraphicsEffect(None)``, which makes Qt DELETE
+        the installed effect — leaving our Python wrapper dangling. Touching
+        any method on the dead wrapper raises RuntimeError; we use that to
+        detect deletion and rebuild before the next ``start()``.
+        """
+        if self._effect is None:
+            return False
+        try:
+            self._effect.blurRadius()
+            return True
+        except RuntimeError:
+            return False
+
     def start(self):
-        self._widget.setGraphicsEffect(self._effect)
-        self._anim.start()
+        # Rebuild the effect if a previous stop() deleted its C++ object.
+        if not self._effect_alive():
+            self._build_effect()
+        try:
+            self._widget.setGraphicsEffect(self._effect)
+            self._anim.start()
+        except RuntimeError:
+            # The widget itself was destroyed — nothing to glow. Never let a
+            # cosmetic effect crash the caller (e.g. start_processing).
+            pass
 
     def stop(self):
-        self._anim.stop()
-        self._effect.setBlurRadius(0)
-        self._widget.setGraphicsEffect(None)
+        try:
+            if self._anim is not None:
+                self._anim.stop()
+            if self._effect_alive():
+                self._effect.setBlurRadius(0)
+            self._widget.setGraphicsEffect(None)
+        except RuntimeError:
+            pass
+        # setGraphicsEffect(None) deleted the C++ effect — drop the stale
+        # wrapper so the next start() rebuilds a fresh one.
+        self._effect = None
 
     def set_color(self, color: str):
-        self._effect.setColor(QColor(color))
+        self._color = QColor(color)
+        if self._effect_alive():
+            self._effect.setColor(self._color)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1194,3 +1237,350 @@ def install_hover_lift(widget: QWidget):
     f = _HoverLiftFilter(widget)
     widget.installEventFilter(f)
     widget.setProperty("_hover_lift", True)
+
+
+# ══════════════════════════════════════════════════════════════
+#  ToggleSwitch — animated pill toggle (QCheckBox replacement)
+# ══════════════════════════════════════════════════════════════
+
+class ToggleSwitch(QWidget):
+    """Animated pill toggle. isChecked/setChecked/toggled match QCheckBox API."""
+
+    toggled = pyqtSignal(bool)
+
+    _TW, _TH, _TD, _PAD = 44, 22, 18, 2   # track W/H, thumb diameter, padding
+
+    def __init__(self, label: str = "", checked: bool = False, parent=None):
+        super().__init__(parent)
+        self._label = label
+        self._checked = checked
+        self._tx = float(self._TW - self._TD - self._PAD) if checked else float(self._PAD)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(self._TH + 4)
+        min_w = self._TW + (8 + max(60, len(label) * 7) if label else 0)
+        self.setMinimumWidth(min_w)
+
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(150)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._anim.valueChanged.connect(self._on_anim)
+
+    def _on_anim(self, v):
+        self._tx = float(v)
+        self.update()
+
+    # ── Public API ──────────────────────────────────────────
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+    def setChecked(self, v: bool):
+        if self._checked == v:
+            return
+        self._checked = v
+        self._tx = float(self._TW - self._TD - self._PAD) if v else float(self._PAD)
+        self.update()
+
+    # ── Mouse ───────────────────────────────────────────────
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._checked = not self._checked
+            target = float(self._TW - self._TD - self._PAD) if self._checked else float(self._PAD)
+            self._anim.stop()
+            self._anim.setStartValue(self._tx)
+            self._anim.setEndValue(target)
+            self._anim.start()
+            self.toggled.emit(self._checked)
+
+    # ── Paint ───────────────────────────────────────────────
+
+    def paintEvent(self, _):
+        from src.ui import theme as _t
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        cy = self.height() // 2
+
+        # Track background
+        p.setPen(Qt.NoPen)
+        track_col = QColor(_t.ORANGE if self._checked else _t.BORDER)
+        p.setBrush(QBrush(track_col))
+        p.drawRoundedRect(0, cy - self._TH // 2, self._TW, self._TH,
+                          self._TH // 2, self._TH // 2)
+
+        # Thumb
+        p.setBrush(QBrush(QColor("#ffffff")))
+        p.drawEllipse(int(self._tx), cy - self._TD // 2, self._TD, self._TD)
+
+        # Label text
+        if self._label:
+            p.setPen(QPen(QColor(_t.TEXT_PRIMARY)))
+            fm = QFontMetrics(self.font())
+            p.drawText(self._TW + 8, cy + fm.ascent() // 2 - 1, self._label)
+
+    def sizeHint(self):
+        from PyQt5.QtCore import QSize
+        w = self._TW + (8 + max(60, len(self._label) * 7) if self._label else 0)
+        return QSize(w, self._TH + 4)
+
+
+# ══════════════════════════════════════════════════════════════
+#  Chip — small colored tag / badge label
+# ══════════════════════════════════════════════════════════════
+
+class Chip(QLabel):
+    """Small monospace badge with colored border and text."""
+
+    def __init__(self, text: str, accent: str = "#e8832a", parent=None):
+        super().__init__(text, parent)
+        self._accent = accent
+        self._apply_style()
+
+    def _apply_style(self):
+        self.setStyleSheet(
+            f"color: {self._accent}; background: transparent;"
+            f" border: 1px solid {self._accent}55; border-radius: 3px;"
+            f" padding: 1px 6px; font-size: 10px; font-family: monospace;"
+        )
+
+    def set_accent(self, accent: str):
+        self._accent = accent
+        self._apply_style()
+
+
+# ══════════════════════════════════════════════════════════════
+#  SearchCombo — QComboBox with live contains-filter
+# ══════════════════════════════════════════════════════════════
+
+class SearchCombo(QComboBox):
+    """Editable QComboBox with live contains-filter via QCompleter."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.NoInsert)
+        self.lineEdit().setPlaceholderText("Search…")
+        self.lineEdit().setClearButtonEnabled(True)
+
+        comp = QCompleter(self.model(), self)
+        comp.setFilterMode(Qt.MatchContains)
+        comp.setCaseSensitivity(Qt.CaseInsensitive)
+        comp.setMaxVisibleItems(12)
+        self.setCompleter(comp)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if self.count() > 0:
+            self.showPopup()
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        if self.count() > 0:
+            # Show popup with a tiny delay so the focus animation completes
+            QTimer.singleShot(50, self.showPopup)
+
+    def apply_theme(self):
+        from src.ui import theme as _t
+        self.setStyleSheet(
+            f"QComboBox {{ background: {_t.BG_SURFACE}; color: {_t.TEXT_PRIMARY};"
+            f" border: 1px solid {_t.BORDER}; border-radius: 6px;"
+            f" padding: 4px 8px; font-size: {_t.fs(11)}; }}"
+            f"QComboBox:focus {{ border-color: {_t.ORANGE}; }}"
+            f"QComboBox::drop-down {{ border: none; }}"
+            f"QComboBox QAbstractItemView {{ background: {_t.BG_ELEVATED};"
+            f" color: {_t.TEXT_PRIMARY}; border: 1px solid {_t.BORDER};"
+            f" selection-background-color: {_t.ORANGE}22; }}"
+        )
+
+
+# ══════════════════════════════════════════════════════════════
+#  ThumbnailGrid — scrollable image thumbnail grid
+# ══════════════════════════════════════════════════════════════
+
+class ThumbnailGrid(QScrollArea):
+    """Scrollable grid of clickable image thumbnails."""
+
+    item_clicked = pyqtSignal(str)   # emits file path
+
+    def __init__(self, thumb_size: int = 80, columns: int = 3, parent=None):
+        super().__init__(parent)
+        self._thumb_size = thumb_size
+        self._columns = columns
+        self.setFrameShape(QFrame.NoFrame)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setStyleSheet("background: transparent; border: none;")
+
+        self._container = QWidget()
+        self._container.setStyleSheet("background: transparent;")
+        self._container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        self._grid = QGridLayout(self._container)
+        self._grid.setSpacing(4)
+        self._grid.setContentsMargins(4, 4, 4, 4)
+        self._grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.setWidget(self._container)
+
+    def set_paths(self, paths: list):
+        """Populate grid from a list of image file paths."""
+        while self._grid.count():
+            item = self._grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        for i, path in enumerate(paths):
+            btn = self._make_thumb(path)
+            self._grid.addWidget(btn, i // self._columns, i % self._columns)
+
+        # Fill remaining row with spacers for alignment
+        total = len(paths)
+        remainder = total % self._columns
+        if remainder:
+            row = total // self._columns
+            for j in range(remainder, self._columns):
+                sp = QWidget()
+                sp.setFixedSize(self._thumb_size, self._thumb_size)
+                sp.setStyleSheet("background: transparent;")
+                self._grid.addWidget(sp, row, j)
+
+    def _make_thumb(self, path: str) -> QPushButton:
+        from src.ui import theme as _t
+        btn = QPushButton()
+        btn.setFixedSize(self._thumb_size, self._thumb_size)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setCheckable(True)
+        btn.setStyleSheet(
+            f"QPushButton {{ background: {_t.BG_SURFACE}; border: 1px solid {_t.BORDER};"
+            f" border-radius: 6px; }}"
+            f"QPushButton:hover {{ border-color: {_t.ORANGE}; }}"
+            f"QPushButton:checked {{ border: 2px solid {_t.ORANGE}; }}"
+        )
+        try:
+            pix = QPixmap(path)
+            if not pix.isNull():
+                s = self._thumb_size - 4
+                pix = pix.scaled(s, s, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                from PyQt5.QtCore import QSize as _QS
+                btn.setIcon(QIcon(pix))
+                btn.setIconSize(_QS(s, s))
+        except Exception:
+            pass
+        btn.clicked.connect(lambda _checked=False, p=path: self.item_clicked.emit(p))
+        return btn
+
+
+# ══════════════════════════════════════════════════════════════
+#  ProgressSteps — horizontal wizard step indicator
+# ══════════════════════════════════════════════════════════════
+
+class ProgressSteps(QWidget):
+    """Horizontal N-step progress indicator with clickable steps."""
+
+    step_clicked = pyqtSignal(int)
+
+    def __init__(self, steps: list, current: int = 0, parent=None):
+        super().__init__(parent)
+        self._steps = steps
+        self._current = current
+        self.setFixedHeight(56)
+        self._lay = QHBoxLayout(self)
+        self._lay.setContentsMargins(0, 0, 0, 0)
+        self._lay.setSpacing(0)
+        self._build()
+
+    def set_step(self, current: int):
+        self._current = max(0, min(current, len(self._steps) - 1))
+        self._build()
+
+    def _build(self):
+        from src.ui import theme as _t
+        while self._lay.count():
+            item = self._lay.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        for i, label in enumerate(self._steps):
+            done = i < self._current
+            active = i == self._current
+
+            step_w = QWidget()
+            step_w.setStyleSheet("background: transparent;")
+            sv = QVBoxLayout(step_w)
+            sv.setContentsMargins(4, 0, 4, 0)
+            sv.setSpacing(4)
+            sv.setAlignment(Qt.AlignHCenter)
+
+            circle = QLabel("✓" if done else str(i + 1))
+            circle.setFixedSize(28, 28)
+            circle.setAlignment(Qt.AlignCenter)
+            if done:
+                circle.setStyleSheet(
+                    f"background: {_t.ORANGE}; color: #fff; border-radius: 14px;"
+                    f" font-size: 12px; font-weight: 700; border: none;"
+                )
+            elif active:
+                circle.setStyleSheet(
+                    f"background: {_t.ORANGE}; color: #ffffff; border-radius: 14px;"
+                    f" font-size: 12px; font-weight: 700; border: none;"
+                )
+            else:
+                circle.setStyleSheet(
+                    f"background: transparent; color: {_t.TEXT_MUTED};"
+                    f" border: 2px solid {_t.BORDER}; border-radius: 14px; font-size: 12px;"
+                )
+            sv.addWidget(circle, alignment=Qt.AlignHCenter)
+
+            lbl = QLabel(label)
+            lbl.setAlignment(Qt.AlignCenter)
+            col = _t.ORANGE if active else (_t.TEXT_SECONDARY if done else _t.TEXT_MUTED)
+            lbl.setStyleSheet(
+                f"color: {col}; font-size: 10px; font-weight: {'600' if active else '400'};"
+                f" background: transparent; border: none;"
+            )
+            sv.addWidget(lbl, alignment=Qt.AlignHCenter)
+
+            step_w.setCursor(Qt.PointingHandCursor)
+            idx = i
+            step_w.mousePressEvent = lambda e, n=idx: self.step_clicked.emit(n)
+            self._lay.addWidget(step_w, stretch=1)
+
+            if i < len(self._steps) - 1:
+                line = QFrame()
+                line.setFixedHeight(2)
+                line.setFrameShape(QFrame.HLine)
+                line.setStyleSheet(
+                    f"background: {_t.ORANGE if done else _t.BORDER}; border: none;"
+                )
+                self._lay.addWidget(line, stretch=2)
+
+
+# ══════════════════════════════════════════════════════════════
+#  FloatingActionButton — circular elevated action button
+# ══════════════════════════════════════════════════════════════
+
+class FloatingActionButton(QPushButton):
+    """Material-style circular FAB with drop shadow and hover lift."""
+
+    def __init__(self, text: str = "+", size: int = 52, parent=None):
+        super().__init__(text, parent)
+        self._size = size
+        self.setFixedSize(size, size)
+        self.setCursor(Qt.PointingHandCursor)
+        self._shadow = QGraphicsDropShadowEffect(self)
+        self._shadow.setColor(QColor(0, 0, 0, 100))
+        self._shadow.setBlurRadius(18)
+        self._shadow.setOffset(0, 4)
+        self.setGraphicsEffect(self._shadow)
+        self.apply_theme()
+        self._lift = _HoverLiftFilter(self)
+        self.installEventFilter(self._lift)
+
+    def apply_theme(self):
+        from src.ui import theme as _t
+        r = self._size // 2
+        self.setStyleSheet(
+            f"QPushButton {{ background: {_t.ORANGE}; color: #1a1a1a;"
+            f" border: none; border-radius: {r}px;"
+            f" font-size: 22px; font-weight: 700; }}"
+            f"QPushButton:hover {{ background: {_t.ORANGE_DARK}; }}"
+            f"QPushButton:pressed {{ background: {_t.ORANGE_DARK}; }}"
+        )

@@ -19,35 +19,35 @@ _DARK_PALETTE = {
     "BG_DEEPEST":    "#080809",
     "BG_DEEP":       "#0d0d0f",
     "BG_DARK":       "#111113",
-    "BG_PANEL":      "#17171a",
-    "BG_CARD":       "#150c07",
-    "BG_SURFACE":    "#271e17",
-    "BG_HOVER":      "#322821",
-    "BG_ELEVATED":   "#3d332b",
+    "BG_PANEL":      "#1a1714",
+    "BG_CARD":       "#1c1410",
+    "BG_SURFACE":    "#2c2018",
+    "BG_HOVER":      "#38291e",
+    "BG_ELEVATED":   "#443a32",
     "ORANGE":        "#e8832a",
     "ORANGE_LIGHT":  "#ffb782",
     "ORANGE_DARK":   "#c96f1e",
     "ORANGE_GLOW":   "#f09030",
     "ORANGE_DIM":    "#703800",
     "ORANGE_SUBTLE": "rgba(232,131,42,0.12)",
-    "TEXT_PRIMARY":  "#f1dfd4",
-    "TEXT_SECONDARY":"#dbc2b1",
-    "TEXT_MUTED":    "#c4ab9c",
+    "TEXT_PRIMARY":  "#f5e8e0",
+    "TEXT_SECONDARY":"#e2cfbf",
+    "TEXT_MUTED":    "#d0b9a8",
     "TEXT_ACCENT":   "#ffb782",
-    "BORDER":        "#27272a",
-    "BORDER_LIGHT":  "#3d332b",
+    "BORDER":        "#383838",
+    "BORDER_LIGHT":  "#4a403a",
     "BORDER_ACCENT": "#e8832a",
     "RED":           "#ef4444",
     "RED_HOVER":     "#dc2626",
     "GREEN":         "#6fb35a",
     "YELLOW":        "#e5c07b",
     "BLUE":          "#7cd0ff",
-    "DISABLED_BG":   "#1a1a1d",
-    "DISABLED_TEXT": "#44444a",
+    "DISABLED_BG":   "#1e1e22",
+    "DISABLED_TEXT": "#6e6e78",
     "SIDEBAR_BG":    "#18181b",
-    "SIDEBAR_HOVER": "rgba(255,255,255,0.03)",
-    "SIDEBAR_ACTIVE":"rgba(232,131,42,0.08)",
-    "NAV_LABEL":     "#a38c7d",
+    "SIDEBAR_HOVER": "rgba(255,255,255,0.05)",
+    "SIDEBAR_ACTIVE":"rgba(232,131,42,0.10)",
+    "NAV_LABEL":     "#b89d8e",
 }
 
 _LIGHT_PALETTE = {
@@ -154,9 +154,9 @@ def _apply_accent(accent: str):
     import sys as _sys
     _mod = _sys.modules[__name__]
     if getattr(_mod, '_current_mode', 'dark') == "dark":
-        g["BG_CARD"]    = _accent_tint(accent, 0.085)
-        g["BG_SURFACE"] = _accent_tint(accent, 0.160)
-        g["BG_PANEL"]   = _accent_tint(accent, 0.065)
+        g["BG_CARD"]    = _accent_tint(accent, 0.110)
+        g["BG_SURFACE"] = _accent_tint(accent, 0.190)
+        g["BG_PANEL"]   = _accent_tint(accent, 0.085)
     else:
         # Restore light palette values (don't tint in light mode)
         g["BG_CARD"]    = _LIGHT_PALETTE["BG_CARD"]

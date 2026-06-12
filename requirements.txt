@@ -1,0 +1,102 @@
+# Video Processing & Computer Vision (GPU Supported)
+opencv-python>=4.8.0
+ultralytics>=8.0.0  # YOLOv8 with GPU support
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Transformers (Florence-2 dense captioning)
+transformers>=4.38.0
+
+# Image Processing
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# OCR for Subtitle Detection
+easyocr>=1.7.0
+
+# UI Framework
+PyQt5>=5.15.9
+
+# Utilities
+tqdm>=4.65.0
+pyyaml>=6.0
+
+# ============ V2.0 Dependencies ============
+
+# WD14 / Danbooru Tagger (ONNX Runtime)
+# GPU: onnxruntime-gpu (recommended, CUDA required)
+# CPU: onnxruntime (fallback)
+onnxruntime-gpu>=1.15.0
+
+# Tag data for autocomplete
+pandas>=2.0.0
+huggingface_hub>=0.20.0
+
+# Image hashing for duplicate detection
+imagehash>=4.3.0
+
+# Async I/O improvements
+aiofiles>=23.0.0
+
+# ============ V2.1 Character Recognition ============
+
+# Face detection & recognition (InsightFace)
+insightface>=0.7.3
+
+# Clustering for auto-grouping unknown faces
+scikit-learn>=1.3.0
+
+# ============ V2.2 Architectural Additions ============
+
+# Scene-based keyframe extraction
+scenedetect[opencv]>=0.6.0
+
+# SAM 2 - Segment Anything Model 2
+# Install from: pip install sam2
+# (not on PyPI standard index yet — see https://github.com/facebookresearch/sam2)
+
+# Memory optimizations (optional, recommended for GPU)
+# xformers — pip install xformers (must match torch version)
+# flash-attn — pip install flash-attn (Ampere+ GPUs only)
+
+# ============ V3.x Optional: MCP Server (Claude integration) ============
+# Lets Claude Code / Desktop drive LoRA-Harvester via mcp_server.py
+# mcp>=1.0
+
+# ============ V3.x Optional: Anime Detection + Character Recognition ============
+# dghs-imgutils  — deepghs anime models for AnimeDetector + AnimeCharacterRecognizer
+#   pip install dghs-imgutils      (imported as 'imgutils'; NOT the unrelated 'imgutils' pkg)
+#   Without it, anime detection falls back to lbpcascade_animeface.xml (auto-downloaded).
+#
+# hdbscan>=0.8.29  — better character clustering (DBSCAN fallback if missing)
+#   pip install hdbscan
+#
+# NOTE (Windows): onnxruntime must load BEFORE PyQt5 or its native DLL fails,
+# silently disabling WD14 tagging + imgutils. main.py / download_models.py pre-import
+# onnxruntime to fix this. If onnxruntime-gpu fails (CUDA version mismatch), use the
+# CPU build: pip uninstall onnxruntime onnxruntime-gpu && pip install onnxruntime
+
+# ============ V3.x Optional: Super-Resolution (Upscale) ============
+# Required for Real-ESRGAN upscaling in the pipeline.
+# NOTE: basicsr may have conflicts with newer torchvision — if you see
+#       errors, pin: pip install basicsr==1.4.2 torchvision==0.16.2
+#
+# pip install realesrgan>=0.3.0 basicsr>=1.4.2
+#
+# realesrgan>=0.3.0          # Real-ESRGAN core (includes SRVGGNetCompact arch)
+# basicsr>=1.4.2             # Required by realesrgan (RRDBNet arch)
+#
+# NOTE: basicsr<=1.4.2 imports torchvision.transforms.functional_tensor, which
+# was REMOVED in torchvision>=0.17 → ModuleNotFoundError at load, making the
+# upscaler look "deps missing". src/core/upscaler.py installs a compat shim at
+# load time so no manual patch is needed. Also: installing realesrgan/basicsr
+# pulls numpy 2.x — pin it back with `pip install numpy==1.26.4` afterwards
+# (dghs-imgutils / anime detection requires numpy<2).
+#
+# Optional: GFPGAN face restoration on top of Real-ESRGAN
+# pip install gfpgan>=1.3.8
+# gfpgan>=1.3.8
+#
+# Download model weights (after installing deps):
+#   python scripts/download_models.py --upscale
+#   python scripts/download_models.py --upscale-models RealESRGAN_x4plus_anime_6B RealESRGAN_x4plus

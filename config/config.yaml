@@ -1,0 +1,344 @@
+# LoRA-Harvester Configuration v3.0
+# AI-Powered Dataset Collection Tool
+
+# Detection Settings
+detection:
+  # mode: "yolo"  — COCO-trained YOLO (best for real photos)
+  #        "anime" — anime-optimised (imgutils deepghs YOLO or lbpcascade fallback)
+  #        "auto"  — per-frame style detection, routes to yolo or anime
+  mode: "yolo"
+  model_size: "yolov8n.pt"  # Options: yolov8n, yolov8s, yolov8m, yolov8l, yolov8x
+  confidence: 0.5
+  
+# Ensemble Detection Settings (Higher Accuracy Mode)
+ensemble:
+  enabled: false  # Set to true for ensemble mode
+  models:
+    - yolo       # Fast and accurate
+    - detr       # Transformer-based (Meta)
+    - fasterrcnn # Traditional R-CNN
+  voting_threshold: 2  # Minimum agreements (1-3)
+  iou_threshold: 0.5   # IoU for matching detections
+  
+# Cropping Settings
+cropping:
+  default_format: "9:16"
+  min_padding: 500  # Increased for better framing
+  ideal_head_space: 0.15
+  max_head_space: 0.25
+  min_head_space: 0.05
+
+# Text Detection Settings
+text_detection:
+  enabled: true
+  languages: ["en", "tr"]
+  min_text_area_ratio: 0.02
+  subtitle_region_height: 0.3
+
+# Processing Settings
+processing:
+  default_frame_interval: 30
+  quality_threshold: 0.3
+  jpeg_quality: 95
+  use_quick_text_check: true
+
+# Performance Settings
+performance:
+  use_gpu: true
+  turbo_mode: true  # Enable optimized batch processing
+  batch_size: 4     # Process 4 frames simultaneously
+  async_save: true  # Async frame saving (reduces I/O wait)
+  prefetch_frames: 30  # Number of frames to prefetch
+
+# Quality Analysis Settings (NEW v2.0)
+quality:
+  enabled: true
+  blur_threshold: 80.0      # Minimum sharpness (Laplacian variance)
+  brightness_min: 35        # Minimum brightness (0-255)
+  brightness_max: 225       # Maximum brightness (0-255)
+  duplicate_threshold: 0.90 # Similarity threshold for duplicate detection
+  min_contrast: 20          # Minimum contrast level
+
+# ============================================================
+# UPSCALE SETTINGS — Real-ESRGAN (NEW v3.x)
+# Rescue low-resolution frames instead of discarding them.
+# Requires: pip install realesrgan basicsr
+# Optional face restore: pip install gfpgan
+# ============================================================
+upscale:
+  enabled: false              # Enable Real-ESRGAN upscaling
+
+  # Model name — must match a key in src/core/upscale_models.BUILTIN_MODELS
+  # or a custom model registered via the UI / add_custom_model().
+  # Options: RealESRGAN_x4plus | RealESRGAN_x4plus_anime_6B (recommended for anime)
+  #          RealESRGAN_x2plus | realesr-general-x4v3 | realesr-animevideov3
+  model: "RealESRGAN_x4plus_anime_6B"
+
+  # Tiling: 0 = no tiles (uses more VRAM); 256-512 for low-VRAM GPUs
+  tile: 0
+
+  # What to upscale:
+  #   "crop"  — upscale the crop after detection (cheaper, recommended)
+  #   "frame" — upscale the full frame before detection (better crop headroom, slower)
+  target: "crop"
+
+  # Minimum resolution (min dimension in px) below which frames are rescued
+  # by upscaling before the blur/quality filter would discard them.
+  # Only applies when target="crop". Set 0 to disable rescue logic.
+  min_resolution: 512
+
+  # Enable GFPGAN face restoration on top of ESRGAN (requires gfpgan package)
+  face_enhance: false
+
+  use_gpu: true
+
+# ============================================================
+# NSFW DETECTION SETTINGS (NEW v3.x)
+# Classifies each saved frame as SFW or NSFW and routes it to
+# separate output subdirectories:
+#   <output>/<video>/persons/sfw/
+#   <output>/<video>/persons/nsfw/
+#   <output>/<video>/persons/uncertain/  (optional)
+#
+# Backends (in auto-priority order):
+#   falconsai  — Falconsai/nsfw_image_detection ViT model (~350 MB)
+#                pip install transformers
+#   wd14_tags  — reuse WD14 rating tags (zero extra cost if WD14 enabled)
+#   heuristic  — skin-tone pixel heuristic (no extra deps, lower accuracy)
+# ============================================================
+nsfw_detection:
+  enabled: false              # Enable SFW/NSFW separation
+  backend: "auto"             # auto | falconsai | wd14_tags | heuristic
+  threshold: 0.70             # Confidence threshold (0.5–0.99)
+  uncertain_folder: true      # Create a separate folder for uncertain images
+                              # false = route uncertain → sfw
+  use_gpu: true               # Use GPU for Falconsai backend
+
+# Scene Detection Settings (NEW v2.0)
+scene_detection:
+  enabled: false            # Use scene detection instead of fixed interval
+  threshold: 25.0           # Scene change detection threshold
+  min_scene_frames: 10      # Minimum frames between detections
+
+# ============================================================
+# CAPTIONING SETTINGS - WD14/Danbooru + Florence-2
+# ============================================================
+captioning:
+  enabled: false            # Enable auto-captioning
+  auto_caption_on_save: true  # Generate caption when saving frame
+  overwrite_existing: false   # Overwrite existing .txt files
+  save_json: false           # Also save detailed .json
+
+  # Caption Mode — only tags_only is supported by the current pipeline.
+  mode: "tags_only"
+
+  # WD14/Danbooru Tagger Settings (Anime/Booru Tags)
+  wd14:
+    enabled: true
+    # Quality preset selected in the UI auto-picks the model below.
+    # Manually: 'swinv2-v3' = high accuracy, 'convnext-v3' = balanced, 'vit-v3' = fast.
+    model: "SmilingWolf/wd-convnext-tagger-v3"
+
+  # Florence-2 Natural-Language Captioner (optional)
+  florence2:
+    enabled: false
+    model: "microsoft/Florence-2-base"   # "-base" (fast) or "-large" (accurate)
+    task: "<MORE_DETAILED_CAPTION>"
+    
+  # Tag Settings
+  tags:
+    # Trigger Word (added at the beginning of every caption)
+    trigger_word: ""
+    
+    # Tag Limits
+    max_tags: 30            # Maximum number of tags
+    min_confidence: 0.35    # Minimum confidence threshold (0.0-1.0)
+    
+    # Negative Tags (will be excluded)
+    # Supports wildcards: "watermark*" matches watermark, watermarked, etc.
+    negative_tags:
+      - "watermark"
+      - "signature"
+      - "text"
+      - "username"
+      - "artist_name"
+      - "twitter_username"
+      - "patreon_username"
+      - "web_address"
+      - "dated"
+      - "copyright_name"
+    
+    # Priority Tags (always included if detected, added first)
+    priority_tags: []
+    
+    # Tag Replacements (old_tag: new_tag)
+    replacements:
+      # Example: "1girl": "woman"
+      # Example: "outdoors": "outside"
+    
+    # Category Filters
+    # Options: general, character, copyright, artist, meta
+    include_categories:
+      - "general"
+      - "character"
+    
+    # Character/Series Tags
+    keep_character_tags: true   # Keep character name tags
+    keep_series_tags: false     # Keep anime/game series tags
+    
+    # Quality/Rating Tags
+    include_quality_tags: false  # masterpiece, best quality, etc.
+    include_rating_tags: false   # general, sensitive, etc.
+    
+    # Formatting
+    tag_separator: ", "          # Separator between tags
+    use_underscores: true        # tag_name vs "tag name"
+    use_escape_parentheses: true # \( \) for Stable Diffusion
+    lowercase: true              # Convert all to lowercase
+    
+    # Caption Prefix/Suffix
+    caption_prefix: ""           # Added before everything
+    caption_suffix: ""           # Added after everything
+
+  # Presets (quick configurations)
+  presets:
+    anime_character:
+      trigger_word: ""
+      max_tags: 25
+      min_confidence: 0.35
+      keep_character_tags: true
+      keep_series_tags: false
+      include_quality_tags: false
+      
+    style_lora:
+      trigger_word: ""
+      max_tags: 20
+      min_confidence: 0.4
+      keep_character_tags: false
+      keep_series_tags: false
+      include_quality_tags: true
+      negative_tags:
+        - "1girl"
+        - "1boy"
+        - "solo"
+        - "character_name"
+        
+    realistic_photo:
+      trigger_word: ""
+      max_tags: 15
+      min_confidence: 0.5
+      keep_character_tags: false
+      include_quality_tags: false
+      negative_tags:
+        - "anime"
+        - "manga"
+        - "illustration"
+        - "drawing"
+
+    concept_art:
+      trigger_word: ""
+      max_tags: 30
+      min_confidence: 0.3
+      keep_character_tags: false
+      keep_series_tags: false
+      include_quality_tags: true
+      negative_tags:
+        - "watermark"
+        - "signature"
+        - "text"
+        - "username"
+
+# ============================================================
+# CHARACTER RECOGNITION SETTINGS (NEW v2.0)
+# Identifies and groups frames by character using InsightFace
+# ============================================================
+character_recognition:
+  enabled: false            # Enable during video processing (sorts persons/ automatically)
+
+  # Reference images directory
+  # Structure: references/<character_name>/*.jpg
+  reference_dir: "references"
+
+  # Similarity threshold (cosine distance, lower = stricter)
+  # Typical range: 0.3 (very strict) – 0.6 (lenient)
+  similarity_threshold: 0.45
+
+  # Minimum distance gap required between the best and the second-best
+  # reference match. If two characters are nearly equidistant from a query
+  # face the match is considered ambiguous and the image is sent to the
+  # clustering stage (or multi_face/) instead of being guessed.
+  match_margin: 0.05
+
+  # Auto-clustering settings (for unmatched faces)
+  cluster_eps: 0.6          # DBSCAN eps — lower = smaller/tighter groups
+  cluster_min_samples: 2    # Minimum images to form a cluster
+
+  # Model selection
+  # buffalo_l: highest accuracy (recommended)
+  # buffalo_m: balanced
+  # buffalo_s: fastest
+  # antelopev2: best for non-frontal / anime faces
+  model: "buffalo_l"
+
+  # Performance
+  # Number of background threads used to decode images in parallel while
+  # the GPU runs inference on the current image. 1 = no prefetching.
+  num_workers: 4
+
+  # Persistent embedding cache (SQLite). On re-runs, faces whose source
+  # file has not been modified are read from the cache in ~0ms instead
+  # of running InsightFace again — massively speeds up iterative tuning
+  # of thresholds, margins, cluster eps, etc.
+  use_cache: true
+  cache_path: null          # null = <input_dir>/.lora_harvester_cache.db
+
+  # File handling
+  copy_files: false         # Copy instead of move when sorting
+
+# Checkpoint/Resume Settings (NEW v2.0)
+checkpoint:
+  enabled: true
+  interval: 500             # Save checkpoint every N frames
+  auto_resume: true         # Auto-resume on restart
+
+# Output Settings
+output:
+  create_subdirs: true
+  subfolder_names:
+    person: "persons"
+    animal: "animals"
+    object: "objects"
+
+# ============================================================
+# KOHYA EXPORT SETTINGS (NEW v3.x)
+# Exports a dataset into kohya_ss / sd-scripts folder structure:
+#   <dest>/<repeats>_<concept_name>/image.jpg + image.txt
+# ============================================================
+kohya_export:
+  default_repeats: 10          # Training repeat count per image
+  copy_files: true             # true = copy (safe); false = move
+  generate_toml: true          # Generate dataset_config.toml
+  default_resolution: 1024     # Written to [general] resolution in toml
+  reg_repeats: 1               # Repeat count for regularisation images
+
+# Profiles - Quick presets for common use cases
+profiles:
+  fast:
+    frame_interval: 60
+    quality_enabled: false
+    turbo_mode: true
+    batch_size: 8
+  
+  balanced:
+    frame_interval: 30
+    quality_enabled: true
+    turbo_mode: true
+    batch_size: 4
+  
+  quality:
+    frame_interval: 15
+    quality_enabled: true
+    scene_detection: true
+    ensemble_mode: true
+    turbo_mode: true
+    batch_size: 4

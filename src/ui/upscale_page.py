@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
     QProgressBar, QFileDialog,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 
 from src.ui import theme
 from src.ui.translations import get_text
@@ -408,9 +409,62 @@ class UpscalePage(QWidget):
         self._thread: Optional[UpscaleThread] = None
         self._proc_start: float = 0.0
         self._active_preset: Optional[str] = None
+        self._input_card: Optional[QFrame] = None
+        self.setAcceptDrops(True)
         self._build_ui()
         self._refresh_input_label()
         self._detect_gpu_info()
+
+    # ── Drag & drop ─────────────────────────────────────────────────────────
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            for url in urls:
+                p = Path(url.toLocalFile())
+                if p.is_dir() or p.suffix.lower() in _IMG_EXTS:
+                    event.accept()
+                    self._set_drop_highlight(True)
+                    return
+        event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.accept()
+
+    def dragLeaveEvent(self, event):
+        self._set_drop_highlight(False)
+
+    def dropEvent(self, event: QDropEvent):
+        self._set_drop_highlight(False)
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return
+        event.accept()
+        paths = [url.toLocalFile() for url in event.mimeData().urls()]
+        folders = [p for p in paths if Path(p).is_dir()]
+        files   = [p for p in paths if Path(p).suffix.lower() in _IMG_EXTS]
+        if folders:
+            self._input_root = folders[0]
+            recursive = self.recursive_cb.isChecked()
+            collected: List[str] = []
+            for folder in folders:
+                collected.extend(self._scan_dir(folder, recursive))
+            self._images = sorted(collected)
+        elif files:
+            self._input_root = None
+            self._images = sorted(files)
+        self._refresh_input_label()
+
+    def _set_drop_highlight(self, active: bool):
+        if self._input_card is None:
+            return
+        if active:
+            self._input_card.setStyleSheet(
+                f"QFrame {{ background: {theme.BG_SURFACE}; "
+                f"border: 2px dashed {theme.ORANGE}; border-radius: {theme.R}; }}"
+            )
+        else:
+            self._input_card.setStyleSheet(theme.card_frame())
 
     def _t(self, key: str) -> str:
         return _TX.get(self.lang, _TX['en']).get(key, key)
@@ -473,6 +527,7 @@ class UpscalePage(QWidget):
 
     def _build_input_card(self) -> QFrame:
         f, lay = self._card()
+        self._input_card = f
         self._in_title = QLabel(self._t('in_title'))
         self._in_title.setStyleSheet(theme.label_default())
         lay.addWidget(self._in_title)

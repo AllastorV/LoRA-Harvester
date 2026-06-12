@@ -313,7 +313,17 @@ class CaptioningThread(QThread):
     def _run_with_florence2(self) -> Dict:
         """Process images with Florence-2 (or combined WD14+Florence-2)."""
         import cv2
+        import numpy as np
         from pathlib import Path as _Path
+
+        def _imread_unicode(path):
+            try:
+                data = np.fromfile(str(path), dtype=np.uint8)
+                if data.size == 0:
+                    return None
+                return cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
+            except Exception:
+                return None
 
         mode = self.settings.get('mode', 'tags_only')
         use_wd14 = self.settings.get('use_wd14', True)
@@ -330,10 +340,14 @@ class CaptioningThread(QThread):
         dir_path = _Path(self.image_folder)
         extensions = ['*.jpg', '*.jpeg', '*.png', '*.webp', '*.bmp']
         all_images = []
+        seen_images = set()
         glob_fn = dir_path.rglob if recursive else dir_path.glob
         for ext in extensions:
-            all_images.extend(glob_fn(ext))
-            all_images.extend(glob_fn(ext.upper()))
+            for img_path in list(glob_fn(ext)) + list(glob_fn(ext.upper())):
+                key = str(img_path.resolve()).casefold()
+                if key not in seen_images:
+                    seen_images.add(key)
+                    all_images.append(img_path)
 
         stats = {'total': len(all_images), 'captioned': 0,
                  'skipped': 0, 'errors': 0, 'zero_tags': 0}
@@ -354,8 +368,9 @@ class CaptioningThread(QThread):
                 break
 
             try:
-                image = cv2.imread(str(img_path))
+                image = _imread_unicode(img_path)
                 if image is None:
+                    self.log_message.emit(f"⚠️ Cannot read image: {img_path.name}")
                     stats['errors'] += 1
                     continue
 
@@ -1233,12 +1248,14 @@ class _GenerateTab(QWidget):
 
     def _count_images(self, folder: str) -> int:
         extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
-        count = 0
+        seen = set()
         p = Path(folder)
         glob = p.rglob if self.recursive_cb.isChecked() else p.glob
-        for ext in extensions:
-            count += len(list(glob(f'*{ext}')))
-        return count
+        for pattern in ('*',):
+            for img_path in glob(pattern):
+                if img_path.is_file() and img_path.suffix.lower() in extensions:
+                    seen.add(str(img_path.resolve()).casefold())
+        return len(seen)
 
     # ── Mode handling ──────────────────────────────────────────
 
@@ -2884,7 +2901,28 @@ class _QualityTab(QWidget):
             self._status.setText(_t('quality_status_initial'))
 
     def refresh_styles(self):
-        pass
+        self._trigger_edit.setStyleSheet(theme.line_edit_compact())
+        self._min_tags_lbl.setStyleSheet(theme.label_default())
+        self._min_tags_spin.setStyleSheet(theme.spinbox_compact())
+        self._run_btn.setStyleSheet(theme.btn_primary())
+        self._add_trigger_btn.setStyleSheet(theme.btn_secondary())
+        self._delete_btn.setStyleSheet(theme.btn_danger())
+        self._status.setStyleSheet(
+            f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(11)};padding:2px 0;")
+        _card_ss = (
+            f"QFrame{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}")
+        _val_ss = f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(15)};font-weight:700;border:none;"
+        _lbl_ss = f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(9)};border:none;"
+        for card in self._cards.values():
+            card.setStyleSheet(_card_ss)
+            card._val.setStyleSheet(_val_ss)
+            card._lbl.setStyleSheet(_lbl_ss)
+        self._table.setStyleSheet(f"""
+            QTableWidget{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}
+            QHeaderView::section{{background:{theme.BG_CARD};color:{theme.TEXT_SECONDARY};
+                border:none;padding:6px 8px;font-size:{theme.fs(11)};font-weight:600;}}
+            QTableWidget::item:selected{{background:{theme.ORANGE};color:#fff;}}
+        """)
 
 
 # ════════════════════════════════════════════════════════════════

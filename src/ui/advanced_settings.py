@@ -4,7 +4,7 @@ Contains Quality Analysis, Captioning, and Tag Settings UI components
 """
 
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QCheckBox, QSpinBox, QDoubleSpinBox, QLineEdit, QComboBox,
     QTextEdit, QFrame, QPushButton, QDialog, QDialogButtonBox,
     QFileDialog, QMessageBox,
@@ -162,9 +162,6 @@ class QualitySettingsPanel(_AccordionFrame):
         self.skip_dup_cb.setStyleSheet(theme.checkbox_frame())
         self.skip_dup_cb.setToolTip(get_text('skip_duplicates_tooltip', self.lang))
         lay.addWidget(self.skip_dup_cb)
-    
-    def _spinbox_style(self) -> str:
-        return theme.spinbox_compact()
     
     def _spinbox_style(self) -> str:
         return theme.spinbox_compact()

@@ -19,7 +19,6 @@ from __future__ import annotations
 import logging
 import sys
 import types
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -168,7 +167,8 @@ class FrameUpscaler:
     def _retry_with_tile(self, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
         """Attempt upscale with tile=256 after an OOM."""
         try:
-            self._upsampler.tile = 256
+            # RealESRGANer stores the tile param as `tile_size`
+            self._upsampler.tile_size = 256
             output, _ = self._upsampler.enhance(frame_bgr, outscale=self._scale)
             logger.info("Upscaler: OOM retry with tile=256 succeeded")
             return output

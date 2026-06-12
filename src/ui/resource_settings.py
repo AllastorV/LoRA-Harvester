@@ -12,7 +12,6 @@ from pathlib import Path
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
     QPushButton, QCheckBox, QFrame, QScrollArea, QProgressBar,
-    QGraphicsOpacityEffect,
 )
 from PyQt5.QtCore import (
     Qt, QPropertyAnimation, QAbstractAnimation, QEasingCurve, pyqtSignal,
@@ -116,6 +115,47 @@ def _fmt_bytes(n: float) -> str:
     if n >= 1024:
         return f"{n / 1024:.1f} TB"
     return f"{n:.1f} GB"
+
+
+def _query_gpu_stats():
+    """
+    Return device-wide GPU stats as (util_pct_or_None, used_gb, total_gb),
+    or None if no stats are available.
+
+    nvidia-smi reports usage across ALL processes (training subprocesses
+    included). torch.cuda.memory_allocated only counts this process's
+    tensors, which made VRAM read ~0 during training — so it is only used
+    as a device-wide fallback via mem_get_info.
+    """
+    try:
+        result = subprocess.run(
+            ["nvidia-smi",
+             "--query-gpu=utilization.gpu,memory.used,memory.total",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=3,
+            **_NO_WINDOW_KW,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parts = result.stdout.strip().split("\n")[0].split(",")
+            util = float(parts[0])
+            used_gb = float(parts[1]) / 1024.0
+            total_gb = float(parts[2]) / 1024.0
+            return util, used_gb, total_gb
+    except Exception:
+        pass
+
+    # Fallback: torch mem_get_info is device-wide (free, total)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            free_b, total_b = torch.cuda.mem_get_info(0)
+            total_gb = total_b / (1024 ** 3)
+            used_gb = (total_b - free_b) / (1024 ** 3)
+            return None, used_gb, total_gb
+    except Exception:
+        pass
+
+    return None
 
 
 class _UsageBar(QFrame):
@@ -250,11 +290,8 @@ class SystemMonitorWidget(QFrame):
         """)
 
     def _detect_gpu(self):
-        try:
-            import torch
-            self._gpu_available = torch.cuda.is_available()
-        except Exception:
-            self._gpu_available = False
+        # nvidia-smi works even when torch is CPU-only
+        self._gpu_available = _query_gpu_stats() is not None
         if not self._gpu_available:
             self._gpu_bar.hide()
             self._vram_bar.hide()
@@ -291,34 +328,23 @@ class SystemMonitorWidget(QFrame):
             self._ram_bar.set_value(0, "psutil N/A")
 
         if self._gpu_available:
-            try:
-                import torch
-                gpu_props = torch.cuda.get_device_properties(0)
-                total_vram = gpu_props.total_memory / (1024 ** 3)
-                used_vram = torch.cuda.memory_allocated(0) / (1024 ** 3)
+            stats = _query_gpu_stats()
+            if stats is None:
+                self._gpu_bar.set_value(0, "N/A")
+                self._vram_bar.set_value(0, "N/A")
+            else:
+                gpu_util, used_vram, total_vram = stats
                 vram_pct = (used_vram / total_vram * 100) if total_vram > 0 else 0
-
-                try:
-                    result = subprocess.run(
-                        ["nvidia-smi", "--query-gpu=utilization.gpu",
-                         "--format=csv,noheader,nounits"],
-                        capture_output=True, text=True, timeout=3,
-                        **_NO_WINDOW_KW,
-                    )
-                    gpu_util = float(result.stdout.strip().split("\n")[0])
-                except Exception:
-                    gpu_util = 0
-
-                self._gpu_bar.set_value(gpu_util, f"{gpu_util:.0f}%")
+                if gpu_util is None:
+                    self._gpu_bar.set_value(0, "N/A")
+                else:
+                    self._gpu_bar.set_value(gpu_util, f"{gpu_util:.0f}%")
                 self._vram_bar.set_value(
                     vram_pct,
                     get_text("sys_used_of", self.lang).format(
                         used=_fmt_bytes(used_vram), total=_fmt_bytes(total_vram)
                     ),
                 )
-            except Exception:
-                self._gpu_bar.set_value(0, "N/A")
-                self._vram_bar.set_value(0, "N/A")
 
     def refresh_styles(self):
         self._apply_frame_style()
@@ -455,11 +481,8 @@ class SystemMonitorBar(QFrame):
         """)
 
     def _detect_gpu(self):
-        try:
-            import torch
-            self._gpu_available = torch.cuda.is_available()
-        except Exception:
-            self._gpu_available = False
+        # nvidia-smi works even when torch is CPU-only
+        self._gpu_available = _query_gpu_stats() is not None
         if not self._gpu_available:
             self._gpu_pill.hide()
             self._vram_pill.hide()
@@ -491,28 +514,15 @@ class SystemMonitorBar(QFrame):
             self._ram_pill.set_value("N/A")
 
         if self._gpu_available:
-            try:
-                import torch
-                gpu_props = torch.cuda.get_device_properties(0)
-                total_vram = gpu_props.total_memory / (1024 ** 3)
-                used_vram = torch.cuda.memory_allocated(0) / (1024 ** 3)
-
-                try:
-                    result = subprocess.run(
-                        ["nvidia-smi", "--query-gpu=utilization.gpu",
-                         "--format=csv,noheader,nounits"],
-                        capture_output=True, text=True, timeout=3,
-                        **_NO_WINDOW_KW,
-                    )
-                    gpu_util = float(result.stdout.strip().split("\n")[0])
-                except Exception:
-                    gpu_util = 0
-
-                self._gpu_pill.set_value(f"{gpu_util:.0f}%")
-                self._vram_pill.set_value(f"{used_vram:.1f}/{total_vram:.0f} GB")
-            except Exception:
+            stats = _query_gpu_stats()
+            if stats is None:
                 self._gpu_pill.set_value("N/A")
                 self._vram_pill.set_value("N/A")
+            else:
+                gpu_util, used_vram, total_vram = stats
+                self._gpu_pill.set_value(
+                    "N/A" if gpu_util is None else f"{gpu_util:.0f}%")
+                self._vram_pill.set_value(f"{used_vram:.1f}/{total_vram:.0f} GB")
 
     def refresh_styles(self):
         self._apply_frame_style()
