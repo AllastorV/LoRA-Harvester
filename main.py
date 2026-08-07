@@ -78,7 +78,43 @@ except ImportError:
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.ui.main_window import create_app
+try:
+    from src.ui.main_window import create_app
+except ModuleNotFoundError as _e:
+    # Dependencies not installed (users often run run.bat without install.bat).
+    _missing = _e.name or str(_e)
+    _msg = (
+        f"Missing dependency: '{_missing}'\n\n"
+        f"Dependencies are not installed for this Python interpreter:\n"
+        f"  {sys.executable}\n\n"
+        f"Fix: run install.bat (or install_gpu.bat for NVIDIA GPU),\n"
+        f"or install manually:\n"
+        f'  "{sys.executable}" -m pip install -r requirements.txt'
+    )
+    print("=" * 60)
+    print(f"[ERROR] {_msg}")
+    print("=" * 60)
+    _has_console = True
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            _has_console = ctypes.windll.kernel32.GetConsoleWindow() != 0
+            if not _has_console:
+                # Launched without a console (e.g. run_silent.vbs) — show a message box
+                ctypes.windll.user32.MessageBoxW(0, _msg, "LoRA-Harvester", 0x10)
+        except Exception:
+            pass
+    if _has_console and sys.stdin and sys.stdin.isatty():
+        _answer = input("Install dependencies now? [y/N]: ").strip().lower()
+        if _answer == 'y':
+            import subprocess
+            _req = os.path.join(os.path.dirname(__file__), 'requirements.txt')
+            _rc = subprocess.call([sys.executable, '-m', 'pip', 'install', '-r', _req])
+            if _rc == 0:
+                print("\n[OK] Dependencies installed. Restart the app (run.bat).")
+            else:
+                print("\n[ERROR] Install failed - see pip output above.")
+    sys.exit(1)
 
 
 def main():
