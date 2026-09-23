@@ -23,12 +23,15 @@ Usage:
 from __future__ import annotations
 
 import logging
+import json
 import re
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
+from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 
 from src.core.dataset_scanner import detect_concepts, sanitize_name
+from src.core.dataset_files import transfer_image_pair
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +74,12 @@ class KohyaExporter:
         Returns:
             Dict mapping concept_name → number of images exported.
         """
-        source_root = Path(source_root)
-        dest_root = Path(dest_root)
+        source_root = Path(source_root).resolve()
+        dest_root = Path(dest_root).resolve()
+        if dest_root == source_root or dest_root.is_relative_to(source_root):
+            raise ValueError('Export destination must be outside the source dataset.')
+        if type(repeats) is not int or repeats < 1:
+            raise ValueError('Repeats must be a positive integer.')
         concept_overrides = concept_overrides or {}
         op = shutil.copy2 if copy else shutil.move
 
@@ -82,6 +89,7 @@ class KohyaExporter:
 
         exported: Dict[str, int] = {}
         concept_dirs: List[Path] = []
+        class_tokens = {}
 
         for concept_name, pairs in concepts.items():
             if not pairs:
@@ -90,6 +98,11 @@ class KohyaExporter:
 
             override = concept_overrides.get(concept_name, {})
             n_repeats = override.get('repeats', repeats)
+            if type(n_repeats) is not int or n_repeats < 1:
+                raise ValueError('Concept repeats must be a positive integer.')
+            class_token = override.get('class_tokens', override.get('class_token', concept_name))
+            if not isinstance(class_token, str) or not class_token.strip():
+                raise ValueError('Provide a non-empty class token for each concept.')
             safe_name = sanitize_name(concept_name)
 
             # Avoid collision when two concepts sanitize to the same name
@@ -98,24 +111,15 @@ class KohyaExporter:
             concept_dir = self._unique_dir(concept_dir)
             concept_dir.mkdir(parents=True, exist_ok=True)
             concept_dirs.append(concept_dir)
+            class_tokens[str(concept_dir)] = class_token
 
             count = 0
             for pair in pairs:
-                dst_img = self._unique_dest(concept_dir / pair.image.name)
                 try:
-                    op(str(pair.image), str(dst_img))
+                    transfer_image_pair(pair.image, concept_dir, copy=copy)
                     count += 1
                 except Exception as e:
-                    logger.warning("Could not export %s: %s", pair.image, e)
-                    continue
-
-                if pair.caption and pair.caption.exists():
-                    dst_txt = dst_img.with_suffix('.txt')
-                    try:
-                        op(str(pair.caption), str(dst_txt))
-                    except Exception as e:
-                        logger.warning("Could not export caption %s: %s", pair.caption, e)
-                # No caption → kohya uses folder class token, that's fine.
+                    logger.warning("Could not export complete image/caption pair %s: %s", pair.image, e)
 
             exported[concept_name] = count
             logger.info("Exported concept '%s' → %s (%d images)", concept_name, concept_dir, count)
@@ -133,6 +137,7 @@ class KohyaExporter:
                 concept_dirs=concept_dirs,
                 resolution=resolution,
                 reg_dir=dest_root / "reg" if reg_dir else None,
+                class_tokens=class_tokens,
             )
             logger.info("Wrote %s", toml_path)
 
@@ -158,7 +163,7 @@ class KohyaExporter:
             reg_dir.mkdir(parents=True, exist_ok=True)
             for pair in pairs:
                 try:
-                    op(str(pair.image), str(self._unique_dest(reg_dir / pair.image.name)))
+                    transfer_image_pair(pair.image, reg_dir, copy=copy)
                 except Exception as e:
                     logger.warning("Reg copy failed %s: %s", pair.image, e)
 
@@ -193,6 +198,7 @@ class KohyaExporter:
         concept_dirs: List[Path],
         resolution: int,
         reg_dir: Optional[Path],
+        class_tokens: Optional[Dict[str, str]] = None,
     ) -> None:
         """Write a minimal sd-scripts dataset_config.toml by hand (no dep needed)."""
         lines: List[str] = []
@@ -205,7 +211,9 @@ class KohyaExporter:
         # Each concept folder → one subset
         for concept_dir in concept_dirs:
             lines.append('  [[datasets.subsets]]')
-            lines.append(f'  image_dir = "{concept_dir.as_posix()}"')
+            lines.append('  image_dir = ' + json.dumps(concept_dir.as_posix(), ensure_ascii=False))
+            token = (class_tokens or {}).get(str(concept_dir), re.sub(r'^\d+_', '', concept_dir.name))
+            lines.append('  class_tokens = ' + json.dumps(token, ensure_ascii=False))
             # Parse repeats from folder name (N_concept)
             m = re.match(r'^(\d+)_', concept_dir.name)
             n_repeats = int(m.group(1)) if m else 1
@@ -217,7 +225,8 @@ class KohyaExporter:
             for sub in sorted(reg_dir.iterdir()):
                 if sub.is_dir():
                     lines.append('  [[datasets.subsets]]')
-                    lines.append(f'  image_dir = "{sub.as_posix()}"')
+                    lines.append('  image_dir = ' + json.dumps(sub.as_posix(), ensure_ascii=False))
+                    lines.append('  class_tokens = ' + json.dumps(re.sub(r'^\d+_', '', sub.name), ensure_ascii=False))
                     m = re.match(r'^(\d+)_', sub.name)
                     n_repeats = int(m.group(1)) if m else 1
                     lines.append(f'  num_repeats = {n_repeats}')
@@ -225,3 +234,85 @@ class KohyaExporter:
                     lines.append('')
 
         toml_path.write_text('\n'.join(lines), encoding='utf-8')
+
+
+def export_training_zip(source_root: Path | str, archive_path: Path | str, *,
+                        cancel=None, progress=None) -> int:
+    """Export configured image/caption pairs to one folder in a new ZIP."""
+    root = Path(source_root).resolve()
+    archive = Path(archive_path).resolve()
+    if not root.is_dir():
+        raise ValueError('Prepared dataset folder does not exist.')
+    if archive.suffix.lower() != '.zip' or archive.is_relative_to(root):
+        raise ValueError('Choose a .zip file outside the source dataset.')
+    if not archive.parent.is_dir():
+        raise ValueError('ZIP destination folder does not exist.')
+    config_path = root / 'dataset_config.toml'
+    if not config_path.is_file() or config_path.is_symlink():
+        raise ValueError('Prepare the Kohya dataset before exporting a ZIP.')
+
+    # Read configured image folders so unrelated files stay out of the archive.
+    subsets = []
+    for line in config_path.read_text(encoding='utf-8').splitlines():
+        match = re.match(r'^(\s*image_dir\s*=\s*)("(?:\\.|[^"\\])*")\s*$', line)
+        if match:
+            original = Path(json.loads(match.group(2)))
+            primary = (original if original.is_absolute() else root / original).resolve()
+            if not original.is_absolute() and not primary.is_relative_to(root):
+                raise ValueError(f'Image folder leaves the dataset: {original}')
+            if primary.is_dir() and primary.is_relative_to(root):
+                valid = [primary]
+            else:
+                valid = []
+                for candidate in (root / original.name, root / 'reg' / original.name):
+                    resolved = candidate.resolve()
+                    if resolved.is_dir() and resolved.is_relative_to(root) and resolved not in valid:
+                        valid.append(resolved)
+            if len(valid) != 1:
+                raise ValueError(f'Image folder is missing or ambiguous: {original}')
+            subsets.append(valid[0])
+    if not subsets:
+        raise ValueError('dataset_config.toml has no image_dir entries.')
+    pairs = sorted(
+        (pair for group in detect_concepts(root).values() for pair in group
+         if any(pair.image.is_relative_to(folder) for folder in subsets)),
+        key=lambda pair: pair.image.relative_to(root).as_posix().casefold())
+    if not pairs:
+        raise ValueError('Prepared dataset contains no training images.')
+    if len(pairs) != len({pair.image for pair in pairs}):
+        raise ValueError('Dataset has duplicate training images.')
+    members = []
+    used_stems = set()
+    for pair in pairs:
+        stem = pair.image.stem
+        if stem.casefold() in used_stems:
+            base = f'{sanitize_name(pair.image.parent.name)}_{stem}'
+            stem = base
+            number = 2
+            while stem.casefold() in used_stems:
+                stem = f'{base}_{number}'
+                number += 1
+        used_stems.add(stem.casefold())
+        members.append((pair.image, f'{archive.stem}/{stem}{pair.image.suffix}'))
+        if pair.caption is not None:
+            if pair.caption.is_symlink():
+                raise ValueError(f'Caption is a symbolic link: {pair.caption}')
+            members.append((pair.caption, f'{archive.stem}/{stem}.txt'))
+    created = False
+    try:
+        with archive.open('xb') as target:
+            created = True
+            with ZipFile(target, 'w', compression=ZIP_DEFLATED, compresslevel=1) as zipped:
+                for index, (path, name) in enumerate(members, 1):
+                    if cancel and cancel():
+                        raise InterruptedError('ZIP export cancelled.')
+                    compressed = path.suffix.lower() in {'.jpg', '.jpeg', '.png', '.webp'}
+                    zipped.write(path, name,
+                                 compress_type=ZIP_STORED if compressed else ZIP_DEFLATED)
+                    if progress:
+                        progress(index, len(members))
+    except BaseException:
+        if created:
+            archive.unlink(missing_ok=True)
+        raise
+    return len(pairs)

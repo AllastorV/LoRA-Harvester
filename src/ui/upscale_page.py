@@ -158,6 +158,8 @@ class UpscaleThread(QThread):
             import gc
             import cv2
             from src.core.upscaler import FrameUpscaler
+            from src.core.dataset_files import transfer_image_pair
+            from src.core.clothing_io import file_digest
             from src.ui.resource_settings import load_settings as _load_res
             s = self.settings
             res = _load_res()   # global resource/perf settings from the drawer
@@ -213,6 +215,11 @@ class UpscaleThread(QThread):
                 name = os.path.basename(src)
                 self.progress.emit(i, total, name)
 
+                try:
+                    source_digest = file_digest(Path(src))
+                except OSError as exc:
+                    self.log_msg.emit(f"  ⚠️ skip (unreadable): {name}: {exc}")
+                    continue
                 img = _imread_unicode(src)
                 if img is None:
                     self.log_msg.emit(f"  ⚠️ skip (unreadable): {name}")
@@ -235,15 +242,20 @@ class UpscaleThread(QThread):
                         out = cv2.resize(out, (nw, nh),
                                          interpolation=cv2.INTER_AREA)
 
-                # Always emit lossless PNG output
-                stem = os.path.splitext(name)[0]
-                dst = os.path.join(self.out_dir, f"{stem}.png")
-                if os.path.abspath(dst) == os.path.abspath(src):
-                    dst = os.path.join(self.out_dir, f"{stem}_up.png")
-                if _imwrite_unicode(dst, out):
+                # Keep the image, caption, JSON and verified clothing ownership
+                # together. Flattened inputs and repeated runs get unique stems.
+                try:
+                    encoded, buffer = cv2.imencode('.png', out)
+                    if not encoded:
+                        raise OSError('PNG encoding failed')
+                    transfer_image_pair(
+                        Path(src), Path(self.out_dir), image_bytes=buffer.tobytes(),
+                        target_name=Path(src).stem + '.png',
+                        expected_image_digest=source_digest,
+                    )
                     ok += 1
-                else:
-                    self.log_msg.emit(f"  ⚠️ write failed: {name}")
+                except Exception as exc:
+                    self.log_msg.emit(f"  ⚠️ write failed: {name}: {exc}")
 
                 # Free upscaled frame immediately after writing
                 del out
@@ -305,16 +317,12 @@ class _UpscaleStatCard(QFrame):
         col1 = QVBoxLayout()
         col1.setSpacing(2)
         self._img_val = QLabel("0/0")
-        self._img_val.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(18)}; "
-            f"font-weight: 700; background: transparent; border: none;"
-        )
+        theme.bind_style(self._img_val, lambda: f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(18)}; "
+            f"font-weight: 700; background: transparent; border: none;")
         self._img_val.setAlignment(Qt.AlignCenter)
         self._img_lbl = QLabel(get_text('upscale_stat_images', self.lang))
-        self._img_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"background: transparent; border: none;"
-        )
+        theme.bind_style(self._img_lbl, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"background: transparent; border: none;")
         self._img_lbl.setAlignment(Qt.AlignCenter)
         col1.addWidget(self._img_val)
         col1.addWidget(self._img_lbl)
@@ -324,16 +332,12 @@ class _UpscaleStatCard(QFrame):
         col2 = QVBoxLayout()
         col2.setSpacing(2)
         self._vram_val = QLabel("— MB")
-        self._vram_val.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; "
-            f"font-weight: 600; background: transparent; border: none;"
-        )
+        theme.bind_style(self._vram_val, lambda: f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; "
+            f"font-weight: 600; background: transparent; border: none;")
         self._vram_val.setAlignment(Qt.AlignCenter)
         self._vram_lbl = QLabel(get_text('upscale_stat_vram_free', self.lang))
-        self._vram_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"background: transparent; border: none;"
-        )
+        theme.bind_style(self._vram_lbl, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"background: transparent; border: none;")
         self._vram_lbl.setAlignment(Qt.AlignCenter)
         col2.addWidget(self._vram_val)
         col2.addWidget(self._vram_lbl)
@@ -343,16 +347,12 @@ class _UpscaleStatCard(QFrame):
         col3 = QVBoxLayout()
         col3.setSpacing(2)
         self._eta_val = QLabel("~—")
-        self._eta_val.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; "
-            f"font-weight: 600; background: transparent; border: none;"
-        )
+        theme.bind_style(self._eta_val, lambda: f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(14)}; "
+            f"font-weight: 600; background: transparent; border: none;")
         self._eta_val.setAlignment(Qt.AlignCenter)
         self._eta_lbl = QLabel(get_text('upscale_stat_eta', self.lang))
-        self._eta_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"background: transparent; border: none;"
-        )
+        theme.bind_style(self._eta_lbl, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"background: transparent; border: none;")
         self._eta_lbl.setAlignment(Qt.AlignCenter)
         col3.addWidget(self._eta_val)
         col3.addWidget(self._eta_lbl)
@@ -360,13 +360,11 @@ class _UpscaleStatCard(QFrame):
 
         lay.addStretch()
 
-        self.setStyleSheet(
-            f"QFrame#upscaleStatCard {{"
+        theme.bind_style(self, lambda: f"QFrame#upscaleStatCard {{"
             f"  background: {theme.BG_CARD};"
             f"  border: 1px solid {theme.BORDER_LIGHT};"
             f"  border-radius: 8px;"
-            f"}}"
-        )
+            f"}}")
 
     def refresh_stats(self, current: int, total: int, vram_free_mb: float, eta_sec: float):
         """Update all three stat columns."""
@@ -459,12 +457,10 @@ class UpscalePage(QWidget):
         if self._input_card is None:
             return
         if active:
-            self._input_card.setStyleSheet(
-                f"QFrame {{ background: {theme.BG_SURFACE}; "
-                f"border: 2px dashed {theme.ORANGE}; border-radius: {theme.R}; }}"
-            )
+            theme.bind_style(self._input_card, lambda: f"QFrame {{ background: {theme.BG_SURFACE}; "
+                f"border: 2px dashed {theme.ORANGE}; border-radius: {theme.R}; }}")
         else:
-            self._input_card.setStyleSheet(theme.card_frame())
+            theme.bind_style(self._input_card, theme.card_frame)
 
     def _t(self, key: str) -> str:
         return _TX.get(self.lang, _TX['en']).get(key, key)
@@ -476,10 +472,10 @@ class UpscalePage(QWidget):
         root.setSpacing(14)
 
         self._title_lbl = QLabel(self._t('title'))
-        self._title_lbl.setStyleSheet(theme.label_section())
+        theme.bind_style(self._title_lbl, theme.label_section)
         root.addWidget(self._title_lbl)
         self._subtitle_lbl = QLabel(self._t('subtitle'))
-        self._subtitle_lbl.setStyleSheet(theme.label_muted())
+        theme.bind_style(self._subtitle_lbl, theme.label_muted)
         root.addWidget(self._subtitle_lbl)
 
         root.addWidget(self._build_input_card())
@@ -490,11 +486,11 @@ class UpscalePage(QWidget):
         btn_row = QHBoxLayout()
         self.run_btn = QPushButton(self._t('run'))
         self.run_btn.setCursor(Qt.PointingHandCursor)
-        self.run_btn.setStyleSheet(theme.btn_action_start())
+        theme.bind_style(self.run_btn, theme.btn_action_start)
         self.run_btn.clicked.connect(self._start)
         self.stop_btn = QPushButton(self._t('stop'))
         self.stop_btn.setCursor(Qt.PointingHandCursor)
-        self.stop_btn.setStyleSheet(theme.btn_danger())
+        theme.bind_style(self.stop_btn, theme.btn_danger)
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self._stop)
         btn_row.addWidget(self.run_btn, stretch=2)
@@ -502,7 +498,7 @@ class UpscalePage(QWidget):
         root.addLayout(btn_row)
 
         self.progress_bar = QProgressBar()
-        self.progress_bar.setStyleSheet(theme.progress_bar())
+        theme.bind_style(self.progress_bar, theme.progress_bar)
         self.progress_bar.setValue(0)
         root.addWidget(self.progress_bar)
 
@@ -513,13 +509,13 @@ class UpscalePage(QWidget):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMinimumHeight(160)
-        self.log_text.setStyleSheet(theme.log_area())
+        theme.bind_style(self.log_text, theme.log_area)
         self.log_text.setText(self._t('log_ready'))
         root.addWidget(self.log_text, stretch=1)
 
     def _card(self) -> tuple:
         f = QFrame()
-        f.setStyleSheet(theme.card_frame())
+        theme.bind_style(f, theme.card_frame)
         lay = QVBoxLayout(f)
         lay.setContentsMargins(16, 14, 16, 14)
         lay.setSpacing(10)
@@ -529,15 +525,15 @@ class UpscalePage(QWidget):
         f, lay = self._card()
         self._input_card = f
         self._in_title = QLabel(self._t('in_title'))
-        self._in_title.setStyleSheet(theme.label_default())
+        theme.bind_style(self._in_title, theme.label_default)
         lay.addWidget(self._in_title)
 
         row = QHBoxLayout()
         self.browse_folder_btn = QPushButton(self._t('browse_folder'))
-        self.browse_folder_btn.setStyleSheet(theme.btn_browse())
+        theme.bind_style(self.browse_folder_btn, theme.btn_browse)
         self.browse_folder_btn.clicked.connect(self._pick_folder)
         self.browse_files_btn = QPushButton(self._t('browse_files'))
-        self.browse_files_btn.setStyleSheet(theme.btn_browse())
+        theme.bind_style(self.browse_files_btn, theme.btn_browse)
         self.browse_files_btn.clicked.connect(self._pick_files)
         row.addWidget(self.browse_folder_btn)
         row.addWidget(self.browse_files_btn)
@@ -545,58 +541,58 @@ class UpscalePage(QWidget):
         lay.addLayout(row)
 
         self.recursive_cb = QCheckBox(self._t('recursive'))
-        self.recursive_cb.setStyleSheet(theme.checkbox_frame())
+        theme.bind_style(self.recursive_cb, theme.checkbox_frame)
         self.recursive_cb.stateChanged.connect(self._rescan_folder)
         lay.addWidget(self.recursive_cb)
 
         self.input_count_lbl = QLabel(self._t('in_none'))
-        self.input_count_lbl.setStyleSheet(theme.label_muted())
+        theme.bind_style(self.input_count_lbl, theme.label_muted)
         lay.addWidget(self.input_count_lbl)
         return f
 
     def _build_output_card(self) -> QFrame:
         f, lay = self._card()
         self._out_title = QLabel(self._t('out_title'))
-        self._out_title.setStyleSheet(theme.label_default())
+        theme.bind_style(self._out_title, theme.label_default)
         lay.addWidget(self._out_title)
 
         row = QHBoxLayout()
         self.browse_out_btn = QPushButton(self._t('browse_out'))
-        self.browse_out_btn.setStyleSheet(theme.btn_browse())
+        theme.bind_style(self.browse_out_btn, theme.btn_browse)
         self.browse_out_btn.clicked.connect(self._pick_out)
         row.addWidget(self.browse_out_btn)
         row.addStretch()
         lay.addLayout(row)
 
         self.out_status_lbl = QLabel(self._t('out_default'))
-        self.out_status_lbl.setStyleSheet(theme.label_muted())
+        theme.bind_style(self.out_status_lbl, theme.label_muted)
         lay.addWidget(self.out_status_lbl)
         return f
 
     def _build_options_card(self) -> QFrame:
         f, lay = self._card()
         self._opt_title = QLabel(self._t('opt_title'))
-        self._opt_title.setStyleSheet(theme.label_default())
+        theme.bind_style(self._opt_title, theme.label_default)
         lay.addWidget(self._opt_title)
 
         # Model row
         mrow = QHBoxLayout()
         self.model_lbl = QLabel(self._t('model'))
-        self.model_lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(self.model_lbl, theme.label_frame)
         self.model_combo = QComboBox()
-        self.model_combo.setStyleSheet(theme.combo())
+        theme.bind_style(self.model_combo, theme.combo)
         self._populate_models()
         mrow.addWidget(self.model_lbl)
         mrow.addWidget(self.model_combo, stretch=1)
         lay.addLayout(mrow)
 
         self.gpu_cb = QCheckBox(self._t('gpu'))
-        self.gpu_cb.setStyleSheet(theme.checkbox_frame())
+        theme.bind_style(self.gpu_cb, theme.checkbox_frame)
         self.gpu_cb.setChecked(True)
         lay.addWidget(self.gpu_cb)
 
         self.face_cb = QCheckBox(self._t('face'))
-        self.face_cb.setStyleSheet(theme.checkbox_frame())
+        theme.bind_style(self.face_cb, theme.checkbox_frame)
         lay.addWidget(self.face_cb)
 
         # ── Preset buttons ──────────────────────────────────────────────────
@@ -610,17 +606,17 @@ class UpscalePage(QWidget):
         )
         self._preset_safe_btn = QPushButton("🔒 Güvenli / Safe")
         self._preset_safe_btn.setCursor(Qt.PointingHandCursor)
-        self._preset_safe_btn.setStyleSheet(_inactive_ss)
+        theme.bind_style(self._preset_safe_btn, lambda: f'QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 4px 10px; font-size: {theme.fs(11)}; }} QPushButton:hover {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; }}')
         self._preset_safe_btn.clicked.connect(lambda: self._apply_preset('safe'))
 
         self._preset_bal_btn = QPushButton("⚖️ Dengeli / Balanced")
         self._preset_bal_btn.setCursor(Qt.PointingHandCursor)
-        self._preset_bal_btn.setStyleSheet(_inactive_ss)
+        theme.bind_style(self._preset_bal_btn, lambda: f'QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 4px 10px; font-size: {theme.fs(11)}; }} QPushButton:hover {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; }}')
         self._preset_bal_btn.clicked.connect(lambda: self._apply_preset('balanced'))
 
         self._preset_fast_btn = QPushButton("⚡ Hızlı / Fast")
         self._preset_fast_btn.setCursor(Qt.PointingHandCursor)
-        self._preset_fast_btn.setStyleSheet(_inactive_ss)
+        theme.bind_style(self._preset_fast_btn, lambda: f'QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 4px 10px; font-size: {theme.fs(11)}; }} QPushButton:hover {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; }}')
         self._preset_fast_btn.clicked.connect(lambda: self._apply_preset('fast'))
 
         preset_row.addWidget(self._preset_safe_btn)
@@ -632,11 +628,9 @@ class UpscalePage(QWidget):
         # ── Advanced toggle ─────────────────────────────────────────────────
         self._adv_toggle_btn = QPushButton(f"▼ {get_text('upscale_advanced', self.lang)}")
         self._adv_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self._adv_toggle_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED}; "
+        theme.bind_style(self._adv_toggle_btn, lambda: f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED}; "
             f"border: none; font-size: {theme.fs(11)}; text-align: left; padding: 2px 0; }}"
-            f" QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; }}"
-        )
+            f" QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; }}")
         self._adv_toggle_btn.clicked.connect(self._toggle_advanced)
         lay.addWidget(self._adv_toggle_btn)
 
@@ -650,12 +644,12 @@ class UpscalePage(QWidget):
 
         trow = QHBoxLayout()
         self.tile_lbl = QLabel(self._t('tile'))
-        self.tile_lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(self.tile_lbl, theme.label_frame)
         self.tile_spin = QSpinBox()
         self.tile_spin.setRange(0, 1024)
         self.tile_spin.setSingleStep(64)
         self.tile_spin.setValue(0)
-        self.tile_spin.setStyleSheet(theme.spinbox())
+        theme.bind_style(self.tile_spin, theme.spinbox)
         trow.addWidget(self.tile_lbl)
         trow.addWidget(self.tile_spin)
         trow.addStretch()
@@ -663,9 +657,9 @@ class UpscalePage(QWidget):
 
         maxres_row = QHBoxLayout()
         self.maxres_lbl = QLabel(self._t('max_res'))
-        self.maxres_lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(self.maxres_lbl, theme.label_frame)
         self.maxres_combo = QComboBox()
-        self.maxres_combo.setStyleSheet(theme.combo())
+        theme.bind_style(self.maxres_combo, theme.combo)
         self.maxres_combo.addItem(self._t('max_res_off'), 0)
         for _p in _MAX_RES_PRESETS:
             self.maxres_combo.addItem(f"{_p} px", _p)
@@ -680,10 +674,8 @@ class UpscalePage(QWidget):
 
         # ── GPU info label ───────────────────────────────────────────────────
         self._gpu_info_lbl = QLabel("GPU: —")
-        self._gpu_info_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"font-family: {theme.FONT_MONO}; background: transparent; border: none;"
-        )
+        theme.bind_style(self._gpu_info_lbl, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"font-family: {theme.FONT_MONO}; background: transparent; border: none;")
         lay.addWidget(self._gpu_info_lbl)
 
         return f
@@ -715,7 +707,7 @@ class UpscalePage(QWidget):
             ('balanced', self._preset_bal_btn),
             ('fast', self._preset_fast_btn),
         ):
-            btn.setStyleSheet(_active_ss if pname == self._active_preset else _inactive_ss)
+            theme.bind_style(btn, lambda pname=pname, self=self: f'QPushButton {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE}; border: 1px solid {theme.ORANGE_DIM}; border-radius: 6px; padding: 4px 10px; font-size: {theme.fs(11)}; font-weight: 600; }}' if pname == self._active_preset else f'QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 4px 10px; font-size: {theme.fs(11)}; }} QPushButton:hover {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY}; }}')
 
     def _toggle_advanced(self):
         visible = self._adv_frame.isVisible()
@@ -944,15 +936,5 @@ class UpscalePage(QWidget):
         self._populate_models()
 
     def refresh_styles(self):
-        self._title_lbl.setStyleSheet(theme.label_section())
-        self._subtitle_lbl.setStyleSheet(theme.label_muted())
-        self.run_btn.setStyleSheet(theme.btn_action_start())
-        self.stop_btn.setStyleSheet(theme.btn_danger())
-        self.progress_bar.setStyleSheet(theme.progress_bar())
-        self.log_text.setStyleSheet(theme.log_area())
-        for b in (self.browse_folder_btn, self.browse_files_btn, self.browse_out_btn):
-            b.setStyleSheet(theme.btn_browse())
-        self.model_combo.setStyleSheet(theme.combo())
-        self.tile_spin.setStyleSheet(theme.spinbox())
-        self.maxres_combo.setStyleSheet(theme.combo())
-        self._update_preset_btn_styles()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)

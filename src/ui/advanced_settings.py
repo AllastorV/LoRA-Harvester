@@ -32,7 +32,7 @@ class _AccordionFrame(QFrame):
         self._apply_accordion_style()
 
     def _setup_accordion(self):
-        self.setStyleSheet(f"""
+        theme.bind_style(self, lambda: f"""
             QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER};
                       border-radius: 10px; }}
         """)
@@ -50,7 +50,7 @@ class _AccordionFrame(QFrame):
 
         self._body = QWidget()
         self._body.setVisible(False)
-        self._body.setStyleSheet(f"background: transparent; border-top: 1px solid {theme.BORDER};")
+        theme.bind_style(self._body, lambda: f"background: transparent; border-top: 1px solid {theme.BORDER};")
         self._body_lay = QVBoxLayout(self._body)
         self._body_lay.setContentsMargins(16, 12, 16, 14)
         self._body_lay.setSpacing(10)
@@ -61,7 +61,7 @@ class _AccordionFrame(QFrame):
         self._anim.setEasingCurve(QEasingCurve.InOutCubic)
 
     def _apply_accordion_style(self):
-        self._toggle_btn.setStyleSheet(f"""
+        theme.bind_style(self._toggle_btn, lambda: f"""
             QPushButton {{
                 background: transparent; color: {theme.TEXT_PRIMARY};
                 border: none; font-size: {theme.fs(13)}; font-weight: 600;
@@ -95,11 +95,7 @@ class _AccordionFrame(QFrame):
             self._anim.start()
 
     def refresh_accordion_styles(self):
-        self.setStyleSheet(f"""
-            QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER};
-                      border-radius: 10px; }}
-        """)
-        self._apply_accordion_style()
+        return theme.refresh_styles(self)
 
 
 class QualitySettingsPanel(_AccordionFrame):
@@ -118,7 +114,7 @@ class QualitySettingsPanel(_AccordionFrame):
         # Enable checkbox
         enable_row = QHBoxLayout()
         self.enable_cb = QCheckBox(get_text('quality_enabled', self.lang))
-        self.enable_cb.setStyleSheet(theme.checkbox_frame())
+        theme.bind_style(self.enable_cb, theme.checkbox_frame)
         self.enable_cb.setToolTip(get_text('quality_enabled_tooltip', self.lang))
         enable_row.addWidget(self.enable_cb); enable_row.addStretch()
         lay.addLayout(enable_row)
@@ -126,11 +122,11 @@ class QualitySettingsPanel(_AccordionFrame):
         # Blur threshold
         blur_row = QHBoxLayout()
         self.blur_label = QLabel(get_text('blur_threshold', self.lang))
-        self.blur_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.blur_label, theme.label_default)
         self.blur_spinbox = QDoubleSpinBox()
         self.blur_spinbox.setRange(10, 500)
         self.blur_spinbox.setValue(80.0)
-        self.blur_spinbox.setStyleSheet(self._spinbox_style())
+        theme.bind_style(self.blur_spinbox, lambda self=self: self._spinbox_style())
         self.blur_spinbox.setToolTip(get_text('blur_threshold_tooltip', self.lang))
         blur_row.addWidget(self.blur_label)
         blur_row.addStretch()
@@ -140,14 +136,14 @@ class QualitySettingsPanel(_AccordionFrame):
         # Brightness range
         bright_row = QHBoxLayout()
         self.bright_label = QLabel(get_text('brightness_range', self.lang))
-        self.bright_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.bright_label, theme.label_default)
         self.bright_min = QSpinBox()
         self.bright_min.setRange(0, 255); self.bright_min.setValue(35)
-        self.bright_min.setStyleSheet(self._spinbox_style())
+        theme.bind_style(self.bright_min, lambda self=self: self._spinbox_style())
         self.bright_min.setToolTip(get_text('brightness_tooltip', self.lang))
         self.bright_max = QSpinBox()
         self.bright_max.setRange(0, 255); self.bright_max.setValue(225)
-        self.bright_max.setStyleSheet(self._spinbox_style())
+        theme.bind_style(self.bright_max, lambda self=self: self._spinbox_style())
         self.bright_max.setToolTip(get_text('brightness_tooltip', self.lang))
         bright_row.addWidget(self.bright_label)
         bright_row.addStretch()
@@ -159,7 +155,7 @@ class QualitySettingsPanel(_AccordionFrame):
         # Skip duplicates
         self.skip_dup_cb = QCheckBox(get_text('skip_duplicates', self.lang))
         self.skip_dup_cb.setChecked(True)
-        self.skip_dup_cb.setStyleSheet(theme.checkbox_frame())
+        theme.bind_style(self.skip_dup_cb, theme.checkbox_frame)
         self.skip_dup_cb.setToolTip(get_text('skip_duplicates_tooltip', self.lang))
         lay.addWidget(self.skip_dup_cb)
     
@@ -189,7 +185,8 @@ class QualitySettingsPanel(_AccordionFrame):
         self.skip_dup_cb.setToolTip(get_text('skip_duplicates_tooltip', lang))
 
     def refresh_styles(self):
-        self.refresh_accordion_styles()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
 
 class CaptioningSettingsPanel(_AccordionFrame):
@@ -207,7 +204,7 @@ class CaptioningSettingsPanel(_AccordionFrame):
         # Enable checkbox
         enable_row = QHBoxLayout()
         self.enable_cb = QCheckBox(get_text('caption_enabled', self.lang))
-        self.enable_cb.setStyleSheet(theme.checkbox_frame())
+        theme.bind_style(self.enable_cb, theme.checkbox_frame)
         self.enable_cb.setToolTip(get_text('caption_enabled_tooltip', self.lang))
         enable_row.addWidget(self.enable_cb); enable_row.addStretch()
         lay.addLayout(enable_row)
@@ -215,13 +212,13 @@ class CaptioningSettingsPanel(_AccordionFrame):
         # Caption mode
         mode_row = QHBoxLayout()
         self.mode_label = QLabel(get_text('caption_mode_label', self.lang))
-        self.mode_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.mode_label, theme.label_default)
         self.mode_info = QLabel(""); self.mode_info.hide()
         self.mode_combo = QComboBox()
         self.mode_combo.addItem(get_text('caption_mode_tags', self.lang), 'tags_only')
         self.mode_combo.addItem(get_text('caption_mode_nlp', self.lang), 'florence2')
         self.mode_combo.addItem(get_text('caption_mode_combined', self.lang), 'combined')
-        self.mode_combo.setStyleSheet(self._combo_style())
+        theme.bind_style(self.mode_combo, lambda self=self: self._combo_style())
         self.mode_combo.setToolTip(get_text('caption_mode_tooltip', self.lang))
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         mode_row.addWidget(self.mode_label)
@@ -231,14 +228,14 @@ class CaptioningSettingsPanel(_AccordionFrame):
         # Preset
         preset_row = QHBoxLayout()
         self.preset_label = QLabel(get_text('preset_label', self.lang))
-        self.preset_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.preset_label, theme.label_default)
         self.preset_info = QLabel(""); self.preset_info.hide()
         self.preset_combo = QComboBox()
         self.preset_combo.addItem(get_text('preset_high_accuracy', self.lang), 'high_accuracy')
         self.preset_combo.addItem(get_text('preset_balanced', self.lang), 'balanced')
         self.preset_combo.addItem(get_text('preset_high_speed', self.lang), 'high_speed')
         self.preset_combo.addItem(get_text('preset_custom', self.lang), 'custom')
-        self.preset_combo.setStyleSheet(self._combo_style())
+        theme.bind_style(self.preset_combo, lambda self=self: self._combo_style())
         self.preset_combo.setToolTip(get_text('preset_tooltip', self.lang))
         self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
         preset_row.addWidget(self.preset_label)
@@ -249,7 +246,7 @@ class CaptioningSettingsPanel(_AccordionFrame):
         self.wd14_row = QWidget()
         wd14_lay = QHBoxLayout(self.wd14_row); wd14_lay.setContentsMargins(0, 0, 0, 0)
         self.wd14_cb = QCheckBox(get_text('wd14_enabled', self.lang))
-        self.wd14_cb.setChecked(True); self.wd14_cb.setStyleSheet(theme.label_default())
+        self.wd14_cb.setChecked(True); theme.bind_style(self.wd14_cb, theme.label_default)
         self.wd14_cb.setToolTip(get_text('wd14_tooltip', self.lang))
         self.wd14_combo = QComboBox()
         self.wd14_combo.addItems([
@@ -259,7 +256,7 @@ class CaptioningSettingsPanel(_AccordionFrame):
             'SmilingWolf/wd-v1-4-moat-tagger-v2',
             'SmilingWolf/wd-v1-4-swinv2-tagger-v2'
         ])
-        self.wd14_combo.setStyleSheet(self._combo_style())
+        theme.bind_style(self.wd14_combo, lambda self=self: self._combo_style())
         self.wd14_combo.setToolTip(get_text('wd14_model_tooltip', self.lang))
         wd14_lay.addWidget(self.wd14_cb); wd14_lay.addWidget(self.wd14_combo); wd14_lay.addStretch()
         lay.addWidget(self.wd14_row)
@@ -268,18 +265,18 @@ class CaptioningSettingsPanel(_AccordionFrame):
         self.f2_row = QWidget()
         f2_lay = QHBoxLayout(self.f2_row); f2_lay.setContentsMargins(0, 0, 0, 0)
         self.f2_label = QLabel(get_text('florence2_model_label', self.lang))
-        self.f2_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.f2_label, theme.label_default)
         self.f2_label.setToolTip(get_text('florence2_model_label', self.lang))
         self.f2_combo = QComboBox()
         self.f2_combo.addItem(get_text('florence2_base', self.lang), 'florence-2-base')
         self.f2_combo.addItem(get_text('florence2_large', self.lang), 'florence-2-large')
-        self.f2_combo.setStyleSheet(self._combo_style())
+        theme.bind_style(self.f2_combo, lambda self=self: self._combo_style())
         self.f2_combo.setToolTip(get_text('florence2_model_label', self.lang))
         self.f2_task_combo = QComboBox()
         self.f2_task_combo.addItem(get_text('florence2_task_detailed', self.lang), '<DETAILED_CAPTION>')
         self.f2_task_combo.addItem(get_text('florence2_task_more', self.lang), '<MORE_DETAILED_CAPTION>')
         self.f2_task_combo.addItem(get_text('florence2_task_short', self.lang), '<CAPTION>')
-        self.f2_task_combo.setStyleSheet(self._combo_style())
+        theme.bind_style(self.f2_task_combo, lambda self=self: self._combo_style())
         self.f2_task_combo.setToolTip(get_text('caption_mode_label', self.lang))
         f2_lay.addWidget(self.f2_label); f2_lay.addWidget(self.f2_combo)
         f2_lay.addSpacing(10); f2_lay.addWidget(self.f2_task_combo); f2_lay.addStretch()
@@ -363,7 +360,8 @@ class CaptioningSettingsPanel(_AccordionFrame):
             self.f2_task_combo.blockSignals(True); self.f2_task_combo.setItemText(idx, get_text(key, lang)); self.f2_task_combo.blockSignals(False)
 
     def refresh_styles(self):
-        self.refresh_accordion_styles()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
 
 class TagSettingsPanel(_AccordionFrame):
@@ -381,7 +379,7 @@ class TagSettingsPanel(_AccordionFrame):
         # Preset selector
         preset_layout = QHBoxLayout()
         self.preset_label = QLabel(get_text('tag_preset', self.lang))
-        self.preset_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.preset_label, theme.label_default)
         self.preset_info = QLabel(""); self.preset_info.hide()
         self.preset_combo = QComboBox()
         self.preset_combo.addItem(get_text('tag_preset_none', self.lang), 'none')
@@ -389,7 +387,7 @@ class TagSettingsPanel(_AccordionFrame):
         self.preset_combo.addItem(get_text('tag_preset_style_lora', self.lang), 'style_lora')
         self.preset_combo.addItem(get_text('tag_preset_realistic_photo', self.lang), 'realistic_photo')
         self.preset_combo.addItem(get_text('tag_preset_concept_art', self.lang), 'concept_art')
-        self.preset_combo.setStyleSheet(self._combo_style())
+        theme.bind_style(self.preset_combo, lambda self=self: self._combo_style())
         self.preset_combo.setToolTip(get_text('tag_preset_tooltip', self.lang))
         self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
         preset_layout.addWidget(self.preset_label)
@@ -400,11 +398,11 @@ class TagSettingsPanel(_AccordionFrame):
         # Trigger word
         trigger_layout = QHBoxLayout()
         self.trigger_label = QLabel(get_text('trigger_word', self.lang))
-        self.trigger_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.trigger_label, theme.label_default)
         self.trigger_info = QLabel(""); self.trigger_info.hide()
         self.trigger_edit = QLineEdit()
         self.trigger_edit.setPlaceholderText(get_text('trigger_word_ph', self.lang))
-        self.trigger_edit.setStyleSheet(self._edit_style())
+        theme.bind_style(self.trigger_edit, lambda self=self: self._edit_style())
         self.trigger_edit.setToolTip(get_text('trigger_word_tooltip', self.lang))
         trigger_layout.addWidget(self.trigger_label)
         trigger_layout.addWidget(self.trigger_edit)
@@ -413,22 +411,22 @@ class TagSettingsPanel(_AccordionFrame):
         # Max tags and confidence
         limits_layout = QHBoxLayout()
         self.max_tags_label = QLabel(get_text('max_tags', self.lang))
-        self.max_tags_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.max_tags_label, theme.label_default)
         self.max_tags_info = QLabel(""); self.max_tags_info.hide()
         self.max_tags_spin = QSpinBox()
         self.max_tags_spin.setRange(5, 100)
         self.max_tags_spin.setValue(30)
-        self.max_tags_spin.setStyleSheet(self._spinbox_style())
+        theme.bind_style(self.max_tags_spin, lambda self=self: self._spinbox_style())
         self.max_tags_spin.setToolTip(get_text('max_tags_tooltip', self.lang))
 
         self.conf_label = QLabel(get_text('min_confidence', self.lang))
-        self.conf_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.conf_label, theme.label_default)
         self.conf_info = QLabel(""); self.conf_info.hide()
         self.conf_spin = QDoubleSpinBox()
         self.conf_spin.setRange(0.1, 0.9)
         self.conf_spin.setValue(0.35)
         self.conf_spin.setSingleStep(0.05)
-        self.conf_spin.setStyleSheet(self._spinbox_style())
+        theme.bind_style(self.conf_spin, lambda self=self: self._spinbox_style())
         self.conf_spin.setToolTip(get_text('min_confidence_tooltip', self.lang))
 
         limits_layout.addWidget(self.max_tags_label)
@@ -443,7 +441,7 @@ class TagSettingsPanel(_AccordionFrame):
         neg_layout = QVBoxLayout()
         neg_header = QHBoxLayout()
         self.neg_label = QLabel(get_text('negative_tags', self.lang))
-        self.neg_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.neg_label, theme.label_default)
         self.neg_help = QLabel(""); self.neg_help.hide()
         neg_header.addWidget(self.neg_label)
         neg_header.addStretch()
@@ -453,7 +451,7 @@ class TagSettingsPanel(_AccordionFrame):
         self.neg_edit.setMinimumHeight(45)
         self.neg_edit.setMaximumHeight(90)
         self.neg_edit.setPlaceholderText(get_text('negative_tags_ph', self.lang))
-        self.neg_edit.setStyleSheet(theme.text_edit_input())
+        theme.bind_style(self.neg_edit, theme.text_edit_input)
         self.neg_edit.setToolTip(get_text('negative_tags_tooltip', self.lang))
         # Set default negative tags
         self.neg_edit.setPlainText("watermark, signature, text, username, artist_name, twitter_username, patreon_username, dated")
@@ -464,7 +462,7 @@ class TagSettingsPanel(_AccordionFrame):
         priority_layout = QVBoxLayout()
         priority_header = QHBoxLayout()
         self.priority_label = QLabel(get_text('priority_tags', self.lang))
-        self.priority_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.priority_label, theme.label_default)
         self.priority_info = QLabel(""); self.priority_info.hide()
         priority_header.addWidget(self.priority_label)
         priority_header.addStretch()
@@ -472,7 +470,7 @@ class TagSettingsPanel(_AccordionFrame):
 
         self.priority_edit = QLineEdit()
         self.priority_edit.setPlaceholderText(get_text('priority_tags_ph', self.lang))
-        self.priority_edit.setStyleSheet(self._edit_style())
+        theme.bind_style(self.priority_edit, lambda self=self: self._edit_style())
         self.priority_edit.setToolTip(get_text('priority_tags_tooltip', self.lang))
         priority_layout.addWidget(self.priority_edit)
         layout.addLayout(priority_layout)
@@ -481,10 +479,10 @@ class TagSettingsPanel(_AccordionFrame):
         cb_layout1 = QHBoxLayout()
         self.keep_char_cb = QCheckBox(get_text('keep_character_tags', self.lang))
         self.keep_char_cb.setChecked(True)
-        self.keep_char_cb.setStyleSheet(theme.label_default())
+        theme.bind_style(self.keep_char_cb, theme.label_default)
         self.keep_char_cb.setToolTip(get_text('keep_char_tooltip', self.lang))
         self.keep_series_cb = QCheckBox(get_text('keep_series_tags', self.lang))
-        self.keep_series_cb.setStyleSheet(theme.label_default())
+        theme.bind_style(self.keep_series_cb, theme.label_default)
         self.keep_series_cb.setToolTip(get_text('keep_series_tooltip', self.lang))
         cb_layout1.addWidget(self.keep_char_cb)
         cb_layout1.addWidget(self.keep_series_cb)
@@ -494,10 +492,10 @@ class TagSettingsPanel(_AccordionFrame):
         # Checkboxes row 2
         cb_layout2 = QHBoxLayout()
         self.quality_tags_cb = QCheckBox(get_text('include_quality_tags', self.lang))
-        self.quality_tags_cb.setStyleSheet(theme.label_default())
+        theme.bind_style(self.quality_tags_cb, theme.label_default)
         self.quality_tags_cb.setToolTip(get_text('include_quality_tags', self.lang))
         self.rating_tags_cb = QCheckBox(get_text('include_rating_tags', self.lang))
-        self.rating_tags_cb.setStyleSheet(theme.label_default())
+        theme.bind_style(self.rating_tags_cb, theme.label_default)
         self.rating_tags_cb.setToolTip(get_text('include_rating_tags', self.lang))
         cb_layout2.addWidget(self.quality_tags_cb)
         cb_layout2.addWidget(self.rating_tags_cb)
@@ -508,10 +506,10 @@ class TagSettingsPanel(_AccordionFrame):
         format_layout = QHBoxLayout()
         self.underscore_cb = QCheckBox(get_text('use_underscores', self.lang))
         self.underscore_cb.setChecked(True)
-        self.underscore_cb.setStyleSheet(theme.label_default())
+        theme.bind_style(self.underscore_cb, theme.label_default)
         self.underscore_cb.setToolTip(get_text('use_underscores', self.lang))
         self.json_cb = QCheckBox(get_text('save_json', self.lang))
-        self.json_cb.setStyleSheet(theme.label_default())
+        theme.bind_style(self.json_cb, theme.label_default)
         self.json_cb.setToolTip(get_text('json_tooltip', self.lang))
         format_layout.addWidget(self.underscore_cb)
         format_layout.addWidget(self.json_cb)
@@ -521,16 +519,16 @@ class TagSettingsPanel(_AccordionFrame):
         # Prefix/Suffix
         prefix_layout = QHBoxLayout()
         self.prefix_label = QLabel(get_text('caption_prefix', self.lang))
-        self.prefix_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.prefix_label, theme.label_default)
         self.prefix_edit = QLineEdit()
-        self.prefix_edit.setStyleSheet(self._edit_style())
+        theme.bind_style(self.prefix_edit, lambda self=self: self._edit_style())
         self.prefix_edit.setMaximumWidth(200)
         self.prefix_edit.setToolTip(get_text('caption_prefix', self.lang))
 
         self.suffix_label = QLabel(get_text('caption_suffix', self.lang))
-        self.suffix_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self.suffix_label, theme.label_default)
         self.suffix_edit = QLineEdit()
-        self.suffix_edit.setStyleSheet(self._edit_style())
+        theme.bind_style(self.suffix_edit, lambda self=self: self._edit_style())
         self.suffix_edit.setMaximumWidth(200)
         self.suffix_edit.setToolTip(get_text('caption_suffix', self.lang))
         
@@ -617,7 +615,8 @@ class TagSettingsPanel(_AccordionFrame):
         }
     
     def refresh_styles(self):
-        self.refresh_accordion_styles()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
     def update_language(self, lang: str):
         self.lang = lang
@@ -688,9 +687,9 @@ class _AddModelDialog(QDialog):
         # .pth file picker
         file_row = QHBoxLayout()
         self._file_lbl = QLabel(_t('addmodel_no_file'))
-        self._file_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)};")
+        theme.bind_style(self._file_lbl, lambda: f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)};")
         file_btn = QPushButton(_t('addmodel_browse'))
-        file_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(file_btn, theme.btn_secondary)
         file_btn.clicked.connect(self._browse)
         file_row.addWidget(self._file_lbl, 1)
         file_row.addWidget(file_btn)
@@ -791,7 +790,7 @@ class UpscaleSettingsPanel(_AccordionFrame):
         # Enable
         enable_row = QHBoxLayout()
         self.enable_cb = QCheckBox(_t('upscale_enable'))
-        self.enable_cb.setStyleSheet(theme.checkbox_frame())
+        theme.bind_style(self.enable_cb, theme.checkbox_frame)
         self.enable_cb.setToolTip(_t('upscale_enable_tip'))
         self.enable_cb.toggled.connect(self._on_enable_toggle)
         enable_row.addWidget(self.enable_cb)
@@ -801,21 +800,21 @@ class UpscaleSettingsPanel(_AccordionFrame):
         # Model row
         model_row = QHBoxLayout()
         self._model_lbl = QLabel(_t('upscale_model'))
-        self._model_lbl.setStyleSheet(theme.label_default())
+        theme.bind_style(self._model_lbl, theme.label_default)
         self._model_lbl.setFixedWidth(100)
         self._model_combo = QComboBox()
-        self._model_combo.setStyleSheet(theme.spinbox_compact())
+        theme.bind_style(self._model_combo, theme.spinbox_compact)
         self._model_combo.setToolTip(_t('upscale_model_tip'))
         self._populate_models()
 
         self._refresh_btn = QPushButton("🔄")
         self._refresh_btn.setFixedSize(28, 28)
         self._refresh_btn.setToolTip(_t('upscale_refresh_tip'))
-        self._refresh_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._refresh_btn, theme.btn_secondary)
         self._refresh_btn.clicked.connect(self._refresh_models)
 
         self._add_btn = QPushButton(_t('upscale_add_model'))
-        self._add_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._add_btn, theme.btn_secondary)
         self._add_btn.setToolTip(_t('upscale_add_model_tip'))
         self._add_btn.clicked.connect(self._add_model)
 
@@ -828,10 +827,10 @@ class UpscaleSettingsPanel(_AccordionFrame):
         # Target
         target_row = QHBoxLayout()
         self._target_lbl = QLabel(_t('upscale_target'))
-        self._target_lbl.setStyleSheet(theme.label_default())
+        theme.bind_style(self._target_lbl, theme.label_default)
         self._target_lbl.setFixedWidth(100)
         self._target_combo = QComboBox()
-        self._target_combo.setStyleSheet(theme.spinbox_compact())
+        theme.bind_style(self._target_combo, theme.spinbox_compact)
         self._target_combo.addItem(_t('upscale_target_crop'), "crop")
         self._target_combo.addItem(_t('upscale_target_frame'), "frame")
         self._target_combo.setToolTip(_t('upscale_target_tip'))
@@ -843,21 +842,21 @@ class UpscaleSettingsPanel(_AccordionFrame):
         # Min resolution + tile
         params_row = QHBoxLayout()
         self._min_res_lbl = QLabel(_t('upscale_min_res'))
-        self._min_res_lbl.setStyleSheet(theme.label_default())
+        theme.bind_style(self._min_res_lbl, theme.label_default)
         self._min_res_spin = QSpinBox()
         self._min_res_spin.setRange(0, 4096)
         self._min_res_spin.setValue(512)
         self._min_res_spin.setSuffix(" px")
-        self._min_res_spin.setStyleSheet(theme.spinbox_compact())
+        theme.bind_style(self._min_res_spin, theme.spinbox_compact)
         self._min_res_spin.setToolTip(_t('upscale_min_res_tip'))
 
         self._tile_lbl = QLabel(_t('upscale_tile'))
-        self._tile_lbl.setStyleSheet(theme.label_default())
+        theme.bind_style(self._tile_lbl, theme.label_default)
         self._tile_spin = QSpinBox()
         self._tile_spin.setRange(0, 2048)
         self._tile_spin.setValue(0)
         self._tile_spin.setSuffix(" px")
-        self._tile_spin.setStyleSheet(theme.spinbox_compact())
+        theme.bind_style(self._tile_spin, theme.spinbox_compact)
         self._tile_spin.setToolTip(_t('upscale_tile_tip'))
 
         params_row.addWidget(self._min_res_lbl)
@@ -871,9 +870,9 @@ class UpscaleSettingsPanel(_AccordionFrame):
         # Max resolution cap (presets) — downscale if upscale overshoots
         maxres_row = QHBoxLayout()
         self._max_res_lbl = QLabel(_t('upscale_max_res'))
-        self._max_res_lbl.setStyleSheet(theme.label_default())
+        theme.bind_style(self._max_res_lbl, theme.label_default)
         self._max_res_combo = QComboBox()
-        self._max_res_combo.setStyleSheet(theme.spinbox_compact())
+        theme.bind_style(self._max_res_combo, theme.spinbox_compact)
         self._max_res_combo.setToolTip(_t('upscale_max_res_tip'))
         self._max_res_combo.addItem(_t('upscale_max_res_off'), 0)
         for _p in MAX_RES_PRESETS:
@@ -885,7 +884,7 @@ class UpscaleSettingsPanel(_AccordionFrame):
 
         # Face enhance
         self._face_cb = QCheckBox(_t('upscale_face_enhance'))
-        self._face_cb.setStyleSheet(theme.checkbox_frame())
+        theme.bind_style(self._face_cb, theme.checkbox_frame)
         self._face_cb.setToolTip(_t('upscale_face_tip'))
         lay.addWidget(self._face_cb)
 
@@ -1029,7 +1028,8 @@ class UpscaleSettingsPanel(_AccordionFrame):
         self._face_cb.setToolTip(_t('upscale_face_tip'))
 
     def refresh_styles(self):
-        self.refresh_accordion_styles()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
 
 # ══════════════════════════════════════════════════════════════

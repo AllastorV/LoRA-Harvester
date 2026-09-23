@@ -10,6 +10,12 @@ import numpy as np
 import torch
 import time
 import threading
+import os
+import tempfile
+import hashlib
+import copy
+import math
+from src.core.video_sampling import SelectiveVideoReader
 from pathlib import Path
 from typing import Optional, Callable, Dict, List, Union, Any
 
@@ -26,7 +32,18 @@ def _imwrite_unicode(path: str, frame: np.ndarray, ext: str = ".png") -> bool:
         ok, buf = cv2.imencode(ext, frame)
         if not ok:
             return False
-        buf.tofile(path)
+        # Stage in the existing destination directory; failed writes never
+        # expose a partial PNG and never create an accidental output directory.
+        fd, tmp = tempfile.mkstemp(prefix='.lh-frame-', suffix='.tmp', dir=str(Path(path).parent))
+        try:
+            with os.fdopen(fd, 'wb') as handle:
+                handle.write(buf.tobytes())
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
         return True
     except Exception as e:
         logger.warning("imwrite failed for %s: %s", path, e)
@@ -82,6 +99,8 @@ class UnifiedVideoProcessor:
             captioner: V2.0 AdvancedCaptioner instance (optional)
             caption_mode: Caption mode to use (tags_only)
         """
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+            raise ValueError('batch_size must be a positive integer.')
         # Handle single video or multiple videos
         if isinstance(video_paths, str):
             self.video_paths = [video_paths]
@@ -130,6 +149,13 @@ class UnifiedVideoProcessor:
         # V3.x NSFW detection — separate saves into sfw/nsfw/(uncertain) subdirs
         self.nsfw_detector = nsfw_detector
         self.nsfw_uncertain_folder = nsfw_uncertain_folder
+        # A bounded buffer of FINAL accepted crops, never raw video frames.
+        # It is enabled only within a video run and drained before changing
+        # output directories, parking on pause, or returning on stop/error.
+        self._pending_crops = []
+        self._pending_crop_bytes = 0
+        self._pending_crop_max_bytes = 64 * 1024 * 1024
+        self._defer_nsfw_saves = False
         
         # Check if using ensemble mode
         self.is_ensemble = hasattr(detector, 'models_to_use')
@@ -155,6 +181,8 @@ class UnifiedVideoProcessor:
         
         # Performance tracking
         self.start_time = 0
+        self._stage_seconds = {}
+        self._video_reader = None
 
         # Progress emit throttle — avoid flooding the UI thread with
         # progress signals faster than it can animate (causes freeze).
@@ -205,6 +233,19 @@ class UnifiedVideoProcessor:
                 pass
         logger.info(msg)
 
+    def _timed(self, stage, function, *args, **kwargs):
+        """Measure host wall time, including failed attempts, without CUDA sync.
+
+        These are operational timings, not isolated GPU kernel measurements.
+        No profiler, image sampling, or model/threshold change is required.
+        """
+        start = time.perf_counter()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            self._stage_seconds[stage] = (self._stage_seconds.get(stage, 0.0)
+                                          + time.perf_counter() - start)
+
     def _create_empty_stats(self) -> Dict:
         """Create empty stats dictionary"""
         return {
@@ -221,6 +262,10 @@ class UnifiedVideoProcessor:
             'nsfw_frames': 0,          # V3.x: classified as nsfw
             'sfw_frames': 0,           # V3.x: classified as sfw
             'nsfw_uncertain': 0,       # V3.x: uncertain classification
+            'nsfw_classification_time': 0.0,
+            'nsfw_crops_analyzed': 0,
+            'nsfw_batches': 0,
+            'nsfw_max_batch': 0,
             'person_frames': 0,
             'animal_frames': 0,
             'object_frames': 0,
@@ -234,8 +279,20 @@ class UnifiedVideoProcessor:
         turbo_suffix = "_turbo" if self.use_turbo else ""
         aspect_ratio = self.cropper.target_format.replace(':', 'x')
         
-        base_path = Path(self.output_dir) / f"{video_name}_{aspect_ratio}_{mode_suffix}{turbo_suffix}"
-        base_path.mkdir(parents=True, exist_ok=True)
+        source = os.path.normcase(str(Path(self.current_video or video_name).resolve()))
+        source_id = hashlib.sha256(source.encode('utf-8')).hexdigest()[:12]
+        name = f"{video_name}_{source_id}_{aspect_ratio}_{mode_suffix}{turbo_suffix}"
+        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+        # Unified processing does not implement resume. Every run gets its own
+        # namespace rather than overwriting existing images/captions.
+        run = 1
+        while True:
+            base_path = Path(self.output_dir) / (name if run == 1 else f'{name}_run_{run}')
+            try:
+                base_path.mkdir()
+                break
+            except FileExistsError:
+                run += 1
         
         self.person_dir = base_path / 'persons'
         self.animal_dir = base_path / 'animals'
@@ -325,6 +382,9 @@ class UnifiedVideoProcessor:
             Overall statistics for all videos
         """
         total_start = time.time()
+        self.overall_stats = {'total_videos': len(self.video_paths), 'processed_videos': 0,
+                              'total_frames_saved': 0, 'total_frames_processed': 0,
+                              'videos_stats': []}
 
         # Expose the frame-saved callback to the frame-saving helpers.
         # Stashing it on the instance keeps the signatures of the
@@ -417,7 +477,11 @@ class UnifiedVideoProcessor:
                            to this video as frame-count windows, computed
                            from ``self.fps`` and ``self.total_frames``.
         """
+        if isinstance(frame_interval, bool) or not isinstance(frame_interval, int) or frame_interval < 1:
+            raise ValueError('frame_interval must be a positive integer.')
         if not self.open_video(video_path):
+            if self.cap:
+                self.cap.release()
             return self._create_empty_stats()
 
         # Create output structure for this video
@@ -427,6 +491,8 @@ class UnifiedVideoProcessor:
         # Reset stats for this video
         self.stats = self._create_empty_stats()
         self.start_time = time.time()
+        self._stage_seconds = {}
+        self._video_reader = None
 
         # Reset duplicate detection history for each video
         if self.quality_analyzer and hasattr(self.quality_analyzer, 'clear_history'):
@@ -450,6 +516,12 @@ class UnifiedVideoProcessor:
             print(f"   ✂  Trim: frames [{start_frame} .. {end_frame}) "
                   f"({start_skip_seconds:.1f}s head, {end_skip_seconds:.1f}s tail)")
 
+        self._pending_crops = []
+        self._pending_crop_bytes = 0
+        self._defer_nsfw_saves = (
+            self.nsfw_detector is not None
+            and callable(getattr(self.nsfw_detector, 'classify_batch', None))
+        )
         try:
             if self.use_turbo:
                 self._process_video_turbo(
@@ -464,11 +536,30 @@ class UnifiedVideoProcessor:
                     pause_event, start_frame, end_frame,
                 )
         finally:
-            if self.cap:
-                self.cap.release()
-            
+            try:
+                # Drain already accepted crops even on stop/skip. At most one
+                # bounded batch remains; never write a previous video's crops
+                # into the next video's directory.
+                self._flush_pending_crops()
+            finally:
+                self._defer_nsfw_saves = False
+                self._pending_crops = []
+                self._pending_crop_bytes = 0
+                if self.cap:
+                    self.cap.release()
             elapsed = time.time() - self.start_time
             self.stats['processing_time'] = elapsed
+            stages = dict(self._stage_seconds)
+            if self._video_reader is not None:
+                self.stats['video_read'] = self._video_reader.snapshot()
+                stages['video_read'] = self._video_reader.seconds
+            stages['sfw_nsfw'] = self.stats['nsfw_classification_time']
+            self.stats['stage_seconds'] = stages
+            measured = sum(stages.values())
+            self.stats['other_and_wait_seconds'] = max(0.0, elapsed - measured)
+            self._log('PERF | ' + ' | '.join(f'{name}={seconds:.3f}s'
+                      for name, seconds in sorted(stages.items(), key=lambda item: -item[1]))
+                      + f' | total={elapsed:.3f}s')
             fps = self.stats['processed_frames'] / elapsed if elapsed > 0 else 0
             
             print(f"\n✅ Video complete!")
@@ -490,6 +581,7 @@ class UnifiedVideoProcessor:
                                end_frame: Optional[int] = None):
         """Standard video processing (frame by frame)"""
         frame_count = 0
+        self._video_reader = reader = SelectiveVideoReader(self.cap)
 
         while True:
             # Pause check: if the event is cleared, block here until
@@ -497,8 +589,12 @@ class UnifiedVideoProcessor:
             # event is already set — i.e. not paused — so the hot path
             # is effectively free.
             if pause_event is not None and not pause_event.is_set():
+                self._flush_pending_crops()
                 print("\n⏸  Paused — waiting for resume...")
-                pause_event.wait()
+                while not pause_event.wait(0.1):
+                    if ((stop_callback and stop_callback())
+                            or (skip_callback and skip_callback())):
+                        return
                 print("▶  Resumed")
 
             if stop_callback and stop_callback():
@@ -509,19 +605,20 @@ class UnifiedVideoProcessor:
                 print("\n⏭️  Skipping current video by user request")
                 break
 
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-
-            frame_count += 1
-
-            # Respect the trim window — drop head and tail frames silently.
-            if frame_count < start_frame:
-                continue
+            # Keep the same one-based sample numbers and half-open trim.
+            # Sequential grabs retain codec dependencies; do not random-seek.
             if end_frame is not None and frame_count >= end_frame:
                 break
-
-            if frame_count % frame_interval != 0:
+            selected = (frame_count >= start_frame
+                        and (frame_count + 1) % frame_interval == 0)
+            ret, frame = reader.read(selected)
+            if not ret:
+                break
+            frame_count += 1
+            if not selected:
+                if frame_count % 64 == 0:
+                    progress = frame_count / self.total_frames * 100 if self.total_frames else 0
+                    self._emit_progress(progress_callback, progress)
                 continue
 
             self.stats['processed_frames'] += 1
@@ -532,8 +629,6 @@ class UnifiedVideoProcessor:
 
             # Process frame
             self._process_single_frame(frame, frame_count, skip_text, use_quick_text)
-            # Yield to OS every processed frame so UI stays responsive
-            time.sleep(0.001)
 
     def _process_video_turbo(self,
                             frame_interval: int,
@@ -549,7 +644,7 @@ class UnifiedVideoProcessor:
         frame_count = 0
         frame_batch = []
         frame_numbers = []
-        _batch_count = 0
+        self._video_reader = reader = SelectiveVideoReader(self.cap)
 
         while True:
             if pause_event is not None and not pause_event.is_set():
@@ -560,8 +655,12 @@ class UnifiedVideoProcessor:
                     self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                     frame_batch = []
                     frame_numbers = []
+                self._flush_pending_crops()
                 print("\n⏸  Paused — waiting for resume...")
-                pause_event.wait()
+                while not pause_event.wait(0.1):
+                    if ((stop_callback and stop_callback())
+                            or (skip_callback and skip_callback())):
+                        return
                 print("▶  Resumed")
 
             if stop_callback and stop_callback():
@@ -574,24 +673,22 @@ class UnifiedVideoProcessor:
                 print("\n⏭️  Skipping current video by user request")
                 break
 
-            ret, frame = self.cap.read()
-
-            if not ret:
-                if frame_batch:
-                    self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
-                break
-
-            frame_count += 1
-
-            # Respect the trim window.
-            if frame_count < start_frame:
-                continue
             if end_frame is not None and frame_count >= end_frame:
                 if frame_batch:
                     self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                 break
-
-            if frame_count % frame_interval != 0:
+            selected = (frame_count >= start_frame
+                        and (frame_count + 1) % frame_interval == 0)
+            ret, frame = reader.read(selected)
+            if not ret:
+                if frame_batch:
+                    self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
+                break
+            frame_count += 1
+            if not selected:
+                if frame_count % 64 == 0:
+                    progress = frame_count / self.total_frames * 100 if self.total_frames else 0
+                    self._emit_progress(progress_callback, progress)
                 continue
 
             frame_batch.append(frame)
@@ -601,12 +698,6 @@ class UnifiedVideoProcessor:
                 self._safe_process_batch(frame_batch, frame_numbers, skip_text, use_quick_text)
                 frame_batch = []
                 frame_numbers = []
-                _batch_count += 1
-                # Yield 2 ms to OS so UI thread stays responsive
-                time.sleep(0.002)
-                # Flush VRAM allocator every 50 batches to prevent fragmentation
-                if _batch_count % 50 == 0 and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
 
             if frame_count % max(frame_interval, 1) == 0:
                 progress = (frame_count / self.total_frames) * 100 if self.total_frames > 0 else 0
@@ -635,6 +726,12 @@ class UnifiedVideoProcessor:
         """
         if not frames:
             return
+        saved_stats = dict(self.stats)
+        quality_state = {}
+        if self.quality_analyzer is not None:
+            for attr in ('frame_hashes', 'frame_histograms', 'stats'):
+                if hasattr(self.quality_analyzer, attr):
+                    quality_state[attr] = copy.copy(getattr(self.quality_analyzer, attr))
         try:
             self._process_batch(frames, frame_numbers, skip_text, use_quick_text)
             return
@@ -642,6 +739,12 @@ class UnifiedVideoProcessor:
             # Only intercept OOMs — everything else is a real bug.
             if 'out of memory' not in str(e).lower():
                 raise
+            # Detection/preprocessing failed before persistence. Restore both
+            # duplicate history and counters before retrying these same frames.
+            self.stats.clear()
+            self.stats.update(saved_stats)
+            for attr, value in quality_state.items():
+                setattr(self.quality_analyzer, attr, value)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             logger.warning(
@@ -694,25 +797,25 @@ class UnifiedVideoProcessor:
         if skip_text and self.text_detector:
             for i, (frame, frame_num) in enumerate(zip(frames, frame_numbers)):
                 if use_quick_text:
-                    has_text = self.text_detector.quick_text_check(frame)
+                    has_text = self._timed('text', self.text_detector.quick_text_check, frame)
                 else:
-                    has_text, _ = self.text_detector.has_text(frame)
+                    has_text, _ = self._timed('text', self.text_detector.has_text, frame)
 
                 if has_text:
                     if self.subtitle_removal:
                         # V3.x: remove subtitle via inpaint, keep the frame
                         regions = []
                         if hasattr(self.text_detector, 'detect_overlay_regions'):
-                            regions = self.text_detector.detect_overlay_regions(frame)
+                            regions = self._timed('text', self.text_detector.detect_overlay_regions, frame)
                         if regions:
-                            frame = self.text_detector.remove_subtitle_regions(frame, regions)
+                            frame = self._timed('text', self.text_detector.remove_subtitle_regions, frame, regions)
                             self.stats['subtitle_removed'] += 1
                         valid_frames.append(frame)
                         valid_frame_nums.append(frame_num)
                     else:
                         # Check if we can crop around overlays instead of skipping
                         if hasattr(self.text_detector, 'detect_overlay_regions'):
-                            overlay_regions = self.text_detector.detect_overlay_regions(frame)
+                            overlay_regions = self._timed('text', self.text_detector.detect_overlay_regions, frame)
                             if overlay_regions:
                                 # Has overlay regions → keep frame, crop around them
                                 valid_frames.append(frame)
@@ -744,7 +847,7 @@ class UnifiedVideoProcessor:
                         and min(frame.shape[:2]) < self.upscale_min_resolution):
                     frame = self._upscale_image(frame)
                     valid_frames[i] = frame
-                is_quality_ok, _ = self.quality_analyzer.check_frame_quality(frame)
+                is_quality_ok, _ = self._timed('quality', self.quality_analyzer.check_frame_quality, frame)
                 if not is_quality_ok:
                     quality_mask[i] = False
                     self.stats['skipped_quality'] += 1
@@ -758,15 +861,25 @@ class UnifiedVideoProcessor:
         
         # GPU BATCH DETECTION - all frames at once!
         if hasattr(self.detector, 'detect_batch'):
-            all_detections = self.detector.detect_batch(final_frames)
+            all_detections = self._timed('detection', self.detector.detect_batch, final_frames)
         else:
-            all_detections = [self.detector.detect(f) for f in final_frames]
+            all_detections = [self._timed('detection', self.detector.detect, f) for f in final_frames]
         
         # Process results
         for frame, frame_num, detections in zip(final_frames, final_frame_nums, all_detections):
             self.stats['processed_frames'] += 1
-            self._process_frame_with_detection(frame, frame_num, detections)
-    
+            try:
+                self._process_frame_with_detection(frame, frame_num, detections)
+            except RuntimeError as exc:
+                if 'out of memory' not in str(exc).lower():
+                    raise
+                # Do not replay already saved siblings on a post-detection OOM.
+                self.stats['oom_dropped_frames'] += 1
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                logger.warning('Skipping frame %s after post-detection OOM: %s', frame_num, exc)
+        self._flush_pending_crops()
+
     def _process_frame_with_detection(self, frame: np.ndarray, frame_number: int,
                                        detections: Dict):
         """Process frame with pre-computed detections"""
@@ -792,7 +905,7 @@ class UnifiedVideoProcessor:
         # Detect overlay regions for batch frame (for exclusion-aware crop)
         excluded_zones = None
         if self.text_detector and hasattr(self.text_detector, 'detect_overlay_regions'):
-            excluded_zones = self.text_detector.detect_overlay_regions(frame) or None
+            excluded_zones = self._timed('text', self.text_detector.detect_overlay_regions, frame) or None
 
         # Calculate crop
         crop_box = self.cropper.calculate_crop_box(
@@ -821,14 +934,7 @@ class UnifiedVideoProcessor:
         )
 
         if quality > 0.3:
-            saved_path = self.save_cropped_frame(cropped, category, frame_number, quality)
-            self.stats['saved_frames'] += 1
-            self.stats[f'{category}_frames'] += 1
-            if excluded_zones:
-                self.stats['overlay_crops'] += 1
-
-            # V2.0: Auto captioning
-            self._caption_frame(cropped, saved_path, frame_number)
+            self._submit_crop(cropped, category, frame_number, quality, bool(excluded_zones))
 
     def _process_single_frame(self, frame: np.ndarray, frame_number: int,
                              skip_text: bool, use_quick_text: bool):
@@ -838,24 +944,24 @@ class UnifiedVideoProcessor:
         if skip_text and self.text_detector:
             # Step 1: Check for subtitle text
             if use_quick_text:
-                has_subtitle = self.text_detector.quick_text_check(frame)
+                has_subtitle = self._timed('text', self.text_detector.quick_text_check, frame)
             else:
-                has_subtitle, _ = self.text_detector.has_text(frame)
+                has_subtitle, _ = self._timed('text', self.text_detector.has_text, frame)
 
             if has_subtitle:
                 if self.subtitle_removal:
                     # V3.x: remove subtitle regions via inpaint, keep the frame
                     regions = []
                     if hasattr(self.text_detector, 'detect_overlay_regions'):
-                        regions = self.text_detector.detect_overlay_regions(frame)
+                        regions = self._timed('text', self.text_detector.detect_overlay_regions, frame)
                     if regions:
-                        frame = self.text_detector.remove_subtitle_regions(frame, regions)
+                        frame = self._timed('text', self.text_detector.remove_subtitle_regions, frame, regions)
                         self.stats['subtitle_removed'] += 1
                     excluded_zones = None  # cleaned — no exclusion needed
                 else:
                     # Step 2: Subtitle detected — check if we can crop around overlays
                     if hasattr(self.text_detector, 'detect_overlay_regions'):
-                        excluded_zones = self.text_detector.detect_overlay_regions(frame)
+                        excluded_zones = self._timed('text', self.text_detector.detect_overlay_regions, frame)
                         if excluded_zones:
                             # Overlay regions found → crop around them instead of skipping
                             pass
@@ -870,7 +976,7 @@ class UnifiedVideoProcessor:
             else:
                 # No subtitle — still collect overlay regions for exclusion-aware cropping
                 if hasattr(self.text_detector, 'detect_overlay_regions'):
-                    excluded_zones = self.text_detector.detect_overlay_regions(frame) or None
+                    excluded_zones = self._timed('text', self.text_detector.detect_overlay_regions, frame) or None
         
         # V3.x: Upscale full frame if target="frame"
         if self.upscaler and self.upscale_target == "frame":
@@ -882,7 +988,7 @@ class UnifiedVideoProcessor:
             if (self.upscaler and self.upscale_target == "crop"
                     and min(frame.shape[:2]) < self.upscale_min_resolution):
                 frame = self._upscale_image(frame)
-            is_quality_ok, quality_info = self.quality_analyzer.check_frame_quality(frame)
+            is_quality_ok, quality_info = self._timed('quality', self.quality_analyzer.check_frame_quality, frame)
             if not is_quality_ok:
                 self.stats['skipped_quality'] += 1
                 return
@@ -892,7 +998,7 @@ class UnifiedVideoProcessor:
         fh, fw = frame.shape[:2]
 
         # Detect objects
-        detections = self.detector.detect(frame)
+        detections = self._timed('detection', self.detector.detect, frame)
 
         # Get primary subject
         category, subject = self.detector.get_primary_subject(detections)
@@ -936,14 +1042,98 @@ class UnifiedVideoProcessor:
         )
 
         if quality > 0.3:
-            saved_path = self.save_cropped_frame(cropped, category, frame_number, quality)
-            self.stats['saved_frames'] += 1
-            self.stats[f'{category}_frames'] += 1
-            if excluded_zones:
-                self.stats['overlay_crops'] += 1
+            self._submit_crop(cropped, category, frame_number, quality, bool(excluded_zones))
 
-            # V2.0: Auto captioning
-            self._caption_frame(cropped, saved_path, frame_number)
+    def _submit_crop(self, frame: np.ndarray, category: str, frame_number: int,
+                     quality: float, overlay: bool) -> None:
+        """Preserve accepted-crop order while amortizing GPU classifier calls."""
+        record = (frame, category, frame_number, quality, overlay)
+        if not self._defer_nsfw_saves or (category != 'person' and not self._pending_crops):
+            self._persist_crop(record)
+            return
+        limit = min(32, max(1, int(getattr(self.nsfw_detector, 'effective_batch_size', 1))))
+        if limit == 1:
+            self._flush_pending_crops()
+            self._persist_crop(record)
+            return
+        if self._pending_crops and (
+                len(self._pending_crops) >= limit
+                or self._pending_crop_bytes + frame.nbytes > self._pending_crop_max_bytes):
+            self._flush_pending_crops()
+        if frame.nbytes > self._pending_crop_max_bytes:
+            self._persist_crop(record)
+            return
+        # A crop can be a view into a much larger source frame. A compact copy
+        # makes the byte ceiling real and prevents later source reuse/mutation.
+        owned = frame.copy()
+        self._pending_crops.append((owned, category, frame_number, quality, overlay))
+        self._pending_crop_bytes += owned.nbytes
+        if len(self._pending_crops) >= limit:
+            self._flush_pending_crops()
+
+    @staticmethod
+    def _valid_nsfw_result(result) -> tuple:
+        try:
+            label, confidence = result
+            confidence = float(confidence)
+            if label not in ('sfw', 'nsfw', 'uncertain'):
+                raise ValueError('Unknown classifier label.')
+            if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+                raise ValueError('Invalid classifier confidence.')
+            return label, confidence
+        except (TypeError, ValueError):
+            return 'uncertain', 0.5
+
+    def _classify_crops(self, frames: List[np.ndarray]) -> list:
+        """Run only on final person crops; no full-frame rating propagation."""
+        if not frames:
+            return []
+        start = time.perf_counter()
+        try:
+            batch = getattr(self.nsfw_detector, 'classify_batch', None)
+            if callable(batch):
+                results = batch(frames)
+            else:
+                results = [self.nsfw_detector.classify(frame) for frame in frames]
+            if not isinstance(results, (list, tuple)) or len(results) != len(frames):
+                raise ValueError('SFW/NSFW result count mismatch.')
+            return [self._valid_nsfw_result(result) for result in results]
+        except Exception as exc:
+            # Never let a classifier OOM reach detection's replay wrapper:
+            # sibling crops may have already been persisted.
+            self._log(f'SFW/NSFW error; {len(frames)} crops marked uncertain: {exc}')
+            return [('uncertain', 0.5) for _ in frames]
+        finally:
+            self.stats['nsfw_classification_time'] += time.perf_counter() - start
+            self.stats['nsfw_crops_analyzed'] += len(frames)
+            self.stats['nsfw_batches'] += 1
+            self.stats['nsfw_max_batch'] = max(self.stats['nsfw_max_batch'], len(frames))
+
+    def _flush_pending_crops(self) -> None:
+        if not self._pending_crops:
+            return
+        pending = self._pending_crops
+        # Detach before inference/persistence: a later cleanup must never
+        # replay a partially saved batch, even after an exception.
+        self._pending_crops = []
+        self._pending_crop_bytes = 0
+        person_frames = [record[0] for record in pending if record[1] == 'person']
+        ratings = iter(self._classify_crops(person_frames))
+        for record in pending:
+            rating = next(ratings) if record[1] == 'person' else None
+            self._persist_crop(record, rating)
+
+    def _persist_crop(self, record: tuple, nsfw_result=None) -> None:
+        frame, category, frame_number, quality, overlay = record
+        saved_path = self.save_cropped_frame(
+            frame, category, frame_number, quality, nsfw_result=nsfw_result)
+        if saved_path is None:
+            return
+        self.stats['saved_frames'] += 1
+        self.stats[f'{category}_frames'] += 1
+        if overlay:
+            self.stats['overlay_crops'] += 1
+        self._timed('caption', self._caption_frame, frame, saved_path, frame_number)
 
     def _caption_frame(self, cropped: np.ndarray, saved_path: Path, frame_number: int):
         """
@@ -1041,13 +1231,13 @@ class UnifiedVideoProcessor:
         """Upscale *frame* via the registered upscaler; returns original on failure."""
         if not self.upscaler or not self.upscaler.is_available():
             return self._cap_resolution(frame)
-        result = self.upscaler.upscale(frame)
+        result = self._timed('upscale', self.upscaler.upscale, frame)
         if result is not frame:
             self.stats['upscaled_frames'] += 1
         return self._cap_resolution(result)
 
     def save_cropped_frame(self, frame: np.ndarray, category: str,
-                          frame_number: int, quality: float) -> Optional[Path]:
+                          frame_number: int, quality: float, nsfw_result=None) -> Optional[Path]:
         """Save cropped frame to appropriate directory and return path.
 
         When nsfw_detector is set, classifies the frame first and routes
@@ -1060,34 +1250,35 @@ class UnifiedVideoProcessor:
         else:
             base_dir = self.object_dir
 
-        # V3.x NSFW routing — persons only; animals and objects skip classification
+        # Precomputed batch predictions never trigger a second inference.
+        rating_label = None
         if self.nsfw_detector is not None and category == 'person':
-            try:
-                nsfw_label, nsfw_conf = self.nsfw_detector.classify(frame)
-            except Exception as exc:
-                logger.debug("NSFW classify error: %s", exc)
-                nsfw_label, nsfw_conf = 'uncertain', 0.5
-
-            # Track stats
-            if nsfw_label == 'nsfw':
-                self.stats['nsfw_frames'] += 1
-            elif nsfw_label == 'sfw':
-                self.stats['sfw_frames'] += 1
-            else:
-                self.stats['nsfw_uncertain'] += 1
-                # Fall uncertain back to sfw subdir unless separate folder enabled
-                if not self.nsfw_uncertain_folder:
-                    nsfw_label = 'sfw'
-
-            output_dir = base_dir / nsfw_label
+            rating = (self._classify_crops([frame])[0] if nsfw_result is None
+                      else self._valid_nsfw_result(nsfw_result))
+            rating_label, _ = rating
+            folder_label = rating_label
+            if rating_label == 'uncertain' and not self.nsfw_uncertain_folder:
+                # Retain the existing explicit legacy folder preference. The
+                # counter remains uncertain, never counted as confirmed SFW.
+                folder_label = 'sfw'
+            output_dir = base_dir / folder_label
         else:
             output_dir = base_dir
 
         filename = f"frame_{frame_number:06d}_q{int(quality*100)}.png"
-        output_path = output_dir / filename
+        from src.core.dataset_files import unique_image_path
+        output_path = self._timed('output_naming', unique_image_path, output_dir / filename)
 
         # PNG: lossless, unicode-safe. compression 3 = good size/speed balance.
-        _imwrite_unicode(str(output_path), frame, ext=".png")
+        if not self._timed('image_write', _imwrite_unicode, str(output_path), frame, ext=".png"):
+            self.stats['save_errors'] = self.stats.get('save_errors', 0) + 1
+            self._log(f'Image write failed: {output_path}')
+            return None
+
+        # Count folder classifications only after a successful durable write.
+        if rating_label is not None:
+            key = {'sfw': 'sfw_frames', 'nsfw': 'nsfw_frames', 'uncertain': 'nsfw_uncertain'}[rating_label]
+            self.stats[key] += 1
 
         # Notify the UI's live preview grid (throttled / no-op if None).
         cb = self._frame_saved_callback
@@ -1117,3 +1308,21 @@ class UnifiedVideoProcessor:
         if self.nsfw_detector is not None:
             print(f"  |- SFW:           {self.stats['sfw_frames']}")
             print(f"  |- NSFW:          {self.stats['nsfw_frames']}")
+            print(f"  |- Uncertain:     {self.stats['nsfw_uncertain']}")
+            count = self.stats['nsfw_crops_analyzed']
+            elapsed = self.stats['nsfw_classification_time']
+            milliseconds = elapsed * 1000 / count if count else 0.0
+            device = getattr(self.nsfw_detector, 'actual_device', 'unknown')
+            self._log(
+                f"SFW/NSFW: {device}, {count} crops, {elapsed:.2f}s "
+                f"({milliseconds:.1f} ms/crop), max batch={self.stats['nsfw_max_batch']}. "
+                "Classification time excludes video decode, captioning and saving.")
+
+
+    def print_overall_summary(self):
+        """Summarize completion without relying on a missing legacy method."""
+        stats = self.overall_stats
+        self._log('Completed: {videos} videos, {frames} saved frames, {seconds:.1f}s'.format(
+            videos=stats.get('processed_videos', 0),
+            frames=stats.get('total_frames_saved', 0),
+            seconds=stats.get('total_time', 0)))

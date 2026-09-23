@@ -477,19 +477,8 @@ class AnimeCharacterRecognizer:
 
     @staticmethod
     def _safe_copy_move(src: Path, dst_dir: Path, copy: bool):
-        dst_dir.mkdir(parents=True, exist_ok=True)
-        dst = dst_dir / src.name
-        if dst.exists() and dst != src:
-            # st_ino is unreliable on Windows (often 0) — use a counter instead
-            stem, suffix = src.stem, src.suffix
-            counter = 1
-            while dst.exists():
-                dst = dst_dir / f"{stem}_{counter}{suffix}"
-                counter += 1
-        if copy:
-            shutil.copy2(str(src), str(dst))
-        else:
-            shutil.move(str(src), str(dst))
+        from src.core.dataset_files import transfer_image_pair
+        return transfer_image_pair(src, dst_dir, copy=copy)
 
     # ── clustering ────────────────────────────────────────────────────────────
 

@@ -963,37 +963,8 @@ class CharacterRecognizer:
         for img_path, char_name in all_assignments.items():
             dest_dir = out_path / char_name
             try:
-                dest_dir.mkdir(parents=True, exist_ok=True)
-                dest_file = dest_dir / img_path.name
-
-                # Resolve both sides so src==dest comparison is meaningful
-                # across symlinks and relative paths.
-                try:
-                    same_file = (
-                        img_path.resolve() == dest_file.resolve()
-                    )
-                except OSError:
-                    same_file = False
-                if same_file:
-                    # Nothing to do — already at the destination. Still count
-                    # it so the stats match user expectations.
-                    stats[char_name] = stats.get(char_name, 0) + 1
-                    continue
-
-                # Handle name collisions
-                if dest_file.exists():
-                    stem, suffix = img_path.stem, img_path.suffix
-                    counter = 1
-                    while dest_file.exists():
-                        dest_file = dest_dir / f"{stem}_{counter}{suffix}"
-                        counter += 1
-
-                if copy:
-                    shutil.copy2(str(img_path), str(dest_file))
-                else:
-                    # shutil.move handles cross-device fallback correctly;
-                    # on same-device moves it's effectively an os.rename.
-                    shutil.move(str(img_path), str(dest_file))
+                from src.core.dataset_files import transfer_image_pair
+                transfer_image_pair(img_path, dest_dir, copy=copy)
                 stats[char_name] = stats.get(char_name, 0) + 1
             except (OSError, shutil.Error) as e:
                 errors += 1

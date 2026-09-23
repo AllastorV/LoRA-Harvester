@@ -7,6 +7,15 @@ import sys
 import os
 import traceback
 import datetime
+import atexit
+from src.core.setup_manager import setup_lock, ROOT as _PROJECT_ROOT, SetupError
+_runtime_guard = setup_lock(_PROJECT_ROOT, '.runtime.lock')
+try:
+    _runtime_guard.__enter__()
+except SetupError as _guard_error:
+    print('[ERROR]', _guard_error)
+    sys.exit(1)
+atexit.register(lambda: _runtime_guard.__exit__(None, None, None))
 
 # CRITICAL (Windows): pre-load onnxruntime BEFORE PyQt5. PyQt5 ships Qt DLLs
 # that, when loaded first, break onnxruntime's native DLL (onnxruntime_pybind11_state),
@@ -79,7 +88,7 @@ except ImportError:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 try:
-    from src.ui.main_window import create_app
+    from src.ui.main_window_v2 import create_app
 except ModuleNotFoundError as _e:
     # Dependencies not installed (users often run run.bat without install.bat).
     _missing = _e.name or str(_e)
@@ -87,9 +96,8 @@ except ModuleNotFoundError as _e:
         f"Missing dependency: '{_missing}'\n\n"
         f"Dependencies are not installed for this Python interpreter:\n"
         f"  {sys.executable}\n\n"
-        f"Fix: run install.bat (or install_gpu.bat for NVIDIA GPU),\n"
-        f"or install manually:\n"
-        f'  "{sys.executable}" -m pip install -r requirements.txt'
+        f"Fix: close the program and run install.bat (unified setup/repair).\n"
+        f"Choose Core, then optional GPU and Clothing components."
     )
     print("=" * 60)
     print(f"[ERROR] {_msg}")
@@ -104,16 +112,6 @@ except ModuleNotFoundError as _e:
                 ctypes.windll.user32.MessageBoxW(0, _msg, "LoRA-Harvester", 0x10)
         except Exception:
             pass
-    if _has_console and sys.stdin and sys.stdin.isatty():
-        _answer = input("Install dependencies now? [y/N]: ").strip().lower()
-        if _answer == 'y':
-            import subprocess
-            _req = os.path.join(os.path.dirname(__file__), 'requirements.txt')
-            _rc = subprocess.call([sys.executable, '-m', 'pip', 'install', '-r', _req])
-            if _rc == 0:
-                print("\n[OK] Dependencies installed. Restart the app (run.bat).")
-            else:
-                print("\n[ERROR] Install failed - see pip output above.")
     sys.exit(1)
 
 
@@ -151,21 +149,19 @@ def main():
         else:
             print("⚠️  No GPU detected. Possible reasons:")
             print("   1. NVIDIA GPU driver not installed")
-            print("   2. CUDA toolkit not installed")
+            print("   2. NVIDIA driver does not support the selected CUDA wheels")
             print("   3. PyTorch installed without CUDA support")
             print("   4. GPU not compatible with CUDA")
             print()
             print("🔧 To fix:")
             print("   1. Install NVIDIA GPU drivers")
-            print("   2. Install CUDA toolkit 11.8+")
-            print("   3. Reinstall PyTorch with CUDA:")
-            print("      pip uninstall torch torchvision")
-            print("      pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118")
+            print("   2. Close the app, open install.bat and choose GPU repair")
+            print("   3. Check the wizard diagnostics instead of using global pip")
             print()
             print("   Running on CPU (slower but functional)")
     except ImportError:
         print("⚠️  PyTorch not installed. Please install requirements first.")
-        print("   Run: pip install -r requirements.txt")
+        print("   Open install.bat and select Core setup / repair.")
         return
     
     print()

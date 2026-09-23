@@ -542,6 +542,6 @@ done
 **🎬 İyi kullanımlar!**
 
 Daha fazla bilgi için:
-- [README.md](README.md) - Ana dokümantasyon
-- [KULLANIM.md](KULLANIM.md) - Genel kullanım kılavuzu
+- [README.md](../README.md) - Ana dokümantasyon
+- [AI_TOOLKIT_NOTLARI.md](../AI_TOOLKIT_NOTLARI.md) - Güncel kullanım kılavuzu
 - `python ensemble_demo.py` - Canlı karşılaştırma

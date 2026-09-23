@@ -42,9 +42,7 @@ class SetupDialog(QDialog):
         self.setWindowTitle(get_text('setup_window_title', self.lang))
         self.setModal(True)
         self.setMinimumWidth(580)
-        self.setStyleSheet(
-            f"QDialog {{ background-color: {theme.BG_DARK}; border-radius: 14px; }}"
-        )
+        theme.bind_style(self, lambda: f"QDialog {{ background-color: {theme.BG_DARK}; border-radius: 14px; }}")
         self._thread = None
         self._done = False
         self._init_ui()
@@ -57,58 +55,48 @@ class SetupDialog(QDialog):
         # Title
         title = QLabel(get_text('setup_title', self.lang))
         title.setFont(QFont("Inter", 20, QFont.Bold))
-        title.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; background: transparent; border: none; letter-spacing: -0.015em;"
-        )
+        theme.bind_style(title, lambda: f"color: {theme.TEXT_PRIMARY}; background: transparent; border: none; letter-spacing: -0.015em;")
         lay.addWidget(title)
 
         sub = QLabel(get_text('setup_subtitle', self.lang))
         sub.setWordWrap(True)
-        sub.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; background: transparent; border: none;"
-            f"font-size: {theme.fs(11)};"
-        )
+        theme.bind_style(sub, lambda: f"color: {theme.TEXT_SECONDARY}; background: transparent; border: none;"
+            f"font-size: {theme.fs(11)};")
         lay.addWidget(sub)
 
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setStyleSheet(theme.progress_bar())
+        theme.bind_style(self.progress_bar, theme.progress_bar)
         self.progress_bar.setFixedHeight(10)
         lay.addWidget(self.progress_bar)
 
         # Status label
         self.status_lbl = QLabel(get_text('setup_preparing', self.lang))
-        self.status_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; background: transparent; border: none;"
-            f"font-size: {theme.fs(10)};"
-        )
+        theme.bind_style(self.status_lbl, lambda: f"color: {theme.TEXT_MUTED}; background: transparent; border: none;"
+            f"font-size: {theme.fs(10)};")
         lay.addWidget(self.status_lbl)
 
         # Log
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
         self.log_box.setMinimumHeight(140)
-        self.log_box.setStyleSheet(
-            f"QTextEdit {{ background-color: {theme.BG_PANEL}; "
+        theme.bind_style(self.log_box, lambda: f"QTextEdit {{ background-color: {theme.BG_PANEL}; "
             f"color: {theme.TEXT_SECONDARY}; "
             f"border: 1px solid {theme.BORDER}; border-radius: 6px; "
             f"font-family: {theme.FONT_MONO}; font-size: {theme.fs(10)}; "
-            f"padding: 6px; }}"
-        )
+            f"padding: 6px; }}")
         lay.addWidget(self.log_box)
 
         # Buttons
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self.skip_btn = QPushButton(get_text('setup_skip', self.lang))
-        self.skip_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; "
+        theme.bind_style(self.skip_btn, lambda: f"QPushButton {{ background: transparent; border: none; "
             f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
             f"text-decoration: underline; }}"
-            f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY}; }}"
-        )
+            f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY}; }}")
         self.skip_btn.clicked.connect(self._skip)
         btn_row.addWidget(self.skip_btn)
         lay.addLayout(btn_row)
@@ -137,11 +125,9 @@ class SetupDialog(QDialog):
         self.status_lbl.setText(get_text('setup_complete', self.lang) if ok else
                                  get_text('setup_failed', self.lang))
         self.skip_btn.setText(get_text('setup_continue', self.lang))
-        self.skip_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {theme.get_accent()}; "
+        theme.bind_style(self.skip_btn, lambda: f"QPushButton {{ background-color: {theme.get_accent()}; "
             f"color: #ffffff; border: none; border-radius: 6px; "
-            f"padding: 6px 18px; font-size: {theme.fs(11)}; font-weight: 700; }}"
-        )
+            f"padding: 6px 18px; font-size: {theme.fs(11)}; font-weight: 700; }}")
         # Auto-close after 1.2 s on success
         if ok:
             QTimer.singleShot(1200, self.accept)

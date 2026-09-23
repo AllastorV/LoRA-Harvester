@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize
-from PyQt5.QtGui import QPixmap, QIcon, QKeySequence
+from PyQt5.QtGui import QPixmap, QImage, QImageReader, QIcon, QKeySequence
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QListWidget, QListWidgetItem, QAbstractItemView,
@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
     QProgressBar,
 )
 
-from src.core.dataset_scanner import FramePair, scan_dataset, detect_concepts
+from src.core.dataset_scanner import FramePair, scan_dataset
 from src.ui.translations import get_text
 from src.ui import theme
 
@@ -32,8 +32,8 @@ class _StatsLoader(QThread):
     """Computes concept distribution, resolution buckets, warnings."""
     stats_ready = pyqtSignal(dict)
 
-    def __init__(self, pairs: List[FramePair], folder: Path):
-        super().__init__()
+    def __init__(self, pairs: List[FramePair], folder: Path, parent=None):
+        super().__init__(parent)
         self._pairs = pairs
         self._folder = folder
 
@@ -45,9 +45,26 @@ class _StatsLoader(QThread):
 
         # Resolution buckets (use PIL — lightweight)
         buckets: Counter = Counter()
+        tag_counts = []
+        caption_previews = {}
         try:
             from PIL import Image as _PIL
-            for p in self._pairs:
+            for index, p in enumerate(self._pairs):
+                if self.isInterruptionRequested():
+                    return
+                if p.caption:
+                    try:
+                        # Background, bounded read; no caption reads in the
+                        # GUI's placeholder/stats loops.
+                        with p.caption.open('rb') as handle:
+                            raw = handle.read(1024 * 1024 + 1)
+                        if len(raw) <= 1024 * 1024:
+                            text = raw.decode('utf-8-sig').strip()
+                            if text:
+                                tag_counts.append(sum(bool(t.strip()) for t in text.split(',')))
+                                caption_previews[str(p.image)] = text[:2000]
+                    except (OSError, UnicodeError):
+                        pass
                 try:
                     with _PIL.open(str(p.image)) as img:
                         w, h = img.size
@@ -77,6 +94,8 @@ class _StatsLoader(QThread):
             'concepts': dict(concept_counter),
             'resolution_buckets': dict(buckets),
             'warnings': warnings,
+            'average_tags': round(sum(tag_counts) / len(tag_counts), 1) if tag_counts else 0,
+            'caption_previews': caption_previews,
         })
 
 
@@ -85,35 +104,45 @@ class _StatsLoader(QThread):
 # ──────────────────────────────────────────────────────────
 
 class _ThumbnailLoader(QThread):
-    """Emits (index, QPixmap) for each image found."""
-    thumbnail_ready = pyqtSignal(int, QPixmap)
+    """Decode scaled QImages in the worker; QPixmap belongs to the GUI."""
+    thumbnail_ready = pyqtSignal(int, QImage)
     finished_loading = pyqtSignal(int)  # total count
 
-    def __init__(self, pairs: List[FramePair], thumb_size: int = 160):
-        super().__init__()
+    def __init__(self, pairs: List[FramePair], thumb_size: int = 160, parent=None):
+        super().__init__(parent)
         self._pairs = pairs
         self._thumb_size = thumb_size
         self._abort = False
 
     def abort(self):
         self._abort = True
+        self.requestInterruption()
 
     def run(self):
         for i, pair in enumerate(self._pairs):
-            if self._abort:
+            if self._abort or self.isInterruptionRequested():
                 break
             try:
-                px = QPixmap(str(pair.image))
-                if px.isNull():
+                reader = QImageReader(str(pair.image))
+                reader.setAutoTransform(True)
+                original = reader.size()
+                if original.isValid():
+                    if original.width() * original.height() > 120_000_000:
+                        continue
+                    reader.setScaledSize(original.scaled(
+                        QSize(self._thumb_size, self._thumb_size), Qt.KeepAspectRatio))
+                image = reader.read()
+                if image.isNull():
                     continue
-                px = px.scaled(
-                    self._thumb_size, self._thumb_size,
-                    Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
-                self.thumbnail_ready.emit(i, px)
+                image = image.scaled(self._thumb_size, self._thumb_size,
+                                     Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                if self._abort or self.isInterruptionRequested():
+                    return
+                self.thumbnail_ready.emit(i, image)
             except Exception:
                 pass
-        self.finished_loading.emit(len(self._pairs))
+        if not self._abort and not self.isInterruptionRequested():
+            self.finished_loading.emit(len(self._pairs))
 
 
 # ──────────────────────────────────────────────────────────
@@ -137,7 +166,7 @@ class _KohyaExportDialog(QDialog):
         src_row = QHBoxLayout()
         src_row.addWidget(QLabel(_t('kohya_dlg_source')))
         src_display = QLabel(str(source_folder) if source_folder else "(none)")
-        src_display.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)};")
+        theme.bind_style(src_display, lambda: f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)};")
         src_row.addWidget(src_display, 1)
         lay.addLayout(src_row)
 
@@ -145,9 +174,9 @@ class _KohyaExportDialog(QDialog):
         dest_row = QHBoxLayout()
         dest_row.addWidget(QLabel(_t('kohya_dlg_dest')))
         self._dest_lbl = QLabel(_t('kohya_dlg_not_selected'))
-        self._dest_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)};")
+        theme.bind_style(self._dest_lbl, lambda: f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)};")
         dest_btn = QPushButton(_t('kohya_dlg_browse'))
-        dest_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(dest_btn, theme.btn_secondary)
         dest_btn.clicked.connect(self._browse_dest)
         dest_row.addWidget(self._dest_lbl, 1)
         dest_row.addWidget(dest_btn)
@@ -219,6 +248,8 @@ class ReviewGridPage(QWidget):
         self._folder: Optional[Path] = None
         self._pairs: List[FramePair] = []
         self._loader: Optional[_ThumbnailLoader] = None
+        self._stats_loader = None
+        self._items_by_path = {}
         self._total_count = 0
         self._rejected_count = 0
         self._init_ui()
@@ -240,13 +271,13 @@ class ReviewGridPage(QWidget):
         _t = lambda k: get_text(k, self.lang)
 
         self._path_btn = QPushButton(_t('review_select_folder'))
-        self._path_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._path_btn, theme.btn_secondary)
         self._path_btn.setToolTip(_t('review_select_folder_tip'))
         self._path_btn.clicked.connect(self._browse_folder)
         tb.addWidget(self._path_btn)
 
         self._reload_btn = QPushButton(_t('review_reload'))
-        self._reload_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._reload_btn, theme.btn_secondary)
         self._reload_btn.setToolTip(_t('review_reload_tip'))
         self._reload_btn.clicked.connect(self._reload)
         self._reload_btn.setEnabled(False)
@@ -255,13 +286,13 @@ class ReviewGridPage(QWidget):
         tb.addStretch()
 
         self._sel_all_btn = QPushButton(_t('review_select_all'))
-        self._sel_all_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._sel_all_btn, theme.btn_secondary)
         self._sel_all_btn.clicked.connect(lambda: self._list.selectAll())
         self._sel_all_btn.setEnabled(False)
         tb.addWidget(self._sel_all_btn)
 
         self._keep_btn = QPushButton(_t('review_keep'))
-        self._keep_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._keep_btn, theme.btn_secondary)
         self._keep_btn.setToolTip(_t('review_keep_tip'))
         self._keep_btn.clicked.connect(self._keep_selected)
         self._keep_btn.setEnabled(False)
@@ -269,20 +300,20 @@ class ReviewGridPage(QWidget):
 
         # Reject mode selector
         self._mode_combo = QComboBox()
-        self._mode_combo.setStyleSheet(theme.spinbox_compact())
+        theme.bind_style(self._mode_combo, theme.spinbox_compact)
         self._mode_combo.addItem(_t('review_mode_move'), "move")
         self._mode_combo.addItem(_t('review_mode_delete'), "delete")
         tb.addWidget(self._mode_combo)
 
         self._reject_btn = QPushButton(_t('review_reject'))
-        self._reject_btn.setStyleSheet(theme.btn_danger())
+        theme.bind_style(self._reject_btn, theme.btn_danger)
         self._reject_btn.setToolTip(_t('review_reject_tip'))
         self._reject_btn.clicked.connect(self._reject_selected)
         self._reject_btn.setEnabled(False)
         tb.addWidget(self._reject_btn)
 
         self._export_btn = QPushButton(_t('review_export_kohya'))
-        self._export_btn.setStyleSheet(theme.btn_primary())
+        theme.bind_style(self._export_btn, theme.btn_primary)
         self._export_btn.setToolTip(_t('review_export_kohya_tip'))
         self._export_btn.clicked.connect(self._export_kohya)
         self._export_btn.setEnabled(False)
@@ -309,7 +340,7 @@ class ReviewGridPage(QWidget):
         # ── Progress bar (shown during thumbnail loading) ──
         self._progress = QProgressBar()
         self._progress.setVisible(False)
-        self._progress.setStyleSheet(f"QProgressBar::chunk {{ background: {theme.ORANGE}; }}")
+        theme.bind_style(self._progress, lambda: f"QProgressBar::chunk {{ background: {theme.ORANGE}; }}")
         root.addWidget(self._progress)
 
         # ── Content splitter: grid | caption preview ──
@@ -317,11 +348,15 @@ class ReviewGridPage(QWidget):
 
         self._list = QListWidget()
         self._list.setViewMode(QListWidget.IconMode)
+        self._list.setUniformItemSizes(True)
+        self._list.setLayoutMode(QListWidget.Batched)
+        self._list.setBatchSize(128)
         self._list.setIconSize(QSize(160, 160))
+        self._list.setGridSize(QSize(184, 196))
         self._list.setResizeMode(QListWidget.Adjust)
         self._list.setMovement(QListWidget.Static)
         self._list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self._list.setStyleSheet(f"""
+        theme.bind_style(self._list, lambda: f"""
             QListWidget {{
                 background: {theme.BG_CARD};
                 border: 1px solid {theme.BORDER};
@@ -341,7 +376,7 @@ class ReviewGridPage(QWidget):
         right_tabs = _QTW()
         right_tabs.setMinimumWidth(220)
         right_tabs.setMaximumWidth(380)
-        right_tabs.setStyleSheet(f"""
+        theme.bind_style(right_tabs, lambda: f"""
             QTabWidget::pane{{border:1px solid {theme.BORDER};background:{theme.BG_CARD};border-radius:8px;}}
             QTabBar::tab{{background:transparent;color:{theme.TEXT_MUTED};
                 padding:7px 14px;font-size:{theme.fs(11)};font-weight:600;
@@ -356,15 +391,15 @@ class ReviewGridPage(QWidget):
         self._preview_img = QLabel()
         self._preview_img.setFixedSize(200, 200)
         self._preview_img.setAlignment(Qt.AlignCenter)
-        self._preview_img.setStyleSheet(f"background: {theme.BG_WINDOW}; border-radius: 4px;")
+        theme.bind_style(self._preview_img, lambda: f"background: {theme.BG_WINDOW}; border-radius: 4px;")
         preview_lay.addWidget(self._preview_img, alignment=Qt.AlignCenter)
         cap_hdr = QLabel(_t('review_caption_label'))
-        cap_hdr.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)}; font-weight:600;")
+        theme.bind_style(cap_hdr, lambda: f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)}; font-weight:600;")
         preview_lay.addWidget(cap_hdr)
         self._cap_hdr = cap_hdr
         self._caption_text = QTextEdit()
         self._caption_text.setReadOnly(True)
-        self._caption_text.setStyleSheet(theme.text_edit_input())
+        theme.bind_style(self._caption_text, theme.text_edit_input)
         self._caption_text.setPlaceholderText(_t('review_caption_placeholder'))
         preview_lay.addWidget(self._caption_text, 1)
         right_tabs.addTab(preview_widget, _t('review_tab_preview'))
@@ -378,14 +413,14 @@ class ReviewGridPage(QWidget):
 
         self._stats_text = QTextEdit()
         self._stats_text.setReadOnly(True)
-        self._stats_text.setStyleSheet(theme.text_edit_input())
+        theme.bind_style(self._stats_text, theme.text_edit_input)
         self._stats_text.setPlaceholderText(_t('review_stats_placeholder'))
         stats_lay.addWidget(self._stats_text, 1)
 
         self._stats_chart = QLabel()  # custom bar chart rendered via HTML
         self._stats_chart.setWordWrap(True)
         self._stats_chart.setTextFormat(Qt.RichText)
-        self._stats_chart.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(10)};")
+        theme.bind_style(self._stats_chart, lambda: f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(10)};")
         stats_lay.addWidget(self._stats_chart)
 
         right_tabs.addTab(stats_widget, _t('review_tab_stats'))
@@ -398,25 +433,21 @@ class ReviewGridPage(QWidget):
 
         # ── Status bar ──
         self._status_lbl = QLabel(_t('review_status_initial'))
-        self._status_lbl.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)}; padding: 2px 0;"
-        )
+        theme.bind_style(self._status_lbl, lambda: f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(11)}; padding: 2px 0;")
         root.addWidget(self._status_lbl)
 
     def _make_stat_card(self, label: str, value: str) -> QFrame:
         card = QFrame()
         card.setFixedSize(100, 52)
-        card.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER}; border-radius: 8px; }}"
-        )
+        theme.bind_style(card, lambda: f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER}; border-radius: 8px; }}")
         lay = QVBoxLayout(card)
         lay.setContentsMargins(8, 4, 8, 4)
         val_lbl = QLabel(value)
         val_lbl.setAlignment(Qt.AlignCenter)
-        val_lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY}; font-size:{theme.fs(16)}; font-weight:700; border:none;")
+        theme.bind_style(val_lbl, lambda: f"color:{theme.TEXT_PRIMARY}; font-size:{theme.fs(16)}; font-weight:700; border:none;")
         txt_lbl = QLabel(label)
         txt_lbl.setAlignment(Qt.AlignCenter)
-        txt_lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(10)}; border:none;")
+        theme.bind_style(txt_lbl, lambda: f"color:{theme.TEXT_SECONDARY}; font-size:{theme.fs(10)}; border:none;")
         lay.addWidget(val_lbl)
         lay.addWidget(txt_lbl)
         card._val_lbl = val_lbl
@@ -446,12 +477,19 @@ class ReviewGridPage(QWidget):
             self._load_folder()
 
     def _load_folder(self):
+        if self._stats_loader and self._stats_loader.isRunning():
+            self._stats_loader.requestInterruption()
+        self._stats_loader = None
         if self._loader and self._loader.isRunning():
             self._loader.abort()
-            self._loader.wait(2000)
+        # Parent-owned workers finish cooperatively; do not block the GUI on
+        # wait(2000). Queued callbacks are accepted only from the current job.
+        self._loader = None
 
+        self._items_by_path.clear()
         self._list.clear()
         self._pairs = []
+        self._total_count = 0
         self._rejected_count = 0
         self._status_lbl.setText(get_text('review_status_scanning', self.lang).format(self._folder))
 
@@ -467,21 +505,23 @@ class ReviewGridPage(QWidget):
 
         self._total_count = len(self._pairs)
 
-        # Pre-populate items with placeholder icons
-        for pair in self._pairs:
-            item = QListWidgetItem(pair.image.name[:28])
-            caption_text = ""
-            if pair.caption and pair.caption.exists():
-                try:
-                    caption_text = pair.caption.read_text(encoding='utf-8')
-                except Exception:
-                    pass
-            item.setToolTip(caption_text or get_text('review_caption_placeholder', self.lang))
-            item.setData(Qt.UserRole, pair)
-            self._list.addItem(item)
+        # Populate placeholders without reading every caption on the GUI thread.
+        updates = self._list.updatesEnabled()
+        self._list.setUpdatesEnabled(False)
+        try:
+            for pair in self._pairs:
+                item = QListWidgetItem(pair.image.name[:28])
+                item.setSizeHint(QSize(184, 196))
+                item.setTextAlignment(Qt.AlignHCenter)
+                item.setToolTip(get_text('review_caption_placeholder', self.lang))
+                item.setData(Qt.UserRole, pair)
+                self._list.addItem(item)
+                self._items_by_path[str(pair.image)] = item
+        finally:
+            self._list.setUpdatesEnabled(updates)
 
         # Concepts
-        concepts = detect_concepts(self._folder)
+        concepts = {pair.concept for pair in self._pairs}
         self._set_stat(self._stat_total, self._total_count)
         self._set_stat(self._stat_selected, 0)
         self._set_stat(self._stat_rejected, self._rejected_count)
@@ -497,9 +537,10 @@ class ReviewGridPage(QWidget):
         self._progress.setValue(0)
         self._progress.setVisible(True)
 
-        self._loader = _ThumbnailLoader(self._pairs)
+        self._loader = _ThumbnailLoader(self._pairs, parent=self)
         self._loader.thumbnail_ready.connect(self._on_thumb_ready)
         self._loader.finished_loading.connect(self._on_loading_done)
+        self._loader.finished.connect(self._thumbnail_finished)
         self._loader.start()
 
         self._status_lbl.setText(
@@ -509,48 +550,68 @@ class ReviewGridPage(QWidget):
     # Thumbnail loading callbacks
     # ──────────────────────────
 
-    def _on_thumb_ready(self, index: int, pixmap: QPixmap):
-        if index < self._list.count():
-            self._list.item(index).setIcon(QIcon(pixmap))
+    def _thumbnail_finished(self):
+        worker = self.sender()
+        if worker is self._loader:
+            self._loader = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def _stats_finished(self):
+        worker = self.sender()
+        if worker is self._stats_loader:
+            self._stats_loader = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def _on_thumb_ready(self, index: int, image: QImage):
+        if self.sender() is not self._loader:
+            return  # a queued signal from an older folder
+        worker = self._loader
+        if 0 <= index < len(worker._pairs):
+            # Rejection can remove rows while decoding is in progress. Match
+            # the original path, never apply an old row number to a new file.
+            item = self._items_by_path.get(str(worker._pairs[index].image))
+            if item is not None:
+                item.setIcon(QIcon(QPixmap.fromImage(image)))
             self._progress.setValue(index + 1)
 
     def _on_loading_done(self, total: int):
+        if self.sender() is not self._loader:
+            return
         self._progress.setVisible(False)
-        concepts = detect_concepts(self._folder)
+        concepts = {pair.concept for pair in self._pairs}
         self._status_lbl.setText(
-            get_text('review_status_ready', self.lang).format(total, len(concepts)))
+            get_text('review_status_ready', self.lang).format(len(self._pairs), len(concepts)))
         # Compute quick stats (no PIL — just caption analysis)
         self._compute_quick_stats()
         # Launch stats loader for resolution data
         self._launch_stats_loader()
 
     def _compute_quick_stats(self):
-        """Compute stats that don't need PIL (fast, runs on main thread)."""
+        """Counts only; file contents are read by _StatsLoader."""
         missing = sum(1 for p in self._pairs if p.caption is None)
         self._set_stat(self._stat_missing, missing)
-
-        tag_counts = []
-        for p in self._pairs:
-            if p.caption and p.caption.exists():
-                try:
-                    text = p.caption.read_text(encoding='utf-8').strip()
-                    if text:
-                        tag_counts.append(len([t for t in text.split(',') if t.strip()]))
-                except Exception:
-                    pass
-        avg = round(sum(tag_counts) / len(tag_counts), 1) if tag_counts else 0
-        self._set_stat(self._stat_avg_tags, str(avg))
+        self._set_stat(self._stat_avg_tags, '…')
 
     def _launch_stats_loader(self):
         """Start background thread to gather resolution + concept distribution."""
         if not self._pairs or not self._folder:
             return
-        self._stats_loader = _StatsLoader(self._pairs, self._folder)
+        self._stats_loader = _StatsLoader(list(self._pairs), self._folder, parent=self)
         self._stats_loader.stats_ready.connect(self._update_stats_panel)
+        self._stats_loader.finished.connect(self._stats_finished)
         self._stats_loader.start()
 
     def _update_stats_panel(self, stats: dict):
         """Populate the Stats tab with gathered data."""
+        if self.sender() is not self._stats_loader:
+            return
+        self._set_stat(self._stat_avg_tags, str(stats.get('average_tags', 0)))
+        for path, text in stats.get('caption_previews', {}).items():
+            item = self._items_by_path.get(path)
+            if item is not None:
+                item.setToolTip(text)
         lines = []
 
         # Concept distribution bar chart
@@ -560,8 +621,7 @@ class ReviewGridPage(QWidget):
             lines.append("<b>Concept distribution:</b>")
             for name, count in sorted(concepts.items(), key=lambda x: -x[1]):
                 bar_len = max(1, int(count / max_count * 30))
-                color = theme.ORANGE if count < 30 else (theme.TEXT_SECONDARY if count > 500 else '#4CAF50')
-                bar = f'<span style="color:{color};">{"█" * bar_len}</span>'
+                bar = "█" * bar_len
                 warn = " ⚠️" if count < 30 else (" ℹ️" if count > 500 else "")
                 lines.append(f"  {name[:22]:<22} {bar}  {count}{warn}")
 
@@ -670,6 +730,7 @@ class ReviewGridPage(QWidget):
                         pair.caption.unlink(missing_ok=True)
 
                 row = self._list.row(item)
+                self._items_by_path.pop(str(pair.image), None)
                 self._list.takeItem(row)
                 self._rejected_count += 1
                 self._total_count -= 1
@@ -677,6 +738,14 @@ class ReviewGridPage(QWidget):
             except Exception as e:
                 errors.append(f"{pair.image.name}: {e}")
 
+        self._pairs = [p for p in self._pairs if str(p.image) in self._items_by_path]
+        if self._stats_loader and self._stats_loader.isRunning():
+            self._stats_loader.requestInterruption()
+        self._stats_loader = None
+        self._compute_quick_stats()
+        if self._loader is None or not self._loader.isRunning():
+            self._launch_stats_loader()
+        self._set_stat(self._stat_concepts, len({p.concept for p in self._pairs}))
         self._set_stat(self._stat_total, self._total_count)
         self._set_stat(self._stat_rejected, self._rejected_count)
         self._set_stat(self._stat_selected, 0)
@@ -752,7 +821,8 @@ class ReviewGridPage(QWidget):
     # ──────────────────────────
 
     def refresh_styles(self):
-        self.setStyleSheet("")  # trigger repaint; sub-widgets inherit theme
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
     def update_language(self, lang: str):
         self.lang = lang

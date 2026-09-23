@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import math
+import json
 import re
 import shutil
 from pathlib import Path
@@ -34,7 +35,7 @@ def _toml_val(v) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, str):
-        return f'"{v}"'
+        return json.dumps(v, ensure_ascii=False)
     if isinstance(v, float):
         return f"{v}"
     return str(v)
@@ -101,78 +102,33 @@ class TrainingConfigBuilder:
 
     @staticmethod
     def _image_count(path: Path) -> int:
-        image_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-        return sum(1 for p in path.rglob("*")
-                   if p.is_file() and p.suffix.lower() in image_exts)
+        from src.core.dataset_scanner import scan_dataset
+        return len(scan_dataset(path))
 
     @staticmethod
     def _caption_count(path: Path, extension: str = ".txt") -> int:
-        return sum(1 for p in path.rglob(f"*{extension}")
-                   if p.is_file() and p.read_text(encoding="utf-8", errors="ignore").strip())
+        from src.core.dataset_scanner import scan_dataset
+        count = 0
+        for pair in scan_dataset(path):
+            caption = pair.image.with_suffix(extension)
+            if caption.is_file() and caption.read_text(encoding='utf-8-sig').strip():
+                count += 1
+        return count
 
     @classmethod
     def _sync_missing_captions(cls, subsets: List[dict], extension: str = ".txt") -> int:
+        """Never infer identity from a filename. Config generation is read-only.
+
+        Legacy callers retain this no-op entry point. Copy captions at the time
+        images are copied/upscaled, where the real source asset is still known.
         """
-        Copy captions from captioned sibling subsets to matching image names.
-
-        This mainly fixes upscaled folders: upscalers often write image files only,
-        but the original sibling folder already has captions with the same stems.
-        """
-        caption_by_stem: dict[str, Path] = {}
-        image_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-
-        for subset in subsets:
-            image_dir = Path(subset["image_dir"])
-            for txt in image_dir.rglob(f"*{extension}"):
-                if not txt.is_file():
-                    continue
-                try:
-                    if not txt.read_text(encoding="utf-8", errors="ignore").strip():
-                        continue
-                except Exception:
-                    continue
-                caption_by_stem.setdefault(txt.stem.lower(), txt)
-
-        copied = 0
-        if not caption_by_stem:
-            return copied
-
-        for subset in subsets:
-            image_dir = Path(subset["image_dir"])
-            for image in image_dir.rglob("*"):
-                if not image.is_file() or image.suffix.lower() not in image_exts:
-                    continue
-                dst_txt = image.with_suffix(extension)
-                if dst_txt.exists() and dst_txt.read_text(encoding="utf-8", errors="ignore").strip():
-                    continue
-                src_txt = caption_by_stem.get(image.stem.lower())
-                if not src_txt or src_txt == dst_txt:
-                    continue
-                try:
-                    shutil.copy2(src_txt, dst_txt)
-                    copied += 1
-                except Exception:
-                    continue
-        return copied
+        return 0
 
     @classmethod
     def _detect_subsets(cls, dataset_dir: Path, repeats: int) -> List[dict]:
-        """
-        Return Kohya dataset subsets.
-
-        If dataset_dir is already a repeats-folder root, e.g.
-        `dataset/10_character/*.png`, each immediate child folder becomes one
-        subset. Otherwise dataset_dir itself is treated as a flat image folder.
-        The UI repeats value intentionally overrides folder-name repeats.
-        """
-        repeat_pat = re.compile(r"^\d+_.+")
-        child_dirs = [p for p in sorted(dataset_dir.iterdir())
-                      if p.is_dir() and repeat_pat.match(p.name)]
-        concept_dirs = [p for p in child_dirs if cls._image_count(p) > 0]
-        if concept_dirs:
-            return [{"image_dir": p, "num_repeats": repeats}
-                    for p in concept_dirs]
-        return [{"image_dir": dataset_dir, "num_repeats": repeats}]
+        from src.core.dataset_scanner import scan_dataset
+        folders = sorted({pair.image.parent for pair in scan_dataset(dataset_dir)}, key=str)
+        return [{"image_dir": folder, "num_repeats": repeats} for folder in folders]
 
     def build(
         self,
@@ -189,17 +145,24 @@ class TrainingConfigBuilder:
 
         Returns a dict with keys 'dataset_toml' and 'train_toml'.
         """
-        dataset_dir = Path(dataset_dir)
-        output_dir  = Path(output_dir)
+        dataset_dir = Path(dataset_dir).resolve()
+        output_dir  = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
         cfg = {**self.DEFAULTS, **(config_overrides or {})}
 
+        for key, value in (('repeats', repeats), ('batch_size', cfg['batch_size']),
+                           ('gradient_accumulation_steps', cfg['gradient_accumulation_steps'])):
+            if type(value) is not int or value < 1:
+                raise ValueError(f'{key} must be a positive integer.')
         subsets = self._detect_subsets(dataset_dir, repeats)
+        if not subsets:
+            raise ValueError('No training images found in the selected dataset.')
         self._sync_missing_captions(subsets, cfg["caption_extension"])
 
         # ── Count images to auto-calculate steps ──────────────────────────────
-        img_count = sum(self._image_count(s["image_dir"]) for s in subsets)
+        from src.core.dataset_scanner import scan_dataset
+        img_count = sum(len(scan_dataset(s["image_dir"], recursive=False)) for s in subsets)
         # target ≈ 1500 steps (community heuristic)
         effective_batch = cfg["batch_size"] * cfg["gradient_accumulation_steps"]
         if img_count > 0 and "max_train_epochs" not in (config_overrides or {}):
@@ -210,7 +173,7 @@ class TrainingConfigBuilder:
         # ── Dataset TOML ──────────────────────────────────────────────────────
         ds_toml_lines = [
             "[general]",
-            f'caption_extension = "{cfg["caption_extension"]}"',
+            f'caption_extension = {_toml_val(cfg["caption_extension"])}',
             f'shuffle_caption = {_toml_val(cfg["shuffle_caption"])}',
             f'keep_tokens = {cfg["keep_tokens"]}',
             "",
@@ -226,7 +189,7 @@ class TrainingConfigBuilder:
         for subset in subsets:
             ds_toml_lines += [
                 "  [[datasets.subsets]]",
-                f'  image_dir = "{subset["image_dir"].as_posix()}"',
+                f'  image_dir = {_toml_val(subset["image_dir"].as_posix())}',
                 f'  num_repeats = {subset["num_repeats"]}',
                 f'  flip_aug = {_toml_val(cfg["flip_aug"])}',
                 "",
@@ -241,7 +204,7 @@ class TrainingConfigBuilder:
             f'# model_type = "{"sdxl" if sdxl else "sd15"}"',
             "",
             "[model_arguments]",
-            f'pretrained_model_name_or_path = "{Path(base_model).as_posix()}"',
+            f'pretrained_model_name_or_path = {_toml_val(Path(base_model).as_posix())}',
         ]
         if not sdxl:
             model_lines += [
@@ -252,11 +215,11 @@ class TrainingConfigBuilder:
         train_lines = model_lines + [
             "",
             "[dataset_arguments]",
-            f'dataset_config = "{ds_toml_path.as_posix()}"',
+            f'dataset_config = {_toml_val(ds_toml_path.as_posix())}',
             "",
             "[training_arguments]",
-            f'output_dir = "{output_dir.as_posix()}"',
-            f'output_name = "{lora_name}"',
+            f'output_dir = {_toml_val(output_dir.as_posix())}',
+            f'output_name = {_toml_val(lora_name)}',
             f'save_model_as = "safetensors"',
             f'save_every_n_epochs = {cfg["save_every_n_epochs"]}',
             f'max_train_epochs = {cfg["max_train_epochs"]}',
@@ -320,7 +283,7 @@ class TrainingConfigBuilder:
             "",
             "[logging_arguments]",
             f'log_with = "tensorboard"',
-            f'logging_dir = "{(output_dir / "logs").as_posix()}"',
+            f'logging_dir = {_toml_val((output_dir / "logs").as_posix())}',
             "",
         ]
 

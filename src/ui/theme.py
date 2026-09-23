@@ -7,6 +7,7 @@ Supports runtime theme switching via set_theme().
 
 import json
 from pathlib import Path as _Path
+from src.ui.theme_bindings import bind_style, refresh_styles, set_style_if_changed, render_style
 
 # ═══════════════════════════════════════════════════════════
 #  THEME STATE — persisted in theme_prefs.json
@@ -153,7 +154,14 @@ def _apply_accent(accent: str):
     # Tint dark background surfaces with accent hue (dark mode only)
     import sys as _sys
     _mod = _sys.modules[__name__]
-    if getattr(_mod, '_current_mode', 'dark') == "dark":
+    if globals().get('_studio_design', False):
+        pal = _LIGHT_PALETTE if _current_mode == 'light' else _DARK_PALETTE
+        for name in ('BG_CARD', 'BG_SURFACE', 'BG_PANEL'):
+            g[name] = pal[name]
+        if _current_mode == 'light':
+            g['ORANGE_LIGHT'] = _darken(accent, .12)
+            g['TEXT_ACCENT'] = _darken(accent, .15)
+    elif getattr(_mod, '_current_mode', 'dark') == "dark":
         g["BG_CARD"]    = _accent_tint(accent, 0.110)
         g["BG_SURFACE"] = _accent_tint(accent, 0.190)
         g["BG_PANEL"]   = _accent_tint(accent, 0.085)
@@ -194,18 +202,53 @@ def save_prefs():
 
 _load_prefs()
 
-def set_theme(mode: str = "dark", font_scale: float = 1.0, accent: str = None):
+def normalize_state(mode="dark", font_scale=1.0, accent=None):
+    """Validate appearance settings and canonicalize #RGB/#RRGGBB colors."""
+    import math
+    import re
+    mode = mode if mode in ("dark", "light") else "dark"
+    try:
+        scale = float(font_scale)
+        if not math.isfinite(scale):
+            scale = 1.0
+    except (TypeError, ValueError):
+        scale = 1.0
+    scale = round(max(0.8, min(1.4, scale)), 4)
+    color = accent if isinstance(accent, str) else _current_accent
+    if not re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})", color):
+        color = _DEFAULT_ACCENT
+    color = color.lower()
+    if len(color) == 4:
+        color = "#" + "".join(c * 2 for c in color[1:])
+    return mode, scale, color
+
+
+def state_key():
+    return _current_mode, _font_scale, _current_accent
+
+
+def set_theme(mode: str = "dark", font_scale: float = 1.0, accent: str = None,
+              *, persist: bool = True):
     global _current_mode, _font_scale, _current_accent
-    _current_mode = mode if mode in ("dark", "light") else "dark"
-    _font_scale = max(0.8, min(1.4, font_scale))
-    if accent and isinstance(accent, str) and accent.startswith("#"):
-        _current_accent = accent
+    new_state = normalize_state(mode, font_scale, accent)
+    changed = new_state != state_key() or "BG_WINDOW" not in globals()
+    if not changed:
+        return False
+    _current_mode, _font_scale, _current_accent = new_state
     pal = _LIGHT_PALETTE if _current_mode == "light" else _DARK_PALETTE
-    g = globals()
-    for k, v in pal.items():
-        g[k] = v
+    globals().update(pal)
     _apply_accent(_current_accent)
-    save_prefs()
+    if persist:
+        save_prefs()
+    return True
+
+
+def apply_global_style(app):
+    """Apply the global QSS once, at QApplication level (never on a window)."""
+    if app is not None:
+        return set_style_if_changed(app, global_stylesheet())
+    return False
+
 
 def get_mode() -> str:
     return _current_mode
@@ -231,7 +274,7 @@ _FONT_BASELINE = 1.30
 def fs(base: int) -> str:
     return f"{max(12, int(base * _FONT_BASELINE * _font_scale))}px"
 
-set_theme(_current_mode, _font_scale, _current_accent)
+set_theme(_current_mode, _font_scale, _current_accent, persist=False)
 
 # ═══════════════════════════════════════════════════════════
 #  FONT STACKS
@@ -273,6 +316,23 @@ def global_stylesheet() -> str:
         QLabel {{
             color: {TEXT_PRIMARY};
             background-color: transparent;
+        }}
+        QTableView, QTableWidget, QListWidget {{
+            background-color: {BG_CARD};
+            alternate-background-color: {BG_SURFACE};
+            color: {TEXT_PRIMARY};
+            gridline-color: {BORDER};
+            selection-background-color: {ORANGE_SUBTLE};
+            selection-color: {TEXT_PRIMARY};
+        }}
+        QTableView::item:selected, QTableWidget::item:selected, QListWidget::item:selected {{
+            background-color: {ORANGE_SUBTLE};
+            color: {TEXT_PRIMARY};
+        }}
+        QHeaderView::section {{
+            background-color: {BG_SURFACE};
+            color: {TEXT_SECONDARY};
+            border: 1px solid {BORDER};
         }}
         QToolTip {{
             background-color: {BG_CARD};
@@ -1159,3 +1219,39 @@ def info_icon_frame_compact() -> str:
 
 def checkbox_frame() -> str:
     return f"color: {TEXT_PRIMARY}; border: none; font-size: {fs(12)};"
+
+
+def resolve_color(value):
+    """Resolve a color supplier; explicit semantic/fixed colors stay explicit."""
+    return value() if callable(value) else value
+
+
+def enable_studio_design():
+    """Use neutral professional surfaces. Preserve existing appearance preferences.
+
+    Only a new installation defaults to dark/violet and English. This does not
+    write user settings; the normal Settings page still owns persistence.
+    """
+    global _studio_design, _current_mode, _current_accent, _current_lang, _FONT_BASELINE
+    _studio_design = True
+    _FONT_BASELINE = 1.12
+    _LIGHT_PALETTE.update({
+        'BG_WINDOW': '#f3f4f8', 'BG_DEEPEST': '#e9ebf2', 'BG_DEEP': '#eff0f6',
+        'BG_DARK': '#eeeff5', 'BG_PANEL': '#f8f9fc', 'BG_CARD': '#ffffff',
+        'BG_SURFACE': '#f2f3f8', 'BG_HOVER': '#e9eaf3', 'BG_ELEVATED': '#e3e5ee',
+        'TEXT_PRIMARY': '#23263c', 'TEXT_SECONDARY': '#4d5369', 'TEXT_MUTED': '#646b82',
+        'BORDER': '#dfe3ee', 'BORDER_LIGHT': '#d4d9e7', 'SIDEBAR_BG': '#fafbfe',
+        'NAV_LABEL': '#6a7087', 'GREEN': '#12845e', 'BLUE': '#2563a0',
+    })
+    _DARK_PALETTE.update({
+        'BG_WINDOW': '#171920', 'BG_DEEPEST': '#101219', 'BG_DEEP': '#181b24',
+        'BG_DARK': '#1c1f29', 'BG_PANEL': '#20232e', 'BG_CARD': '#232733',
+        'BG_SURFACE': '#2a2e3b', 'BG_HOVER': '#323747', 'BG_ELEVATED': '#3a4052',
+        'TEXT_PRIMARY': '#ebedf7', 'TEXT_SECONDARY': '#c0c6da', 'TEXT_MUTED': '#9ea8c2',
+        'BORDER': '#343b4e', 'BORDER_LIGHT': '#444d64', 'SIDEBAR_BG': '#1d202a',
+        'NAV_LABEL': '#a4aec7',
+    })
+    if not _PREFS_PATH.exists():
+        _current_mode, _current_accent, _current_lang = 'dark', '#7253d8', 'en'
+    globals().update(_LIGHT_PALETTE if _current_mode == 'light' else _DARK_PALETTE)
+    _apply_accent(_current_accent)

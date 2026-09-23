@@ -6,6 +6,7 @@ Used by: ReviewGridPage, KohyaExporter.
 
 from __future__ import annotations
 import re
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -13,7 +14,7 @@ from typing import Dict, List, Optional
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
 
 # Folders to skip when scanning
-_SKIP_DIRS = {'_rejected', '_approved', '__pycache__'}
+_SKIP_DIRS = {'_rejected', '_approved', '__pycache__', '.lh-clothing', '.lh-dataset', '.lh-evaluation'}
 _SKIP_FILES = {'_manifest.json', 'CACHEDIR.TAG'}
 
 
@@ -30,24 +31,30 @@ def scan_dataset(root: Path | str, recursive: bool = True) -> List[FramePair]:
     Images are matched with a co-located .txt via image.with_suffix('.txt').
     Skips _rejected/, _approved/, and _manifest.json entries.
     """
-    root = Path(root)
+    root = Path(root).resolve()
     pairs: List[FramePair] = []
 
-    if recursive:
-        candidates = [p for p in root.rglob('*') if p.is_file()]
-    else:
-        candidates = [p for p in root.iterdir() if p.is_file()]
+    def candidates():
+        if not recursive:
+            with os.scandir(root) as entries:
+                for entry in entries:
+                    if (os.path.splitext(entry.name)[1].lower() in IMAGE_EXTS
+                            and entry.is_file(follow_symlinks=False)):
+                        yield Path(entry.path)
+            return
+        # Prune BEFORE walking: history/rejected trees can dwarf the dataset.
+        # Stream only images instead of materialising every file in memory.
+        for folder, dirs, names in os.walk(root, topdown=True, followlinks=False):
+            dirs[:] = [name for name in dirs if name not in _SKIP_DIRS
+                       and not os.path.islink(os.path.join(folder, name))]
+            for name in names:
+                if name in _SKIP_FILES or os.path.splitext(name)[1].lower() not in IMAGE_EXTS:
+                    continue
+                p = Path(folder) / name
+                if not p.is_symlink() and p.is_file():
+                    yield p
 
-    for p in candidates:
-        # Skip helper/metadata files
-        if p.name in _SKIP_FILES:
-            continue
-        # Skip files inside excluded dirs (any ancestor named _rejected etc.)
-        if any(part in _SKIP_DIRS for part in p.parts):
-            continue
-        if p.suffix.lower() not in IMAGE_EXTS:
-            continue
-
+    for p in candidates():
         txt = p.with_suffix('.txt')
         caption = txt if txt.exists() else None
         concept = p.parent.name

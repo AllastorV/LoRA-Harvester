@@ -4,6 +4,7 @@ Includes: Quality Analysis, Scene Detection, Checkpoint/Resume, Async I/O
 """
 
 import os
+import hashlib
 import cv2
 import json
 import logging
@@ -20,6 +21,9 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 from src.core.quality_analyzer import QualityAnalyzer, SceneChangeDetector
+from src.core.dataset_files import save_image_bytes_unique
+from src.core.clothing_io import atomic_json
+from src.core.video_sampling import SelectiveVideoReader
 
 
 @dataclass
@@ -32,6 +36,7 @@ class ProcessingCheckpoint:
     timestamp: str
     output_dir: str
     settings: Dict
+    source_signature: Optional[Dict] = None
 
 
 class AsyncFrameSaver:
@@ -41,6 +46,8 @@ class AsyncFrameSaver:
     """
     
     def __init__(self, num_workers: int = 4, jpeg_quality: int = 95):
+        if isinstance(num_workers, bool) or not isinstance(num_workers, int) or num_workers < 1:
+            raise ValueError('num_workers must be a positive integer.')
         self.num_workers = num_workers
         self.jpeg_quality = jpeg_quality
         self.queue: Queue = Queue(maxsize=100)
@@ -49,12 +56,17 @@ class AsyncFrameSaver:
         self.saved_count = 0
         self.error_count = 0
         self._lock = threading.Lock()
+        self._write_lock = threading.Lock()
+        self.saved_by_category = {}
     
     def start(self):
         """Start background save workers"""
+        if self.running or self.workers:
+            raise RuntimeError('Save workers are already active.')
         self.running = True
         self.saved_count = 0
         self.error_count = 0
+        self.saved_by_category = {}
         
         for i in range(self.num_workers):
             worker = threading.Thread(target=self._save_worker, daemon=True)
@@ -77,8 +89,9 @@ class AsyncFrameSaver:
     
     def save(self, frame: np.ndarray, filepath: str):
         """Queue frame for saving"""
-        if self.running:
-            self.queue.put((frame.copy(), filepath))
+        if not self.running:
+            raise RuntimeError('Save workers are not running.')
+        self.queue.put((frame.copy(), filepath))
     
     def _save_worker(self):
         """Background worker for saving frames"""
@@ -87,16 +100,20 @@ class AsyncFrameSaver:
                 frame, filepath = self.queue.get(timeout=0.5)
 
                 try:
-                    # PNG lossless; pick encode ext from filepath
-                    _ext = os.path.splitext(filepath)[1] or '.png'
-                    _ok, _buf = cv2.imencode(_ext, frame)
-                    if _ok:
-                        _buf.tofile(filepath)
-                    else:
-                        cv2.imwrite(filepath, frame)
+                    ext = os.path.splitext(filepath)[1] or '.png'
+                    ok, buf = cv2.imencode(ext, frame)
+                    if not ok:
+                        raise OSError('Image encoding failed')
+                    # Encoding is parallel; publication is serialized to prevent
+                    # workers racing for the same filename or advisory lock.
+                    with self._write_lock:
+                        saved = save_image_bytes_unique(Path(filepath), buf.tobytes())
                     with self._lock:
                         self.saved_count += 1
+                        category = saved.parent.name
+                        self.saved_by_category[category] = self.saved_by_category.get(category, 0) + 1
                 except Exception as e:
+                    logger.error('Frame save failed (%s): %s', filepath, e)
                     with self._lock:
                         self.error_count += 1
                 finally:
@@ -110,7 +127,8 @@ class AsyncFrameSaver:
         return {
             'saved': self.saved_count,
             'errors': self.error_count,
-            'pending': self.queue.qsize()
+            'pending': self.queue.qsize(),
+            'categories': dict(self.saved_by_category)
         }
 
 
@@ -303,6 +321,7 @@ class EnhancedVideoProcessor:
         return {
             'processed_frames': 0,
             'saved_frames': 0,
+            'save_errors': 0,
             'skipped_text': 0,
             'skipped_no_detection': 0,
             'skipped_quality': 0,
@@ -321,7 +340,8 @@ class EnhancedVideoProcessor:
         quality_suffix = "_hq" if self.enable_quality_check else ""
         aspect_ratio = self.cropper.target_format.replace(':', 'x')
         
-        base_path = Path(self.output_dir) / f"{video_name}_{aspect_ratio}_{mode_suffix}{quality_suffix}"
+        source_id = self._video_key(self.current_video or video_name)
+        base_path = Path(self.output_dir) / f"{video_name}_{source_id}_{aspect_ratio}_{mode_suffix}{quality_suffix}"
         base_path.mkdir(parents=True, exist_ok=True)
         
         self.person_dir = base_path / 'persons'
@@ -335,63 +355,66 @@ class EnhancedVideoProcessor:
         # Create checkpoint directory
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         
+        self.current_output_dir = base_path
         print(f"📁 Output: {base_path}")
         return base_path
     
+    @staticmethod
+    def _video_key(video_path: str) -> str:
+        normalized = os.path.normcase(str(Path(video_path).resolve()))
+        return hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:12]
+
+    @staticmethod
+    def _source_signature(video_path: str) -> Dict:
+        info = Path(video_path).stat()
+        return {'size': info.st_size, 'mtime_ns': info.st_mtime_ns}
+
+    def _checkpoint_path(self, video_path: str) -> Path:
+        return self.checkpoint_dir / f"{Path(video_path).stem}_{self._video_key(video_path)}.checkpoint.json"
+
+    def _sync_saved_stats(self):
+        counts = self.async_saver.get_stats()
+        base = getattr(self, '_saved_stats_base', {})
+        self.stats['saved_frames'] = base.get('saved_frames', 0) + counts['saved']
+        self.stats['save_errors'] = base.get('save_errors', 0) + counts['errors']
+        for category, folder in [('person', 'persons'), ('animal', 'animals'), ('object', 'objects')]:
+            key = category + '_frames'
+            self.stats[key] = base.get(key, 0) + counts['categories'].get(folder, 0)
+
     def save_checkpoint(self, video_path: str, frame_num: int, settings: Dict):
-        """Save processing checkpoint for resume"""
+        """Only advance resume state after all enqueued frames reached disk."""
+        self.async_saver.queue.join()
+        self._sync_saved_stats()
+        if self.async_saver.error_count:
+            raise OSError('Frame writes failed; checkpoint was not advanced. Check disk space and permissions.')
         checkpoint = ProcessingCheckpoint(
-            video_path=video_path,
-            last_frame=frame_num,
-            total_frames=self.total_frames,
-            stats=self.stats.copy(),
+            video_path=str(Path(video_path).resolve()), last_frame=frame_num,
+            total_frames=self.total_frames, stats=self.stats.copy(),
             timestamp=datetime.now().isoformat(),
-            output_dir=self.output_dir,
-            settings=settings
+            output_dir=str(getattr(self, 'current_output_dir', self.output_dir)),
+            settings=settings, source_signature=self._source_signature(video_path),
         )
-        
-        video_name = Path(video_path).stem
-        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        checkpoint_file = self.checkpoint_dir / f"{video_name}.checkpoint.json"
-        
-        try:
-            with open(checkpoint_file, 'w') as f:
-                json.dump(asdict(checkpoint), f, indent=2)
-        except Exception as e:
-            logger.warning("Checkpoint save error: %s", e)
-    
+        atomic_json(self._checkpoint_path(video_path), asdict(checkpoint))
+
     def load_checkpoint(self, video_path: str) -> Optional[ProcessingCheckpoint]:
-        """Load checkpoint if exists"""
-        video_name = Path(video_path).stem
-        checkpoint_file = self.checkpoint_dir / f"{video_name}.checkpoint.json"
-        
+        checkpoint_file = self._checkpoint_path(video_path)
         if not checkpoint_file.exists():
             return None
-        
         try:
-            with open(checkpoint_file, 'r') as f:
-                data = json.load(f)
-            
-            checkpoint = ProcessingCheckpoint(**data)
-            
-            # Check if same video
-            if checkpoint.video_path == video_path:
+            checkpoint = ProcessingCheckpoint(**json.loads(checkpoint_file.read_text(encoding='utf-8')))
+            if (Path(checkpoint.video_path).resolve() == Path(video_path).resolve()
+                    and checkpoint.source_signature == self._source_signature(video_path)
+                    and 0 <= checkpoint.last_frame <= checkpoint.total_frames):
                 logger.info("Found checkpoint at frame %d/%d", checkpoint.last_frame, checkpoint.total_frames)
                 return checkpoint
-
+            logger.warning('Ignoring checkpoint for a changed video: %s', video_path)
         except Exception as e:
-            logger.warning("Checkpoint load error: %s", e)
-        
+            logger.warning('Checkpoint load error: %s', e)
         return None
-    
+
     def clear_checkpoint(self, video_path: str):
-        """Clear checkpoint after successful completion"""
-        video_name = Path(video_path).stem
-        checkpoint_file = self.checkpoint_dir / f"{video_name}.checkpoint.json"
-        
-        if checkpoint_file.exists():
-            checkpoint_file.unlink()
-    
+        self._checkpoint_path(video_path).unlink(missing_ok=True)
+
     def open_video(self, video_path: str) -> bool:
         """Open video file"""
         self.current_video = video_path
@@ -521,11 +544,13 @@ class EnhancedVideoProcessor:
         """
         Process a single video with all enhancements
         """
-        if not self.open_video(video_path):
-            return self.stats
-        
-        # Reset stats
+        if isinstance(frame_interval, bool) or not isinstance(frame_interval, int) or frame_interval < 1:
+            raise ValueError('frame_interval must be a positive integer.')
         self.stats = self._create_empty_stats()
+        if not self.open_video(video_path):
+            if self.cap:
+                self.cap.release()
+            return self.stats
         
         # Check for checkpoint
         start_frame = 0
@@ -533,16 +558,20 @@ class EnhancedVideoProcessor:
             'frame_interval': frame_interval,
             'skip_text': skip_text,
             'quality_check': self.enable_quality_check,
-            'scene_detection': self.enable_scene_detection
+            'scene_detection': self.enable_scene_detection,
+            'target_format': self.cropper.target_format
         }
         
         if resume:
             checkpoint = self.load_checkpoint(video_path)
+            if checkpoint and checkpoint.settings != settings:
+                logger.warning('Checkpoint settings differ; processing starts from frame zero.')
+                checkpoint = None
             if checkpoint:
                 response = input(f"Resume from frame {checkpoint.last_frame}? (y/n): ")
                 if response.lower() == 'y':
                     start_frame = checkpoint.last_frame
-                    self.stats = checkpoint.stats
+                    self.stats.update(checkpoint.stats)
                     print(f"▶️ Resuming from frame {start_frame}")
         
         # Create output structure
@@ -557,7 +586,9 @@ class EnhancedVideoProcessor:
         if self.scene_detector:
             self.scene_detector.reset()
         
-        # Start async saver
+        # Keep already persisted counts when resuming; current-run counts are
+        # synchronized from successful disk writes, not queue submissions.
+        self._saved_stats_base = self.stats.copy()
         self.async_saver.start()
         
         # Start time
@@ -568,6 +599,8 @@ class EnhancedVideoProcessor:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         
         frame_count = start_frame
+        reader = SelectiveVideoReader(self.cap)
+        reached_eof = False
         checkpoint_interval = 500  # Save checkpoint every 500 frames
         
         try:
@@ -578,12 +611,16 @@ class EnhancedVideoProcessor:
                     self.save_checkpoint(video_path, frame_count, settings)
                     break
                 
-                ret, frame = self.cap.read()
+                selected = (bool(self.enable_scene_detection and self.scene_detector)
+                            or (frame_count + 1) % frame_interval == 0)
+                ret, frame = reader.read(selected)
                 if not ret:
+                    reached_eof = True
                     break
-                
                 frame_count += 1
-                
+                if not selected:
+                    continue
+
                 # Scene detection mode
                 if self.enable_scene_detection and self.scene_detector:
                     if not self.scene_detector.is_scene_change(frame):
@@ -601,7 +638,7 @@ class EnhancedVideoProcessor:
                 
                 # Progress callback
                 if progress_callback:
-                    progress = (frame_count / self.total_frames) * 100
+                    progress = (frame_count / self.total_frames) * 100 if self.total_frames else 0
                     progress_callback(progress, self.stats)
                 
                 # Periodic checkpoint
@@ -611,7 +648,8 @@ class EnhancedVideoProcessor:
         finally:
             # Stop async saver
             self.async_saver.stop()
-            
+            self._sync_saved_stats()
+
             # Release video
             self.cap.release()
             
@@ -620,7 +658,7 @@ class EnhancedVideoProcessor:
             self.stats['processing_time'] = elapsed
             
             # Clear checkpoint on successful completion
-            if frame_count >= self.total_frames - 10:
+            if reached_eof and not self.async_saver.error_count and frame_count >= self.total_frames:
                 self.clear_checkpoint(video_path)
             
             # Print stats
@@ -683,6 +721,8 @@ class EnhancedVideoProcessor:
         print("📊 Processing Statistics:")
         print(f"   Processed frames: {self.stats['processed_frames']}")
         print(f"   Saved frames: {self.stats['saved_frames']}")
+        if self.stats.get('save_errors'):
+            print(f"   FAILED writes: {self.stats['save_errors']} (check disk/permissions)")
         print(f"   ├─ Persons: {self.stats['person_frames']}")
         print(f"   ├─ Animals: {self.stats['animal_frames']}")
         print(f"   └─ Objects: {self.stats['object_frames']}")

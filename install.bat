@@ -1,62 +1,40 @@
 @echo off
+setlocal
 cd /d "%~dp0"
-echo ================================================
-echo Video Smart Cropper - Installation Script
-echo ================================================
-echo.
-
-echo Checking Python installation...
-python --version
-if errorlevel 1 (
-    echo ERROR: Python is not installed or not in PATH
-    echo Please install Python 3.8 or higher from python.org
-    pause
-    exit /b 1
+chcp 65001 >nul 2>&1
+set "COMPONENTS=core,upscale,anime,faces"
+set "CHANNEL=cpu"
+nvidia-smi -L >nul 2>&1
+if not errorlevel 1 (
+    set "COMPONENTS=core,gpu,upscale,anime,faces"
+    set "CHANNEL=cu124"
 )
-
-echo.
-echo Creating virtual environment...
-python -m venv venv
-
-echo.
-echo Activating virtual environment...
-call venv\Scripts\activate.bat
-
-echo.
-echo Upgrading pip...
-python -m pip install --upgrade pip
-
-echo.
-echo Installing dependencies...
-pip install -r requirements.txt
-
-echo.
-echo Installing optional upscale support (Real-ESRGAN)...
-REM basicsr's setup.py needs torch already installed, so this must run as a
-REM separate step AFTER requirements.txt (cannot be listed inside it).
-pip install "realesrgan>=0.3.0" "basicsr>=1.4.2" "gfpgan>=1.3.8"
-if errorlevel 1 (
-    echo [WARN] Upscale deps failed to install - upscaling will be disabled.
-    echo        Retry later with: pip install realesrgan basicsr gfpgan
+echo Selected PyTorch channel for this hardware: %CHANNEL%
+for %%V in (3.10 3.11 3.12) do (
+    py -%%V -c "import sys,struct;sys.exit(0 if struct.calcsize('P')==8 else 1)" >nul 2>&1
+    if not errorlevel 1 (
+        py -%%V scripts\setup_wizard.py --cli --yes --components "%COMPONENTS%" --channel "%CHANNEL%"
+        goto :done
+    )
 )
-
-echo.
-echo ================================================
-echo Downloading default models...
-echo ================================================
-python "%~dp0scripts\download_models.py"
-
-echo.
-echo ================================================
-echo Installation Complete!
-echo ================================================
-echo.
-echo To run the application:
-echo 1. Activate virtual environment: venv\Scripts\activate
-echo 2. Run the app: python main.py
-echo.
-echo For CLI mode: python cli.py --help
-echo.
-echo Note: For GPU support run install_gpu.bat
-echo ================================================
+python -c "import sys,struct;sys.exit(0 if (3,10)<=sys.version_info[:2]<(3,13) and struct.calcsize('P')==8 else 1)" >nul 2>&1
+if not errorlevel 1 (
+    python scripts\setup_wizard.py --cli --yes --components "%COMPONENTS%" --channel "%CHANNEL%"
+    goto :done
+)
+if exist "venv\Scripts\python.exe" (
+    "venv\Scripts\python.exe" scripts\setup_wizard.py --cli --yes --components "%COMPONENTS%" --channel "%CHANNEL%"
+    goto :done
+)
+echo [ERROR] Install 64-bit Python 3.10, 3.11 or 3.12 from python.org, then run this file again.
 pause
+exit /b 1
+:done
+set "RC=%ERRORLEVEL%"
+if "%RC%"=="0" (
+    echo Setup complete. Start the program with run.bat.
+) else (
+    echo [ERROR] Setup failed. Check the latest setup log in the logs folder.
+)
+pause
+exit /b %RC%

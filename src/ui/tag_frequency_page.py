@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
     QAbstractItemView, QMenu, QAction,
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtGui import QFont, QColor, QBrush
 from src.ui.translations import get_text
 from src.ui import theme
 
@@ -44,14 +44,14 @@ class TagFrequencyPage(QWidget):
         tb.setSpacing(8)
 
         self._path_btn = QPushButton(get_text("tag_freq_select_folder_btn", self.lang))
-        self._path_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._path_btn, theme.btn_secondary)
         self._path_btn.setToolTip(get_text("tag_freq_select_folder_btn_tooltip", self.lang))
         self._path_btn.clicked.connect(self._browse_folder)
         tb.addWidget(self._path_btn)
 
         self.filter_edit = QLineEdit()
         self.filter_edit.setPlaceholderText(get_text("tag_freq_filter", self.lang))
-        self.filter_edit.setStyleSheet(theme.line_edit_compact())
+        theme.bind_style(self.filter_edit, theme.line_edit_compact)
         self.filter_edit.setFixedWidth(200)
         self.filter_edit.setToolTip(get_text("tag_freq_filter_tooltip", self.lang))
         self.filter_edit.textChanged.connect(self._filter_table)
@@ -60,14 +60,14 @@ class TagFrequencyPage(QWidget):
         tb.addStretch()
 
         scan_btn = QPushButton(get_text("tag_freq_scan", self.lang))
-        scan_btn.setStyleSheet(theme.btn_primary())
+        theme.bind_style(scan_btn, theme.btn_primary)
         scan_btn.setToolTip(get_text("tag_freq_scan_tooltip", self.lang))
         scan_btn.clicked.connect(self._browse_folder)
         tb.addWidget(scan_btn)
         self.load_btn = scan_btn  # alias for update_language compat
 
         self.apply_bl_btn = QPushButton(get_text("tag_freq_apply_bl", self.lang))
-        self.apply_bl_btn.setStyleSheet(theme.btn_danger())
+        theme.bind_style(self.apply_bl_btn, theme.btn_danger)
         self.apply_bl_btn.setToolTip(get_text("tag_freq_apply_bl_tooltip", self.lang))
         self.apply_bl_btn.clicked.connect(self._apply_blacklist)
         self.apply_bl_btn.setEnabled(False)
@@ -75,7 +75,7 @@ class TagFrequencyPage(QWidget):
 
         # Tag cleaner button
         self.clean_btn = QPushButton(get_text("tag_freq_clean", self.lang))
-        self.clean_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self.clean_btn, theme.btn_secondary)
         self.clean_btn.setToolTip(get_text("tag_freq_clean_tooltip", self.lang))
         self.clean_btn.clicked.connect(self._run_tag_cleaner)
         self.clean_btn.setEnabled(False)
@@ -83,7 +83,7 @@ class TagFrequencyPage(QWidget):
 
         # Readiness checker button
         self.readiness_btn = QPushButton(get_text("tag_freq_readiness", self.lang))
-        self.readiness_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self.readiness_btn, theme.btn_secondary)
         self.readiness_btn.setToolTip(get_text("tag_freq_readiness_tooltip", self.lang))
         self.readiness_btn.clicked.connect(self._run_readiness_check)
         self.readiness_btn.setEnabled(False)
@@ -119,7 +119,7 @@ class TagFrequencyPage(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSortingEnabled(True)
-        self.table.setStyleSheet(f"""
+        theme.bind_style(self.table, lambda: f"""
             QTableWidget {{
                 background: {theme.BG_CARD};
                 border: 1px solid {theme.BORDER};
@@ -154,7 +154,7 @@ class TagFrequencyPage(QWidget):
         bl_panel = QFrame()
         bl_panel.setObjectName("blacklist_panel")
         bl_panel.setFixedWidth(288)
-        bl_panel.setStyleSheet(f"""
+        theme.bind_style(bl_panel, lambda: f"""
             QFrame#blacklist_panel {{
                 background: {theme.BG_CARD};
                 border: 1px solid {theme.BORDER};
@@ -168,10 +168,8 @@ class TagFrequencyPage(QWidget):
         # Panel header
         bl_hdr = QLabel("  " + get_text("tag_freq_bl_title", self.lang))
         bl_hdr.setFixedHeight(44)
-        bl_hdr.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 600;"
-            f" border-bottom: 1px solid {theme.BORDER}; background: transparent;"
-        )
+        theme.bind_style(bl_hdr, lambda: f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; font-weight: 600;"
+            f" border-bottom: 1px solid {theme.BORDER}; background: transparent;")
         bl_lay.addWidget(bl_hdr)
         self._bl_title = bl_hdr
 
@@ -180,19 +178,19 @@ class TagFrequencyPage(QWidget):
         bl_input_row.setContentsMargins(8, 6, 8, 4)
         self._bl_input = QLineEdit()
         self._bl_input.setPlaceholderText(get_text("tag_freq_bl_input_ph", self.lang))
-        self._bl_input.setStyleSheet(theme.line_edit_compact())
+        theme.bind_style(self._bl_input, theme.line_edit_compact)
         self._bl_input.returnPressed.connect(self._add_tag_to_blacklist)
         bl_input_row.addWidget(self._bl_input)
         self._bl_add_btn = QPushButton("+")
         self._bl_add_btn.setFixedSize(28, 28)
-        self._bl_add_btn.setStyleSheet(theme.btn_primary())
+        theme.bind_style(self._bl_add_btn, theme.btn_primary)
         self._bl_add_btn.clicked.connect(self._add_tag_to_blacklist)
         bl_input_row.addWidget(self._bl_add_btn)
         bl_lay.addLayout(bl_input_row)
 
         # Blacklist items list
         self._bl_list = QListWidget()
-        self._bl_list.setStyleSheet(f"""
+        theme.bind_style(self._bl_list, lambda: f"""
             QListWidget {{
                 background: transparent; border: none; padding: 4px;
             }}
@@ -215,14 +213,14 @@ class TagFrequencyPage(QWidget):
 
         self._apply_to_ds_btn = QPushButton(get_text("tag_freq_apply_to_dataset", self.lang))
         apply_btn2 = self._apply_to_ds_btn
-        apply_btn2.setStyleSheet(theme.btn_danger())
+        theme.bind_style(apply_btn2, theme.btn_danger)
         apply_btn2.clicked.connect(self._apply_blacklist)
         self._save_bl_btn = QPushButton(get_text("tag_freq_save_bl", self.lang))
         save_bl_btn = self._save_bl_btn
-        save_bl_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(save_bl_btn, theme.btn_secondary)
         save_bl_btn.clicked.connect(self._save_blacklist)
         self._add_sel_btn = QPushButton(get_text("tag_freq_add_selected", self.lang))
-        self._add_sel_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._add_sel_btn, theme.btn_secondary)
         self._add_sel_btn.clicked.connect(self._add_selected_to_blacklist)
 
         bl_footer.addWidget(self._add_sel_btn)
@@ -235,7 +233,7 @@ class TagFrequencyPage(QWidget):
 
         # Status
         self.status_lbl = QLabel(get_text("tag_freq_no_data", self.lang))
-        self.status_lbl.setStyleSheet(theme.label_muted())
+        theme.bind_style(self.status_lbl, theme.label_muted)
         root.addWidget(self.status_lbl)
 
     # ─── Stat card helper ───────────────────────────────────────────────
@@ -243,10 +241,8 @@ class TagFrequencyPage(QWidget):
     def _make_stat_card(self, layout: QHBoxLayout, title: str, value: str, icon: str, color: str):
         card = QFrame()
         card.setProperty("lhCard", True)
-        card.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER_LIGHT};"
-            f" border-radius: 10px; padding: 12px; }}"
-        )
+        theme.bind_style(card, lambda: f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER_LIGHT};"
+            f" border-radius: 10px; padding: 12px; }}")
         cl = QHBoxLayout(card)
         ico = QLabel(icon)
         ico.setFixedSize(32, 32)
@@ -254,9 +250,9 @@ class TagFrequencyPage(QWidget):
         ico.setStyleSheet("background: transparent; border: none; font-size: 18px;")
         info = QVBoxLayout()
         t = QLabel(title)
-        t.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-family: 'JetBrains Mono', monospace; background: transparent; border: none;")
+        theme.bind_style(t, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-family: 'JetBrains Mono', monospace; background: transparent; border: none;")
         v = QLabel(value)
-        v.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(20)}; font-weight: 700; background: transparent; border: none; letter-spacing: -0.02em;")
+        theme.bind_style(v, lambda: f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(20)}; font-weight: 700; background: transparent; border: none; letter-spacing: -0.02em;")
         info.addWidget(t); info.addWidget(v)
         cl.addWidget(ico); cl.addLayout(info)
         layout.addWidget(card)
@@ -343,7 +339,7 @@ class TagFrequencyPage(QWidget):
             bar.setValue(int(pct))
             bar.setTextVisible(False)
             bar.setFixedHeight(6)
-            bar.setStyleSheet(f"""
+            theme.bind_style(bar, lambda: f"""
                 QProgressBar {{ background: {theme.BORDER}; border: none; border-radius: 3px; }}
                 QProgressBar::chunk {{ background: {theme.ORANGE}; border-radius: 3px; }}
             """)
@@ -372,11 +368,9 @@ class TagFrequencyPage(QWidget):
             return
         tag = tag_item.text()
         menu = QMenu(self)
-        menu.setStyleSheet(
-            f"QMenu {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY};"
+        theme.bind_style(menu, lambda: f"QMenu {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER_LIGHT}; border-radius: 6px; padding: 4px; }}"
-            f" QMenu::item:selected {{ background: {theme.ORANGE_SUBTLE}; }}"
-        )
+            f" QMenu::item:selected {{ background: {theme.ORANGE_SUBTLE}; }}")
         act = menu.addAction(get_text("tag_freq_ctx_add", self.lang).format(tag))
         action = menu.exec_(self.table.viewport().mapToGlobal(pos))
         if action == act:
@@ -402,10 +396,8 @@ class TagFrequencyPage(QWidget):
         if not item:
             return
         menu = QMenu(self)
-        menu.setStyleSheet(
-            f"QMenu {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY};"
-            f" border: 1px solid {theme.BORDER_LIGHT}; border-radius: 6px; padding: 4px; }}"
-        )
+        theme.bind_style(menu, lambda: f"QMenu {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY};"
+            f" border: 1px solid {theme.BORDER_LIGHT}; border-radius: 6px; padding: 4px; }}")
         rm = menu.addAction(get_text("tag_freq_ctx_remove", self.lang))
         action = menu.exec_(self._bl_list.viewport().mapToGlobal(pos))
         if action == rm:
@@ -429,7 +421,7 @@ class TagFrequencyPage(QWidget):
             if item.text().lower() in self._blacklist:
                 item.setForeground(QColor(theme.RED))
             else:
-                item.setForeground(QColor(theme.TEXT_PRIMARY))
+                item.setForeground(QBrush())
 
     def _apply_blacklist(self):
         if not self._blacklist:
@@ -513,30 +505,8 @@ class TagFrequencyPage(QWidget):
     # ─── Theme ──────────────────────────────────────────────────────────
 
     def refresh_styles(self):
-        self.load_btn.setStyleSheet(theme.btn_primary())
-        self.apply_bl_btn.setStyleSheet(theme.btn_danger())
-        self.filter_edit.setStyleSheet(theme.line_edit_compact())
-        self.table.setStyleSheet(f"""
-            QTableWidget {{
-                background: {theme.BG_CARD}; border: 1px solid {theme.BORDER};
-                border-radius: 10px; gridline-color: {theme.BORDER};
-                color: {theme.TEXT_PRIMARY};
-                font-family: 'JetBrains Mono', monospace; font-size: {theme.fs(12)};
-            }}
-            QTableWidget::item:selected {{ background: {theme.ORANGE_SUBTLE}; color: {theme.TEXT_PRIMARY}; }}
-            QHeaderView::section {{
-                background: {theme.BG_DARK}; color: {theme.TEXT_MUTED};
-                border: none; border-bottom: 1px solid {theme.BORDER};
-                padding: 6px 10px; font-size: {theme.fs(11)}; font-weight: 600;
-            }}
-        """)
-        self.status_lbl.setStyleSheet(theme.label_muted())
-        if hasattr(self, '_bl_add_btn'):
-            self._bl_add_btn.setStyleSheet(theme.btn_primary())
-        if hasattr(self, '_add_sel_btn'):
-            self._add_sel_btn.setStyleSheet(theme.btn_secondary())
-        if hasattr(self, '_bl_input'):
-            self._bl_input.setStyleSheet(theme.line_edit_compact())
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
     # ── Tag Cleaner ──────────────────────────────────────────────────────────
 
@@ -619,7 +589,7 @@ class TagFrequencyPage(QWidget):
         dlg.setWindowTitle("Dataset Readiness Check")
         dlg.setMinimumWidth(560)
         dlg.setMinimumHeight(420)
-        dlg.setStyleSheet(f"background: {theme.BG_DARK}; color: {theme.TEXT_PRIMARY};")
+        theme.bind_style(dlg, lambda: f"background: {theme.BG_DARK}; color: {theme.TEXT_PRIMARY};")
 
         lay = QVBoxLayout(dlg)
         lay.setContentsMargins(20, 16, 20, 16)
@@ -652,7 +622,7 @@ class TagFrequencyPage(QWidget):
         )
         stats_lbl = QLabel(stats_html)
         stats_lbl.setTextFormat(Qt.RichText)
-        stats_lbl.setStyleSheet(f"background:{theme.BG_CARD};border:1px solid {theme.BORDER};"
+        theme.bind_style(stats_lbl, lambda: f"background:{theme.BG_CARD};border:1px solid {theme.BORDER};"
                                 f"border-radius:6px;padding:12px;")
         lay.addWidget(stats_lbl)
 
@@ -665,7 +635,7 @@ class TagFrequencyPage(QWidget):
             for iss in report.issues:
                 lbl = QLabel(f"{iss.emoji}  {iss.message}")
                 lbl.setWordWrap(True)
-                lbl.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:12px;"
+                theme.bind_style(lbl, lambda: f"color:{theme.TEXT_PRIMARY};font-size:12px;"
                                   f"background:transparent;border:none;padding:2px 0;")
                 issues_lay.addWidget(lbl)
             scroll = QScrollArea()
@@ -673,7 +643,7 @@ class TagFrequencyPage(QWidget):
             scroll.setFrameShape(0)
             scroll.setWidget(issues_inner)
             scroll.setMaximumHeight(160)
-            scroll.setStyleSheet(f"background:{theme.BG_CARD};border:1px solid {theme.BORDER};"
+            theme.bind_style(scroll, lambda: f"background:{theme.BG_CARD};border:1px solid {theme.BORDER};"
                                  f"border-radius:6px;")
             lay.addWidget(scroll)
 
@@ -682,12 +652,12 @@ class TagFrequencyPage(QWidget):
             top_str = "  ".join(f"{t} ({c})" for t, c in report.top_tags[:10])
             top_lbl = QLabel(f"<b>Top tags:</b> {top_str}")
             top_lbl.setWordWrap(True)
-            top_lbl.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:11px;"
+            theme.bind_style(top_lbl, lambda: f"color:{theme.TEXT_MUTED};font-size:11px;"
                                   f"background:transparent;border:none;")
             lay.addWidget(top_lbl)
 
         close_btn = QPushButton("Kapat / Close")
-        close_btn.setStyleSheet(theme.btn_primary())
+        theme.bind_style(close_btn, theme.btn_primary)
         close_btn.clicked.connect(dlg.accept)
         lay.addWidget(close_btn)
 

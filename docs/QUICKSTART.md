@@ -1,3 +1,5 @@
+> **2026.09.22-r2:** Güncel kurulum ve yeni paneller için [Studio kılavuzunu](../GELISTIRME_KILAVUZU.md) kullanın. `install.bat` tek sihirbazdır; `run.bat` proje ortamını seçerek açar. Aşağıdaki eski performans tahminleri bu teslimde ölçülmedi.
+
 # 🌾 LoRA-Harvester - Quick Reference Guide / Hızlı Referans Kılavuzu
 
 [English](#english-guide) | [Türkçe](#turkce-kilavuz)
@@ -13,7 +15,7 @@
 install.bat
 
 # Run GUI
-python main.py
+run.bat
 
 # Run CLI
 python cli.py your_video.mp4
@@ -136,9 +138,9 @@ output/video_adi_9x16/
 
 ## 📖 Full Documentation
 
-For complete documentation, see **[README.md](README.md)**
+For complete documentation, see **[README.md](../README.md)**
 
-Tam dokümantasyon için **[README.md](README.md)** dosyasına bakın
+Tam dokümantasyon için **[README.md](../README.md)** dosyasına bakın
 
 ---
 

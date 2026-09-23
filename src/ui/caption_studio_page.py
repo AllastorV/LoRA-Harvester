@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QTextEdit, QPushButton, QProgressBar, QFileDialog, QFrame,
     QListWidget, QListWidgetItem, QInputDialog, QSplitter,
     QTabWidget, QCompleter, QScrollArea, QSizePolicy,
-    QGridLayout, QButtonGroup, QRadioButton, QSlider,
+    QGridLayout, QButtonGroup, QRadioButton, QSlider, QMessageBox,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QStringListModel
 from PyQt5.QtGui import (
@@ -20,6 +20,8 @@ from PyQt5.QtGui import (
 from typing import Dict, List, Optional
 from src.ui.translations import get_text
 from src.ui import theme
+from src.ui.clothing_tagger_widget import ClothingTaggerWidget
+from src.core.caption_sync import (path_key, read_caption_snapshot, save_edited_caption)
 from src.ui.animations import ToggleSwitch, Chip, SearchCombo, ThumbnailGrid
 
 _IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
@@ -66,8 +68,8 @@ class TagCompleterTextEdit(QTextEdit):
         self._completer: Optional[QCompleter] = None
         self._loader: Optional[_TagLoadThread] = None
         self._setup_completer()
-        # Start loading tags immediately — don't wait for focus
-        self._ensure_tags_loaded()
+        # The shared dictionary is loaded on first focus, not while every
+        # hidden editor is constructed during application startup.
 
     def _setup_completer(self):
         global _shared_tag_model
@@ -85,8 +87,7 @@ class TagCompleterTextEdit(QTextEdit):
 
         # Style the popup to match the dark theme
         popup = c.popup()
-        popup.setStyleSheet(
-            f"QListView {{"
+        theme.bind_style(popup, lambda: f"QListView {{"
             f"  background-color: {theme.BG_ELEVATED};"
             f"  color: {theme.TEXT_PRIMARY};"
             f"  border: 1px solid {theme.get_accent()};"
@@ -100,8 +101,7 @@ class TagCompleterTextEdit(QTextEdit):
             f"}}"
             f"QListView::item:hover {{"
             f"  background-color: {theme.BG_HOVER};"
-            f"}}"
-        )
+            f"}}")
         self._completer = c
 
     # ── Tag loading ─────────────────────────────────────────────
@@ -227,7 +227,7 @@ class CaptioningThread(QThread):
     """Background thread for captioning (WD14 / Florence-2 / combined)."""
     progress = pyqtSignal(int, int, str)
     log_message = pyqtSignal(str)
-    finished = pyqtSignal(dict)
+    captioning_finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
     def __init__(self, captioner, image_folder: str, settings: Dict,
@@ -242,73 +242,74 @@ class CaptioningThread(QThread):
 
     def run(self):
         mode = self.settings.get('mode', 'tags_only')
-        # Model usage driven by independent checkboxes
         use_wd14 = self.settings.get('use_wd14', True)
         use_f2 = self.settings.get('use_florence2', False)
-
+        stats, error = None, None
         try:
-            # ── Load WD14 if needed ────────────────────────────
             if use_wd14 and self.captioner:
                 if self.captioner.wd14 and self.captioner.enable_wd14:
                     try:
                         self.log_message.emit("Loading WD14 model...")
                         self.captioner.wd14._load_model()
                         n_tags = len(self.captioner.wd14.tags) if self.captioner.wd14.tags else 0
-                        self.log_message.emit(f"✅ WD14 model loaded ({n_tags} tags)")
+                        self.log_message.emit(f"WD14 model loaded ({n_tags} tags)")
                         if n_tags == 0:
-                            self.log_message.emit("⚠️ WD14 tag list is empty — auto-tags will NOT be generated!")
-                    except Exception as e:
-                        self.log_message.emit(f"❌ WD14 FAILED: {e}")
-                        self.log_message.emit("⚠️ Auto-tagging disabled — captions will only contain trigger word!")
+                            self.log_message.emit("WD14 tag list is empty; no automatic tags will be generated.")
+                    except Exception as exc:
+                        self.log_message.emit(f"WD14 failed: {exc}")
                         self.captioner.enable_wd14 = False
                 elif self.captioner.enable_wd14:
-                    self.log_message.emit("⚠️ WD14 tagger not initialized — check model selection")
-
-            # ── Load Florence-2 if needed ──────────────────────
+                    self.log_message.emit("WD14 tagger is not initialized.")
             if use_f2 and self.florence2:
                 try:
                     self.log_message.emit("Loading Florence-2 model...")
                     self.florence2._load_model()
-                    self.log_message.emit("✅ Florence-2 model loaded")
-                except Exception as e:
-                    self.log_message.emit(f"❌ Florence-2 FAILED: {e}")
+                except Exception as exc:
+                    self.log_message.emit(f"Florence-2 failed: {exc}")
                     if mode == 'florence2':
-                        self.error.emit(f"Florence-2 load failed: {e}")
-                        return
+                        raise RuntimeError(f"Florence-2 load failed: {exc}") from exc
                     self.florence2 = None
-
             if not self._running:
                 return
-
-            # Route: use fast AdvancedCaptioner path only when WD14-only + no Florence-2
             if use_wd14 and not use_f2 and mode == 'tags_only':
                 stats = self.captioner.caption_directory(
-                    self.image_folder,
-                    mode='tags_only',
+                    self.image_folder, mode='tags_only',
                     overwrite=self.settings.get('overwrite', False),
                     save_json=self.settings.get('save_json', False),
                     progress_callback=self._progress_callback,
-                    recursive=self.settings.get('recursive', False),
-                )
+                    recursive=self.settings.get('recursive', False))
             else:
                 stats = self._run_with_florence2()
-
+            self._release_caption_models()
             if self._running:
-                self.finished.emit(stats)
-        except Exception as e:
-            if self._running:
-                self.error.emit(str(e))
+                try:
+                    from src.core.clothing_service import optional_pipeline_pass
+                    from src.core.clothing_io import find_images
+                    clothing = optional_pipeline_pass(
+                        find_images(Path(self.image_folder), self.settings.get('recursive', False)),
+                        'caption', log=self.log_message.emit, stop=lambda: not self._running)
+                    if clothing is not None:
+                        stats['clothing'] = clothing
+                except Exception as exc:
+                    self.log_message.emit(f"Clothing post-pass failed; existing captions preserved: {exc}")
+                    stats['clothing_error'] = str(exc)
+        except Exception as exc:
+            error = str(exc)
         finally:
-            try:
-                if self.captioner and hasattr(self.captioner, 'cleanup'):
-                    self.captioner.cleanup()
-            except Exception:
-                pass
-            try:
-                if self.florence2 and hasattr(self.florence2, 'cleanup'):
-                    self.florence2.cleanup()
-            except Exception:
-                pass
+            self._release_caption_models()
+        if self._running:
+            if error is not None:
+                self.error.emit(error)
+            elif stats is not None:
+                self.captioning_finished.emit(stats)
+
+    def _release_caption_models(self):
+        for model in (self.captioner, self.florence2):
+            if model is not None and hasattr(model, 'cleanup'):
+                try:
+                    model.cleanup()
+                except Exception:
+                    pass
 
     def _run_with_florence2(self) -> Dict:
         """Process images with Florence-2 (or combined WD14+Florence-2)."""
@@ -484,19 +485,19 @@ class _GenerateTab(QWidget):
         # Drop zone widgets (drag/drop still works via dragEnterEvent/dropEvent)
         self.drop_zone = QFrame()
         self.drop_zone.setMinimumHeight(65)
-        self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
+        theme.bind_style(self.drop_zone, theme.drop_zone_frame_default)
         _dz_lay = QHBoxLayout(self.drop_zone)
         _dz_lay.setContentsMargins(15, 5, 15, 5)
         self.drop_icon = QLabel("▸")
-        self.drop_icon.setStyleSheet(theme.icon_transparent())
+        theme.bind_style(self.drop_icon, theme.icon_transparent)
         _dz_lay.addWidget(self.drop_icon)
         self.folder_label = QLabel(get_text('drag_drop_folder', self.lang))
-        self.folder_label.setStyleSheet(theme.label_transparent())
+        theme.bind_style(self.folder_label, theme.label_transparent)
         self.folder_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         _dz_lay.addWidget(self.folder_label, stretch=1)
 
         self.browse_btn = QPushButton(get_text('select_input_folder', self.lang))
-        self.browse_btn.setStyleSheet(theme.btn_browse())
+        theme.bind_style(self.browse_btn, theme.btn_browse)
         self.browse_btn.clicked.connect(self.select_folder)
 
         self.recursive_cb = QCheckBox(get_text('recursive_search', self.lang))
@@ -506,7 +507,7 @@ class _GenerateTab(QWidget):
         self.overwrite_cb.setChecked(True)
 
         self.image_count_label = QLabel("")
-        self.image_count_label.setStyleSheet(theme.label_success())
+        theme.bind_style(self.image_count_label, theme.label_success)
 
         # Hidden combos / spinboxes referenced by backend
         self.model_combo = QComboBox()
@@ -526,11 +527,11 @@ class _GenerateTab(QWidget):
 
         self.trigger_edit = QLineEdit()
         self.trigger_edit.setPlaceholderText(get_text('trigger_placeholder', self.lang))
-        self.trigger_edit.setStyleSheet(theme.line_edit())
+        theme.bind_style(self.trigger_edit, theme.line_edit)
 
         self.suffix_edit = QLineEdit()
         self.suffix_edit.setPlaceholderText(get_text('suffix_placeholder', self.lang))
-        self.suffix_edit.setStyleSheet(theme.line_edit())
+        theme.bind_style(self.suffix_edit, theme.line_edit)
 
         self.max_tags_spin = QSpinBox()
         self.max_tags_spin.setRange(5, 100); self.max_tags_spin.setValue(25)
@@ -628,37 +629,31 @@ class _GenerateTab(QWidget):
 
         def _mono_lbl(text):
             lbl = QLabel(text)
-            lbl.setStyleSheet(
-                f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
-                f"background:transparent;border:none;letter-spacing:0.05em;"
-            )
+            theme.bind_style(lbl, lambda: f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
+                f"background:transparent;border:none;letter-spacing:0.05em;")
             return lbl
 
         def _hint_lbl(text):
             lbl = QLabel(text)
             lbl.setWordWrap(True)
-            lbl.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(9)};background:transparent;border:none;")
+            theme.bind_style(lbl, lambda: f"color:{theme.TEXT_MUTED};font-size:{theme.fs(9)};background:transparent;border:none;")
             return lbl
 
         def _card(title, icon_char=None):
             f = QFrame()
             f.setProperty("lhCard", True)
-            f.setStyleSheet(
-                f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};border-radius:10px;}}"
-            )
+            theme.bind_style(f, lambda: f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};border-radius:10px;}}")
             lay = QVBoxLayout(f)
             lay.setContentsMargins(20, 16, 20, 16)
             lay.setSpacing(16)
             hdr = QHBoxLayout(); hdr.setSpacing(8)
             if icon_char:
                 ic = QLabel(icon_char)
-                ic.setStyleSheet(f"color:{theme.ORANGE};background:transparent;border:none;font-size:16px;")
+                theme.bind_style(ic, lambda: f"color:{theme.ORANGE};background:transparent;border:none;font-size:16px;")
                 hdr.addWidget(ic)
             t = QLabel(title)
-            t.setStyleSheet(
-                f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(14)};font-weight:600;"
-                f"background:transparent;border:none;letter-spacing:-0.01em;"
-            )
+            theme.bind_style(t, lambda: f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(14)};font-weight:600;"
+                f"background:transparent;border:none;letter-spacing:-0.01em;")
             hdr.addWidget(t); hdr.addStretch()
             lay.addLayout(hdr)
             return f
@@ -673,25 +668,19 @@ class _GenerateTab(QWidget):
 
         # Page header
         pg_title = QLabel(get_text('batch_caption_title', self.lang))
-        pg_title.setStyleSheet(
-            f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(22)};font-weight:600;"
-            f"letter-spacing:-0.015em;background:transparent;border:none;"
-        )
-        pg_desc = QLabel(get_text('batch_caption_desc', self.lang))
-        pg_desc.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(12)};background:transparent;border:none;")
+        theme.bind_style(pg_title, lambda: f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(22)};font-weight:600;"
+            f"letter-spacing:-0.015em;background:transparent;border:none;")
+        self._gen_page_title = pg_title
+        pg_title.setToolTip(get_text('batch_caption_desc', self.lang))
         hdr_left = QVBoxLayout(); hdr_left.setSpacing(4)
-        hdr_left.addWidget(pg_title); hdr_left.addWidget(pg_desc)
+        hdr_left.addWidget(pg_title)
         status_badge = QFrame()
-        status_badge.setStyleSheet(
-            f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:12px;}}"
-        )
+        theme.bind_style(status_badge, lambda: f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:12px;}}")
         sb_lay = QHBoxLayout(status_badge); sb_lay.setContentsMargins(10, 4, 14, 4); sb_lay.setSpacing(6)
         dot = QLabel("●"); dot.setStyleSheet("color:#22c55e;background:transparent;border:none;font-size:8px;")
         sb_txt = QLabel(get_text('harvester_idle', self.lang))
-        sb_txt.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
-            f"background:transparent;border:none;"
-        )
+        theme.bind_style(sb_txt, lambda: f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
+            f"background:transparent;border:none;")
         sb_lay.addWidget(dot); sb_lay.addWidget(sb_txt)
         hdr_row = QHBoxLayout()
         hdr_row.addLayout(hdr_left); hdr_row.addStretch(); hdr_row.addWidget(status_badge)
@@ -709,39 +698,31 @@ class _GenerateTab(QWidget):
 
         def _model_subcard(title, badge_text, badge_color, desc_text, sl_attr, sl_lbl_attr, sl_default, cb_attr):
             sc = QFrame()
-            sc.setStyleSheet(
-                f"QFrame {{background:rgba(0,0,0,0.3);border:1px solid {theme.BORDER};border-radius:6px;}}"
-            )
+            theme.bind_style(sc, lambda: f"QFrame {{background:rgba(0,0,0,0.3);border:1px solid {theme.BORDER};border-radius:6px;}}")
             scl = QVBoxLayout(sc); scl.setContentsMargins(16, 16, 16, 16); scl.setSpacing(10)
             top_row = QHBoxLayout()
             cb = QCheckBox(title); cb.setChecked(True)
-            cb.setStyleSheet(
-                f"QCheckBox {{color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
+            theme.bind_style(cb, lambda: f"QCheckBox {{color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
                 f"background:transparent;border:none;}}"
                 f"QCheckBox::indicator {{width:14px;height:14px;border:1px solid {theme.BORDER};"
                 f"border-radius:2px;background:{theme.BG_SURFACE};}}"
-                f"QCheckBox::indicator:checked {{background:{theme.ORANGE};border-color:{theme.ORANGE};}}"
-            )
+                f"QCheckBox::indicator:checked {{background:{theme.ORANGE};border-color:{theme.ORANGE};}}")
             setattr(self, cb_attr, cb)
             top_row.addWidget(cb); top_row.addStretch()
             badge = Chip(badge_text, accent=badge_color)
             top_row.addWidget(badge)
             scl.addLayout(top_row)
-            desc = QLabel(desc_text); desc.setWordWrap(True); desc.setFixedHeight(34)
-            desc.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};background:transparent;border:none;")
-            scl.addWidget(desc)
+            cb.setToolTip(desc_text)
             conf_row = QHBoxLayout()
             conf_row.addWidget(_mono_lbl("Confidence Threshold")); conf_row.addStretch()
             val_lbl = QLabel(f"{sl_default/100:.2f}")
-            val_lbl.setStyleSheet(
-                f"color:{theme.ORANGE};font-size:{theme.fs(11)};font-family:{theme.FONT_MONO};"
-                f"background:transparent;border:none;"
-            )
+            theme.bind_style(val_lbl, lambda: f"color:{theme.ORANGE};font-size:{theme.fs(11)};font-family:{theme.FONT_MONO};"
+                f"background:transparent;border:none;")
             setattr(self, sl_lbl_attr, val_lbl)
             conf_row.addWidget(val_lbl)
             scl.addLayout(conf_row)
             sl = QSlider(Qt.Horizontal); sl.setMinimum(10); sl.setMaximum(90); sl.setValue(sl_default)
-            sl.setStyleSheet(_sl_style())
+            theme.bind_style(sl, lambda _sl_style=_sl_style: _sl_style())
             setattr(self, sl_attr, sl)
             sl.valueChanged.connect(lambda v, lbl=val_lbl: lbl.setText(f"{v/100:.2f}"))
             scl.addWidget(sl)
@@ -829,7 +810,7 @@ class _GenerateTab(QWidget):
             col.addWidget(_mono_lbl(label_text))
             col.addWidget(widget)
             if hint:
-                col.addWidget(_hint_lbl(hint))
+                widget.setToolTip(hint)
             return col
 
         self._preset_vis = QComboBox()
@@ -838,7 +819,7 @@ class _GenerateTab(QWidget):
         self._preset_vis.addItem(get_text('qpreset_speed', self.lang),  {'thresh': 45, 'max_tags': 15})
         self._preset_vis.addItem(get_text('qpreset_custom', self.lang), None)
         self._preset_vis.setCurrentIndex(1)
-        self._preset_vis.setStyleSheet(theme.combo())
+        theme.bind_style(self._preset_vis, theme.combo)
 
         def _apply_quality_preset(idx):
             data = self._preset_vis.itemData(idx)
@@ -857,7 +838,7 @@ class _GenerateTab(QWidget):
         _apply_quality_preset(1)   # apply Normal on init
         grid.addLayout(_field_col(get_text('preset_label', self.lang), self._preset_vis), 0, 0)
 
-        self.trigger_edit.setStyleSheet(theme.line_edit())
+        theme.bind_style(self.trigger_edit, theme.line_edit)
         grid.addLayout(
             _field_col(get_text('trigger_word', self.lang), self.trigger_edit,
                        get_text('trigger_hint', self.lang)),
@@ -866,7 +847,7 @@ class _GenerateTab(QWidget):
 
         self._last_words_edit = QLineEdit()
         self._last_words_edit.setPlaceholderText(get_text('last_words_placeholder', self.lang))
-        self._last_words_edit.setStyleSheet(theme.line_edit())
+        theme.bind_style(self._last_words_edit, theme.line_edit)
         grid.addLayout(
             _field_col(get_text('last_words_label', self.lang), self._last_words_edit,
                        get_text('last_words_hint', self.lang)),
@@ -875,7 +856,7 @@ class _GenerateTab(QWidget):
 
         self._neg_prompt_edit = QLineEdit()
         self._neg_prompt_edit.setPlaceholderText(get_text('neg_prompt_placeholder', self.lang))
-        self._neg_prompt_edit.setStyleSheet(theme.line_edit())
+        theme.bind_style(self._neg_prompt_edit, theme.line_edit)
         self._neg_prompt_edit.setText(self.neg_edit.text())  # sync from hidden
         self._neg_prompt_edit.textChanged.connect(self.neg_edit.setText)
         self._neg_prompt_field_lbl = _mono_lbl(get_text('negative_prompt_label', self.lang))
@@ -887,7 +868,7 @@ class _GenerateTab(QWidget):
         self._max_tags_vis = QSpinBox()
         self._max_tags_vis.setRange(5, 150)
         self._max_tags_vis.setValue(self.max_tags_spin.value())
-        self._max_tags_vis.setStyleSheet(theme.spinbox_compact())
+        theme.bind_style(self._max_tags_vis, theme.spinbox_compact)
         self._max_tags_vis.valueChanged.connect(self.max_tags_spin.setValue)
         self._max_tags_field_lbl = _mono_lbl(get_text('max_tags_field', self.lang))
         _mt_col = QVBoxLayout(); _mt_col.setSpacing(4)
@@ -899,9 +880,7 @@ class _GenerateTab(QWidget):
         tm_col = QVBoxLayout(); tm_col.setSpacing(6)
         tm_col.addWidget(_mono_lbl(get_text('tag_mode_label', self.lang)))
         seg_bar = QFrame()
-        seg_bar.setStyleSheet(
-            f"QFrame {{background:{theme.BG_SURFACE};border:1px solid {theme.BORDER};border-radius:6px;}}"
-        )
+        theme.bind_style(seg_bar, lambda: f"QFrame {{background:{theme.BG_SURFACE};border:1px solid {theme.BORDER};border-radius:6px;}}")
         seg_lay = QHBoxLayout(seg_bar); seg_lay.setContentsMargins(3, 3, 3, 3); seg_lay.setSpacing(2)
         self._tag_mode_grp = QButtonGroup(self); self._tag_mode_grp.setExclusive(True)
 
@@ -929,14 +908,14 @@ class _GenerateTab(QWidget):
             rb.setFixedWidth(139)
             rb.setFixedHeight(34)
             rb.setChecked(i == 1)
-            rb.setStyleSheet(_rb_style(i == 1))
+            theme.bind_style(rb, lambda _rb_style=_rb_style, i=i: _rb_style(i == 1))
             self._tag_mode_grp.addButton(rb, i)
             seg_lay.addWidget(rb)
             setattr(self, f"_tag_rb_{i}", rb)
 
         def _on_tag_mode(btn):
             for b in [self._tag_rb_0, self._tag_rb_1, self._tag_rb_2]:
-                b.setStyleSheet(_rb_style(b.isChecked()))
+                theme.bind_style(b, lambda _rb_style=_rb_style, b=b: _rb_style(b.isChecked()))
             self.mode_combo.setCurrentIndex(self._tag_mode_grp.checkedId())
 
         self._tag_mode_grp.buttonClicked.connect(_on_tag_mode)
@@ -974,17 +953,15 @@ class _GenerateTab(QWidget):
 
         def _rule_row(rb, title, desc_text):
             row = QHBoxLayout(); row.setSpacing(10); row.setAlignment(Qt.AlignTop)
-            rb.setStyleSheet(_rb_indicator)
+            theme.bind_style(rb, lambda: f'QRadioButton {{background:transparent;border:none;}}QRadioButton::indicator {{width:14px;height:14px;border:1px solid {theme.BORDER};border-radius:7px;background:{theme.BG_SURFACE};}}QRadioButton::indicator:checked {{background:{theme.ORANGE};border-color:{theme.ORANGE};}}')
             row.addWidget(rb)
             txt = QVBoxLayout(); txt.setSpacing(2)
             t = QLabel(title)
-            t.setStyleSheet(
-                f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
-                f"background:transparent;border:none;"
-            )
-            d = QLabel(desc_text); d.setWordWrap(True)
-            d.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};background:transparent;border:none;")
-            txt.addWidget(t); txt.addWidget(d)
+            theme.bind_style(t, lambda: f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
+                f"background:transparent;border:none;")
+            rb.setToolTip(desc_text)
+            t.setToolTip(desc_text)
+            txt.addWidget(t)
             row.addLayout(txt)
             return row
 
@@ -999,7 +976,7 @@ class _GenerateTab(QWidget):
             get_text('batch_append_desc', self.lang),
         ))
         div_line = QFrame(); div_line.setFrameShape(QFrame.HLine)
-        div_line.setStyleSheet(f"background:{theme.BORDER};border:none;"); div_line.setFixedHeight(1)
+        theme.bind_style(div_line, lambda: f"background:{theme.BORDER};border:none;"); div_line.setFixedHeight(1)
         rules_lay.addWidget(div_line)
 
         self._auto_clean_cb = ToggleSwitch(checked=True)
@@ -1007,14 +984,10 @@ class _GenerateTab(QWidget):
         ac_row.addWidget(self._auto_clean_cb)
         ac_txt = QVBoxLayout(); ac_txt.setSpacing(2)
         act = QLabel(get_text('auto_clean_tags', self.lang))
-        act.setStyleSheet(
-            f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
-            f"background:transparent;border:none;"
-        )
-        acd = QLabel(get_text('auto_clean_desc', self.lang))
-        acd.setWordWrap(True)
-        acd.setStyleSheet(f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};background:transparent;border:none;")
-        ac_txt.addWidget(act); ac_txt.addWidget(acd)
+        theme.bind_style(act, lambda: f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:500;"
+            f"background:transparent;border:none;")
+        act.setToolTip(get_text('auto_clean_desc', self.lang))
+        ac_txt.addWidget(act)
         ac_row.addLayout(ac_txt)
         rules_lay.addLayout(ac_row)
         rules_lay.addStretch()
@@ -1023,34 +996,26 @@ class _GenerateTab(QWidget):
         # -- Action card (orange top border) ----------------------
         action_card = QFrame()
         action_card.setProperty("lhActionCard", True)
-        action_card.setStyleSheet(
-            f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};"
-            f"border-top:2px solid {theme.ORANGE};border-radius:10px;}}"
-        )
+        theme.bind_style(action_card, lambda: f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};"
+            f"border-top:2px solid {theme.ORANGE};border-radius:10px;}}")
         ac_lay = QVBoxLayout(action_card); ac_lay.setContentsMargins(20, 16, 20, 16); ac_lay.setSpacing(10)
 
         # ── Drop zone for dataset folder ──────────────────────────
         self._gen_drop_zone = QFrame()
         self._gen_drop_zone.setMinimumHeight(72)
         self._gen_drop_zone.setCursor(Qt.PointingHandCursor)
-        self._gen_drop_zone.setStyleSheet(
-            f"QFrame {{background:{theme.BG_SURFACE};border:2px dashed {theme.BORDER_ACCENT};"
+        theme.bind_style(self._gen_drop_zone, lambda: f"QFrame {{background:{theme.BG_SURFACE};border:2px dashed {theme.BORDER_ACCENT};"
             f"border-radius:8px;}}"
-            f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}"
-        )
+            f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}")
         _dz_lay = QVBoxLayout(self._gen_drop_zone)
         _dz_lay.setAlignment(Qt.AlignCenter); _dz_lay.setSpacing(4)
         self._gen_dz_icon = QLabel("▸")
         self._gen_dz_icon.setAlignment(Qt.AlignCenter)
-        self._gen_dz_icon.setStyleSheet(
-            f"color:{theme.TEXT_MUTED};font-size:22px;background:transparent;border:none;"
-        )
+        theme.bind_style(self._gen_dz_icon, lambda: f"color:{theme.TEXT_MUTED};font-size:22px;background:transparent;border:none;")
         self._gen_dz_title = QLabel(get_text('gen_drop_dataset', self.lang))
         self._gen_dz_title.setAlignment(Qt.AlignCenter)
-        self._gen_dz_title.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(12)};font-weight:600;"
-            f"background:transparent;border:none;"
-        )
+        theme.bind_style(self._gen_dz_title, lambda: f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(12)};font-weight:600;"
+            f"background:transparent;border:none;")
         _dz_lay.addWidget(self._gen_dz_icon); _dz_lay.addWidget(self._gen_dz_title)
         self._gen_drop_zone.mousePressEvent = lambda e: self.select_folder()
         ac_lay.addWidget(self._gen_drop_zone)
@@ -1059,61 +1024,53 @@ class _GenerateTab(QWidget):
         self._gen_browse_btn = QPushButton(get_text('gen_browse_folder', self.lang))
         self._gen_browse_btn.setFixedHeight(32)
         self._gen_browse_btn.setCursor(Qt.PointingHandCursor)
-        self._gen_browse_btn.setStyleSheet(theme.btn_browse())
+        theme.bind_style(self._gen_browse_btn, theme.btn_browse)
         self._gen_browse_btn.clicked.connect(self.select_folder)
         ac_lay.addWidget(self._gen_browse_btn)
 
         # Separator
         _sep = QFrame(); _sep.setFrameShape(QFrame.HLine)
-        _sep.setStyleSheet(f"background:{theme.BORDER};border:none;"); _sep.setFixedHeight(1)
+        theme.bind_style(_sep, lambda: f"background:{theme.BORDER};border:none;"); _sep.setFixedHeight(1)
         ac_lay.addWidget(_sep)
 
         def _info_row(key, val_widget):
             r = QHBoxLayout()
             k = QLabel(key)
-            k.setStyleSheet(
-                f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
-                f"background:transparent;border:none;"
-            )
+            theme.bind_style(k, lambda: f"color:{theme.TEXT_MUTED};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
+                f"background:transparent;border:none;")
             r.addWidget(k); r.addStretch(); r.addWidget(val_widget)
             return r
 
         self._target_path_lbl = QLabel("—")
-        self._target_path_lbl.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
-            f"background:transparent;border:none;"
-        )
+        theme.bind_style(self._target_path_lbl, lambda: f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(10)};font-family:{theme.FONT_MONO};"
+            f"background:transparent;border:none;")
         ac_lay.addLayout(_info_row(get_text('target_dataset_label', self.lang), self._target_path_lbl))
 
         self._img_count_lbl = QLabel("—")
-        self._img_count_lbl.setStyleSheet(
-            f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:600;"
-            f"font-family:{theme.FONT_MONO};background:transparent;border:none;"
-        )
+        theme.bind_style(self._img_count_lbl, lambda: f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:600;"
+            f"font-family:{theme.FONT_MONO};background:transparent;border:none;")
         ac_lay.addLayout(_info_row(get_text('images_found_count', self.lang), self._img_count_lbl))
 
         self.start_btn = QPushButton(get_text('run_batch_captioning', self.lang))
         self.start_btn.setEnabled(False)
         self.start_btn.setFixedHeight(48)
         self.start_btn.setCursor(Qt.PointingHandCursor)
-        self.start_btn.setStyleSheet(
-            f"QPushButton {{background:{theme.ORANGE};color:#1a1a1a;font-size:{theme.fs(13)};"
+        theme.bind_style(self.start_btn, lambda: f"QPushButton {{background:{theme.ORANGE};color:#1a1a1a;font-size:{theme.fs(13)};"
             f"font-weight:700;border-radius:6px;border:none;}}"
             f"QPushButton:hover {{background:#d97720;}}"
-            f"QPushButton:disabled {{background:{theme.BG_SURFACE};color:{theme.TEXT_MUTED};}}"
-        )
+            f"QPushButton:disabled {{background:{theme.BG_SURFACE};color:{theme.TEXT_MUTED};}}")
         self.start_btn.clicked.connect(self.start_captioning)
         ac_lay.addWidget(self.start_btn)
 
         self.stop_btn = QPushButton(get_text('stop_btn', self.lang))
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet(theme.btn_danger())
+        theme.bind_style(self.stop_btn, theme.btn_danger)
         self.stop_btn.clicked.connect(self.stop_captioning)
         self.stop_btn.hide()
         ac_lay.addWidget(self.stop_btn)
 
         self.progress_bar = QProgressBar()
-        self.progress_bar.setStyleSheet(theme.progress_bar())
+        theme.bind_style(self.progress_bar, theme.progress_bar)
         self.progress_bar.setFixedHeight(4)
         ac_lay.addWidget(self.progress_bar)
 
@@ -1128,7 +1085,7 @@ class _GenerateTab(QWidget):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFixedHeight(140)
-        self.log_text.setStyleSheet(theme.log_area())
+        theme.bind_style(self.log_text, theme.log_area)
         root_layout.addWidget(self.log_text)
 
         # Sync mode_combo to "Tag First" (index 1) as default
@@ -1168,23 +1125,19 @@ class _GenerateTab(QWidget):
                 if os.path.isdir(urls[0].toLocalFile()):
                     event.acceptProposedAction()
                     # highlight both drop zones
-                    self.drop_zone.setStyleSheet(theme.drop_zone_frame_active())
+                    theme.bind_style(self.drop_zone, theme.drop_zone_frame_active)
                     if hasattr(self, '_gen_drop_zone'):
-                        self._gen_drop_zone.setStyleSheet(
-                            f"QFrame {{background:{theme.ORANGE_SUBTLE};"
-                            f"border:2px dashed {theme.ORANGE};border-radius:8px;}}"
-                        )
+                        theme.bind_style(self._gen_drop_zone, lambda: f"QFrame {{background:{theme.ORANGE_SUBTLE};"
+                            f"border:2px dashed {theme.ORANGE};border-radius:8px;}}")
                     return
         event.ignore()
 
     def dragLeaveEvent(self, event):
-        self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
+        theme.bind_style(self.drop_zone, theme.drop_zone_frame_default)
         if hasattr(self, '_gen_drop_zone') and not self.selected_folder:
-            self._gen_drop_zone.setStyleSheet(
-                f"QFrame {{background:{theme.BG_SURFACE};border:2px dashed {theme.BORDER_ACCENT};"
+            theme.bind_style(self._gen_drop_zone, lambda: f"QFrame {{background:{theme.BG_SURFACE};border:2px dashed {theme.BORDER_ACCENT};"
                 f"border-radius:8px;}}"
-                f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}"
-            )
+                f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}")
 
     def dropEvent(self, event: QDropEvent):
         if event.mimeData().hasUrls():
@@ -1206,9 +1159,9 @@ class _GenerateTab(QWidget):
         self.selected_folder = folder
         display = folder if len(folder) <= 50 else "..." + folder[-47:]
         self.folder_label.setText(display)
-        self.folder_label.setStyleSheet(theme.label_success())
+        theme.bind_style(self.folder_label, theme.label_success)
         self.drop_icon.setText("✅")
-        self.drop_zone.setStyleSheet(theme.drop_zone_frame_success())
+        theme.bind_style(self.drop_zone, theme.drop_zone_frame_success)
         self.drop_zone.setToolTip(folder)
 
         count = self._count_images(folder)
@@ -1227,19 +1180,13 @@ class _GenerateTab(QWidget):
         if hasattr(self, '_gen_drop_zone'):
             name = Path(folder).name
             self._gen_dz_icon.setText("✅")
-            self._gen_dz_icon.setStyleSheet(
-                f"color:{theme.GREEN};font-size:22px;background:transparent;border:none;"
-            )
+            theme.bind_style(self._gen_dz_icon, lambda: f"color:{theme.GREEN};font-size:22px;background:transparent;border:none;")
             self._gen_dz_title.setText(name)
-            self._gen_dz_title.setStyleSheet(
-                f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:600;"
-                f"background:transparent;border:none;"
-            )
-            self._gen_drop_zone.setStyleSheet(
-                f"QFrame {{background:{theme.BG_SURFACE};border:2px solid {theme.GREEN};"
+            theme.bind_style(self._gen_dz_title, lambda: f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};font-weight:600;"
+                f"background:transparent;border:none;")
+            theme.bind_style(self._gen_drop_zone, lambda: f"QFrame {{background:{theme.BG_SURFACE};border:2px solid {theme.GREEN};"
                 f"border-radius:8px;}}"
-                f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}"
-            )
+                f"QFrame:hover {{border-color:{theme.ORANGE};background:{theme.BG_HOVER};}}")
             self._gen_drop_zone.setToolTip(folder)
 
         self.log(f"📁 {get_text('folder_selected', self.lang)}: {folder}")
@@ -1452,6 +1399,15 @@ class _GenerateTab(QWidget):
             self.start_btn.setEnabled(True)
 
     def start_captioning(self):
+        if getattr(self.window(), '_close_pending', False):
+            return
+        if self.captioning_thread is not None:
+            self.log('The previous caption job is still finishing. Wait for cleanup before restarting.')
+            return
+        studio = getattr(self.window(), 'caption_studio_page', None)
+        if studio is not None and studio.clothing_tab.is_busy():
+            self.log("Finish or stop the clothing job before captioning.")
+            return
         if not self.selected_folder:
             return
         if not self._ensure_models_downloaded():
@@ -1510,10 +1466,12 @@ class _GenerateTab(QWidget):
             florence2=self.florence2)
         self.captioning_thread.progress.connect(self._on_progress)
         self.captioning_thread.log_message.connect(self.log)
-        self.captioning_thread.finished.connect(self._on_finished)
+        self.captioning_thread.captioning_finished.connect(self._on_finished)
         self.captioning_thread.error.connect(self._on_error)
         self.captioning_thread.finished.connect(self._safe_delete_thread)
-        self.captioning_thread.error.connect(self._safe_delete_thread)
+        observer = getattr(self, '_ai_before_worker_start', None)
+        if observer is not None:
+            observer(self.captioning_thread)
         self.captioning_thread.start()
 
     def stop_captioning(self):
@@ -1521,8 +1479,8 @@ class _GenerateTab(QWidget):
             self.captioning_thread.stop()
             self.log("Stopping...")
             self.stop_btn.setEnabled(False)
-            self.start_btn.setEnabled(True)
-            self.browse_btn.setEnabled(True)
+            self.start_btn.setEnabled(False)
+            self.browse_btn.setEnabled(False)
 
     def _on_progress(self, current: int, total: int, filename: str):
         pct = int((current / total) * 100) if total > 0 else 0
@@ -1556,6 +1514,9 @@ class _GenerateTab(QWidget):
             self.captioning_thread.wait(3000)
             self.captioning_thread.deleteLater()
             self.captioning_thread = None
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.browse_btn.setEnabled(True)
         if self.captioner:
             try:
                 self.captioner.cleanup()
@@ -1649,6 +1610,9 @@ class _GenerateTab(QWidget):
             _np.setPlaceholderText(get_text('neg_prompt_placeholder', lang))
 
         # Tooltips
+        _tt(getattr(self, '_gen_page_title', None), get_text('batch_caption_desc', lang))
+        _tt(getattr(self, '_wd14_vis_cb', None), get_text('gen_tt_wd14_sl', lang))
+        _tt(getattr(self, '_f2_vis_cb', None), get_text('gen_tt_f2_sl', lang))
         _tt(getattr(self, 'recursive_cb',  None), get_text('recursive_tooltip', lang))
         _tt(getattr(self, 'overwrite_cb',  None), get_text('overwrite_tooltip', lang))
         _tt(getattr(self, '_wd14_sl',          None), get_text('gen_tt_wd14_sl', lang))
@@ -1684,75 +1648,8 @@ class _GenerateTab(QWidget):
         self.f2_task_combo.blockSignals(False)
 
     def refresh_styles(self):
-        _card_ss = (
-            f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};"
-            f"border-radius:10px;}}"
-        )
-        for frame in self.findChildren(QFrame):
-            if frame is getattr(self, 'drop_zone', None):
-                continue
-            # Refresh by property (new approach) or by style pattern (old approach)
-            if frame.property("lhCard"):
-                frame.setStyleSheet(_card_ss)
-            elif frame.property("lhActionCard"):
-                frame.setStyleSheet(
-                    f"QFrame {{background:{theme.BG_CARD};border:1px solid {theme.BORDER_LIGHT};"
-                    f"border-top:2px solid {theme.ORANGE};border-radius:10px;}}"
-                )
-            else:
-                ss = frame.styleSheet()
-                if "border-radius: 10px" in ss or "border-radius:10px" in ss:
-                    frame.setStyleSheet(_card_ss)
-        self.step1_title.setStyleSheet(theme.label_section())
-        if self.selected_folder:
-            self.drop_zone.setStyleSheet(theme.drop_zone_frame_success())
-            self.folder_label.setStyleSheet(theme.label_success())
-        else:
-            self.drop_zone.setStyleSheet(theme.drop_zone_frame_default())
-            self.folder_label.setStyleSheet(theme.label_transparent())
-        self.drop_icon.setStyleSheet(theme.icon_transparent())
-        self.browse_btn.setStyleSheet(theme.btn_browse())
-        self.image_count_label.setStyleSheet(theme.label_success())
-        self.step2_title.setStyleSheet(theme.label_section())
-        self.preset_label.setStyleSheet(theme.label_frame())
-        self.preset_info.setStyleSheet(theme.info_icon_frame())
-        self.preset_combo.setStyleSheet(theme.combo())
-        self.trigger_label.setStyleSheet(theme.label_frame())
-        self.trigger_info.setStyleSheet(theme.info_icon_frame())
-        self.trigger_edit.setStyleSheet(theme.line_edit())
-        self.suffix_label.setStyleSheet(theme.label_frame())
-        self.suffix_info.setStyleSheet(theme.info_icon_frame())
-        self.suffix_edit.setStyleSheet(theme.line_edit())
-        self.max_label.setStyleSheet(theme.label_frame())
-        self.max_info.setStyleSheet(theme.info_icon_frame())
-        self.max_tags_spin.setStyleSheet(theme.spinbox())
-        self.conf_label.setStyleSheet(theme.label_frame())
-        self.conf_info.setStyleSheet(theme.info_icon_frame())
-        self.conf_spin.setStyleSheet(theme.spinbox())
-        self.neg_label.setStyleSheet(theme.label_frame())
-        self.neg_info.setStyleSheet(theme.info_icon_frame_compact())
-        self.neg_edit.setStyleSheet(theme.line_edit())
-        self._model_row_widget.setStyleSheet(
-            f"background-color: transparent;")
-        self.wd14_cb.setStyleSheet(theme.checkbox_frame())
-        self.wd14_info.setStyleSheet(theme.info_icon_frame())
-        self.wd14_combo.setStyleSheet(theme.combo())
-        # Florence-2 / mode widgets
-        self.mode_label.setStyleSheet(theme.label_frame())
-        self.mode_info.setStyleSheet(theme.info_icon_frame())
-        self.mode_combo.setStyleSheet(theme.combo())
-        self.f2_label.setStyleSheet(theme.label_frame())
-        self.f2_combo.setStyleSheet(theme.combo())
-        self.f2_task_combo.setStyleSheet(theme.combo())
-        self._f2_settings_widget.setStyleSheet("background-color: transparent;")
-        self.step3_title.setStyleSheet(theme.label_section())
-        self.start_btn.setStyleSheet(theme.btn_primary())
-        self.stop_btn.setStyleSheet(theme.btn_danger())
-        self.progress_bar.setStyleSheet(theme.progress_bar())
-        self.log_text.setStyleSheet(theme.log_area())
-        # Refresh visible bento-layout elements
-        if hasattr(self, '_wd14_search_combo'):
-            self._wd14_search_combo.apply_theme()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1763,6 +1660,7 @@ class _EditTab(QWidget):
     """Browse images, review/edit captions, bulk tag operations."""
 
     folder_changed = pyqtSignal(str)
+    captions_saved = pyqtSignal(object)  # Absolute .txt paths after a successful save/reload.
 
     def __init__(self, lang: str = 'en', parent=None):
         super().__init__(parent)
@@ -1772,6 +1670,9 @@ class _EditTab(QWidget):
         self._captions: Dict[str, str] = {}
         self._current_idx: int = -1
         self._dirty: bool = False
+        self._snapshots = {}
+        self._read_errors = {}
+        self._dirty_paths = set()
         self._init_ui()
 
     def _init_ui(self):
@@ -1785,38 +1686,38 @@ class _EditTab(QWidget):
         toolbar.setSpacing(8)
 
         self.load_btn = QPushButton(get_text('ce_load_folder', self.lang))
-        self.load_btn.setStyleSheet(theme.btn_primary())
+        theme.bind_style(self.load_btn, theme.btn_primary)
         self.load_btn.setMinimumWidth(140)
         self.load_btn.clicked.connect(self._browse_folder)
         toolbar.addWidget(self.load_btn)
 
         self.save_btn = QPushButton(get_text('ce_save_all', self.lang))
-        self.save_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self.save_btn, theme.btn_secondary)
         self.save_btn.setMinimumWidth(130)
         self.save_btn.clicked.connect(self._save_all)
         self.save_btn.setEnabled(False)
         toolbar.addWidget(self.save_btn)
 
         sep = QFrame(); sep.setFrameShape(QFrame.VLine)
-        sep.setStyleSheet(f"color: {theme.BORDER};")
+        theme.bind_style(sep, lambda: f"color: {theme.BORDER};")
         toolbar.addWidget(sep)
 
         self.add_tag_btn = QPushButton(get_text('ce_add_tag', self.lang))
-        self.add_tag_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self.add_tag_btn, theme.btn_secondary)
         self.add_tag_btn.setMinimumWidth(130)
         self.add_tag_btn.clicked.connect(self._bulk_add_tag)
         self.add_tag_btn.setEnabled(False)
         toolbar.addWidget(self.add_tag_btn)
 
         self.remove_tag_btn = QPushButton(get_text('ce_remove_tag', self.lang))
-        self.remove_tag_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self.remove_tag_btn, theme.btn_secondary)
         self.remove_tag_btn.setMinimumWidth(130)
         self.remove_tag_btn.clicked.connect(self._bulk_remove_tag)
         self.remove_tag_btn.setEnabled(False)
         toolbar.addWidget(self.remove_tag_btn)
 
         self.replace_tag_btn = QPushButton(get_text('ce_replace_tag', self.lang))
-        self.replace_tag_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self.replace_tag_btn, theme.btn_secondary)
         self.replace_tag_btn.setMinimumWidth(120)
         self.replace_tag_btn.clicked.connect(self._bulk_replace_tag)
         self.replace_tag_btn.setEnabled(False)
@@ -1825,7 +1726,7 @@ class _EditTab(QWidget):
         toolbar.addStretch()
 
         self.status_lbl = QLabel(get_text('ce_no_images', self.lang))
-        self.status_lbl.setStyleSheet(theme.label_muted())
+        theme.bind_style(self.status_lbl, theme.label_muted)
         toolbar.addWidget(self.status_lbl)
 
         root.addLayout(toolbar)
@@ -1837,10 +1738,8 @@ class _EditTab(QWidget):
         # Left panel — file list card (fixed 220px)
         self._left_card = QFrame()
         self._left_card.setFixedWidth(220)
-        self._left_card.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
-        )
+        theme.bind_style(self._left_card, lambda: f"QFrame {{ background: {theme.BG_CARD}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}")
         left_card_lay = QVBoxLayout(self._left_card)
         left_card_lay.setContentsMargins(0, 0, 0, 0)
         left_card_lay.setSpacing(0)
@@ -1852,31 +1751,25 @@ class _EditTab(QWidget):
         list_hdr = QLabel(get_text('edit_images_hdr', self.lang))
         self._list_hdr = list_hdr
         list_hdr.setFixedHeight(36)
-        list_hdr.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; font-weight: 600; "
-            f"letter-spacing: 0.05em; background: transparent; border: none;"
-        )
+        theme.bind_style(list_hdr, lambda: f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; font-weight: 600; "
+            f"letter-spacing: 0.05em; background: transparent; border: none;")
         list_hdr_row.addWidget(list_hdr, stretch=1)
         self._edit_list_btn = QPushButton("≡")
         self._edit_list_btn.setFixedSize(24, 24)
         self._edit_list_btn.setCheckable(True); self._edit_list_btn.setChecked(True)
-        self._edit_list_btn.setStyleSheet(
-            f"QPushButton {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE};"
+        theme.bind_style(self._edit_list_btn, lambda: f"QPushButton {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE};"
             f" border: none; border-radius: 4px; font-size: 14px; }}"
-            f"QPushButton:!checked {{ background: transparent; color: {theme.TEXT_MUTED}; }}"
-        )
+            f"QPushButton:!checked {{ background: transparent; color: {theme.TEXT_MUTED}; }}")
         self._edit_grid_btn = QPushButton("⊞")
         self._edit_grid_btn.setFixedSize(24, 24)
         self._edit_grid_btn.setCheckable(True)
-        self._edit_grid_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
+        theme.bind_style(self._edit_grid_btn, lambda: f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
             f" border: none; border-radius: 4px; font-size: 14px; }}"
-            f"QPushButton:checked {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE}; }}"
-        )
+            f"QPushButton:checked {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE}; }}")
         list_hdr_row.addWidget(self._edit_list_btn)
         list_hdr_row.addWidget(self._edit_grid_btn)
         list_hdr_wrap = QWidget()
-        list_hdr_wrap.setStyleSheet(f"border-bottom: 1px solid {theme.BORDER}; background: transparent;")
+        theme.bind_style(list_hdr_wrap, lambda: f"border-bottom: 1px solid {theme.BORDER}; background: transparent;")
         list_hdr_wrap.setLayout(list_hdr_row)
         list_hdr_wrap.setFixedHeight(37)
         left_card_lay.addWidget(list_hdr_wrap)
@@ -1884,14 +1777,12 @@ class _EditTab(QWidget):
         self.image_list = QListWidget()
         self.image_list.setIconSize(QSize(48, 48))
         self.image_list.setSpacing(2)
-        self.image_list.setStyleSheet(
-            f"QListWidget {{ background: transparent; border: none; "
+        theme.bind_style(self.image_list, lambda: f"QListWidget {{ background: transparent; border: none; "
             f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; }}"
             f"QListWidget::item {{ padding: 6px 8px; border-radius: 4px; }}"
             f"QListWidget::item:selected {{ background: {theme.ORANGE}22; "
             f"color: {theme.ORANGE_LIGHT}; }}"
-            f"QListWidget::item:hover:!selected {{ background: {theme.BG_SURFACE}; }}"
-        )
+            f"QListWidget::item:hover:!selected {{ background: {theme.BG_SURFACE}; }}")
         self.image_list.currentRowChanged.connect(self._on_item_selected)
         left_card_lay.addWidget(self.image_list)
 
@@ -1924,19 +1815,15 @@ class _EditTab(QWidget):
 
         # Preview card
         self._preview_card = QFrame()
-        self._preview_card.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
-        )
+        theme.bind_style(self._preview_card, lambda: f"QFrame {{ background: {theme.BG_CARD}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}")
         preview_lay = QVBoxLayout(self._preview_card)
         preview_lay.setContentsMargins(12, 10, 12, 10)
         preview_lay.setSpacing(6)
 
         self.filename_lbl = QLabel("")
-        self.filename_lbl.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-weight: 600; "
-            f"font-size: {theme.fs(11)}; background: transparent; border: none;"
-        )
+        theme.bind_style(self.filename_lbl, lambda: f"color: {theme.TEXT_PRIMARY}; font-weight: 600; "
+            f"font-size: {theme.fs(11)}; background: transparent; border: none;")
         preview_lay.addWidget(self.filename_lbl)
 
         self.preview_lbl = QLabel()
@@ -1944,19 +1831,15 @@ class _EditTab(QWidget):
         self.preview_lbl.setMinimumHeight(240)
         self.preview_lbl.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.preview_lbl.setStyleSheet(
-            f"background: {theme.BG_DEEPEST}; border-radius: 6px; border: none;"
-        )
+        theme.bind_style(self.preview_lbl, lambda: f"background: {theme.BG_DEEPEST}; border-radius: 6px; border: none;")
         preview_lay.addWidget(self.preview_lbl, stretch=1)
 
         right_col.addWidget(self._preview_card, stretch=55)
 
         # Editor card
         self._editor_card = QFrame()
-        self._editor_card.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
-        )
+        theme.bind_style(self._editor_card, lambda: f"QFrame {{ background: {theme.BG_CARD}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}")
         editor_lay = QVBoxLayout(self._editor_card)
         editor_lay.setContentsMargins(12, 10, 12, 10)
         editor_lay.setSpacing(8)
@@ -1964,35 +1847,31 @@ class _EditTab(QWidget):
         editor_hdr = QHBoxLayout()
         editor_title = QLabel(get_text('edit_tags_caption', self.lang))
         self._editor_title = editor_title
-        editor_title.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(10)}; "
-            f"font-weight: 600; background: transparent; border: none;"
-        )
+        theme.bind_style(editor_title, lambda: f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(10)}; "
+            f"font-weight: 600; background: transparent; border: none;")
         editor_hdr.addWidget(editor_title)
         editor_hdr.addStretch()
 
         self._save_one_btn = QPushButton(get_text('edit_save', self.lang))
         self._save_one_btn.setMinimumWidth(70)
-        self._save_one_btn.setStyleSheet(theme.btn_primary())
+        theme.bind_style(self._save_one_btn, theme.btn_primary)
         self._save_one_btn.clicked.connect(self._save_current)
         self._save_one_btn.setEnabled(False)
         editor_hdr.addWidget(self._save_one_btn)
 
         self._save_next_btn = QPushButton(get_text('edit_save_next', self.lang))
         self._save_next_btn.setMinimumWidth(150)
-        self._save_next_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._save_next_btn, theme.btn_secondary)
         self._save_next_btn.clicked.connect(self._save_and_next)
         self._save_next_btn.setEnabled(False)
         editor_hdr.addWidget(self._save_next_btn)
 
         self._revert_btn = QPushButton(get_text('edit_revert', self.lang))
         self._revert_btn.setMinimumWidth(70)
-        self._revert_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER}; "
+        theme.bind_style(self._revert_btn, lambda: f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER}; "
             f"color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 6px 12px; "
             f"font-size: {theme.fs(11)}; }}"
-            f"QPushButton:hover {{ border-color: {theme.BORDER_LIGHT}; color: {theme.TEXT_SECONDARY}; }}"
-        )
+            f"QPushButton:hover {{ border-color: {theme.BORDER_LIGHT}; color: {theme.TEXT_SECONDARY}; }}")
         self._revert_btn.clicked.connect(self._revert_current)
         self._revert_btn.setEnabled(False)
         editor_hdr.addWidget(self._revert_btn)
@@ -2006,23 +1885,19 @@ class _EditTab(QWidget):
         self._chip_search = QLineEdit()
         self._chip_search.setPlaceholderText(get_text('edit_search_tags_ph', self.lang))
         self._chip_search.setFixedHeight(26)
-        self._chip_search.setStyleSheet(
-            f"QLineEdit {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
+        theme.bind_style(self._chip_search, lambda: f"QLineEdit {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
             f" border-radius: 5px; padding: 2px 8px; color: {theme.TEXT_PRIMARY};"
             f" font-size: {theme.fs(11)}; }}"
-            f"QLineEdit:focus {{ border-color: {theme.ORANGE}; }}"
-        )
+            f"QLineEdit:focus {{ border-color: {theme.ORANGE}; }}")
         self._chip_search.textChanged.connect(self._filter_chips)
         chip_toolbar.addWidget(self._chip_search, stretch=1)
 
         self._clear_all_btn = QPushButton(get_text('edit_clear_all', self.lang))
         self._clear_all_btn.setFixedHeight(26)
-        self._clear_all_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER};"
+        theme.bind_style(self._clear_all_btn, lambda: f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER};"
             f" color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 0 10px;"
             f" font-size: {theme.fs(10)}; }}"
-            f"QPushButton:hover {{ border-color: {theme.RED}; color: {theme.RED}; }}"
-        )
+            f"QPushButton:hover {{ border-color: {theme.RED}; color: {theme.RED}; }}")
         self._clear_all_btn.setToolTip(get_text('edit_tt_clear_all', self.lang))
         self._clear_all_btn.clicked.connect(self._clear_all_tags)
         chip_toolbar.addWidget(self._clear_all_btn)
@@ -2050,11 +1925,9 @@ class _EditTab(QWidget):
         self._tag_add_input = QLineEdit()
         self._tag_add_input.setFixedHeight(34)
         self._tag_add_input.setPlaceholderText(get_text('edit_add_tag_ph', self.lang))
-        self._tag_add_input.setStyleSheet(
-            f"QLineEdit {{background:{theme.BG_SURFACE};border:1px solid {theme.BORDER};"
+        theme.bind_style(self._tag_add_input, lambda: f"QLineEdit {{background:{theme.BG_SURFACE};border:1px solid {theme.BORDER};"
             f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};padding:4px 8px;}}"
-            f"QLineEdit:focus {{border-color:{theme.ORANGE};}}"
-        )
+            f"QLineEdit:focus {{border-color:{theme.ORANGE};}}")
         self._tag_add_input.returnPressed.connect(self._add_typed_tag)
         editor_lay.addWidget(self._tag_add_input)
 
@@ -2093,60 +1966,141 @@ class _EditTab(QWidget):
             self._load_folder(folder)
 
     def reload_folder(self, folder: str):
-        """Public entry point — reload without dialog."""
+        """Explicit folder/generation reload; drafts require confirmation."""
         self._load_folder(folder)
 
     def _load_folder(self, folder: str):
-        self._folder = folder
+        if self.has_unsaved_edits():
+            message = ('Kaydedilmemiş caption değişiklikleri var. Bunlar atılıp klasör açılsın mı?'
+                       if self.lang == 'tr' else 'Discard unsaved caption edits and open the folder?')
+            if QMessageBox.question(self, 'Edit', message, QMessageBox.Yes | QMessageBox.No,
+                                    QMessageBox.No) != QMessageBox.Yes:
+                return
+        root = Path(folder).resolve()
+        if not root.is_dir():
+            self.status_lbl.setText('Image folder does not exist.')
+            return
+        self._folder = str(root)
+        self._current_idx = -1  # Clear before QListWidget emits any selection changes.
+        self.image_list.blockSignals(True)
         self._items.clear()
         self._captions.clear()
+        self._snapshots.clear()
+        self._read_errors.clear()
+        self._dirty_paths.clear()
+        self._dirty = False
         self.image_list.clear()
-        self._current_idx = -1
-
         existing_captions = 0
-        for f in sorted(Path(folder).rglob('*')):
-            if f.is_file() and f.suffix.lower() in _IMAGE_EXTENSIONS:
+        try:
+            for f in sorted(root.rglob('*')):
+                if (not f.is_file() or f.is_symlink() or f.suffix.lower() not in _IMAGE_EXTENSIONS
+                        or any(part.startswith('.lh-') for part in f.relative_to(root).parts)):
+                    continue
                 cap_path = f.with_suffix('.txt')
-                self._items.append((str(f), str(cap_path)))
-                if cap_path.exists():
-                    try:
-                        self._captions[str(cap_path)] = cap_path.read_text(encoding='utf-8')
-                        existing_captions += 1
-                    except Exception:
-                        self._captions[str(cap_path)] = ""
-                else:
-                    self._captions[str(cap_path)] = ""
-                item = QListWidgetItem(f.name)
+                cp = str(cap_path)
+                self._items.append((str(f), cp))
                 try:
-                    pix = QPixmap(str(f))
-                    if not pix.isNull():
-                        item.setIcon(QIcon(pix.scaled(
-                            64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
-                except Exception:
-                    pass
+                    snapshot = read_caption_snapshot(f)
+                    self._snapshots[cp] = snapshot
+                    self._captions[cp] = snapshot.text
+                    existing_captions += int(snapshot.raw is not None)
+                except (OSError, ValueError, RuntimeError) as exc:
+                    self._read_errors[cp] = str(exc)
+                    self._captions[cp] = ''
+                item = QListWidgetItem(f.name)
+                # Studio loads only visible thumbnails off the GUI thread.
+                if not hasattr(self, '_studio_layout'):
+                    try:
+                        pix = QPixmap(str(f))
+                        if not pix.isNull():
+                            item.setIcon(QIcon(pix.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)))
+                    except Exception:
+                        pass
                 self.image_list.addItem(item)
-
-        has = len(self._items) > 0
-        self.save_btn.setEnabled(has)
-        self.add_tag_btn.setEnabled(has)
-        self.remove_tag_btn.setEnabled(has)
-        self.replace_tag_btn.setEnabled(has)
-        self._save_one_btn.setEnabled(has)
-        self._save_next_btn.setEnabled(has)
-        self._revert_btn.setEnabled(has)
-        self.status_lbl.setText(
-            get_text('ce_loaded', self.lang).format(len(self._items), existing_captions))
+        finally:
+            self.image_list.blockSignals(False)
+        self.caption_edit.blockSignals(True)
+        self.caption_edit.clear()
+        self.caption_edit.blockSignals(False)
+        self.preview_lbl.clear()
+        self.filename_lbl.setText('')
+        if hasattr(self, '_chip_scroll'):
+            self._build_chips('')
+        has = bool(self._items)
+        for button in (self.save_btn, self.add_tag_btn, self.remove_tag_btn, self.replace_tag_btn,
+                       self._save_one_btn, self._save_next_btn, self._revert_btn):
+            button.setEnabled(has)
+        self.status_lbl.setText(get_text('ce_loaded', self.lang).format(len(self._items), existing_captions))
         if self._items:
             self.image_list.setCurrentRow(0)
-            # Refresh thumbnail grid if it's visible
-            if hasattr(self, '_thumb_grid') and self._thumb_grid.isVisible():
-                self._thumb_grid.set_paths([p for p, _ in self._items])
-        self.folder_changed.emit(folder)
+        if hasattr(self, '_thumb_grid') and self._thumb_grid.isVisible():
+            self._thumb_grid.set_paths([p for p, _ in self._items])
+        if self._read_errors:
+            self.status_lbl.setText(f'{len(self._read_errors)} caption read error(s); unreadable files are protected.')
+        if hasattr(self, '_studio_layout'):
+            self._studio_layout.after_folder_loaded()
+        self.folder_changed.emit(self._folder)
 
     def _commit_current(self):
         if 0 <= self._current_idx < len(self._items):
             _, cap_path = self._items[self._current_idx]
             self._captions[cap_path] = self.caption_edit.toPlainText()
+            self._mark_dirty(cap_path)
+
+    def _mark_dirty(self, cap_path):
+        baseline = self._snapshots.get(cap_path)
+        clean_text = baseline.text if baseline is not None else ''
+        if self._captions.get(cap_path, '') != clean_text:
+            self._dirty_paths.add(cap_path)
+        else:
+            self._dirty_paths.discard(cap_path)
+        self._dirty = bool(self._dirty_paths)
+
+    def has_unsaved_edits(self):
+        self._commit_current()
+        for cp in self._captions:
+            self._mark_dirty(cp)
+        return self._dirty
+
+    def _report_save_errors(self, errors):
+        if not errors:
+            return
+        title = 'Caption kaydedilemedi' if self.lang == 'tr' else 'Caption could not be saved'
+        message = ('Başarısız dosyaların taslakları korundu.\n' if self.lang == 'tr'
+                   else 'Drafts for the failed files were kept.\n')
+        self.status_lbl.setText(f'{len(errors)} caption error(s)')
+        QMessageBox.warning(self, title, message + '\n'.join(errors[:5]))
+
+    def refresh_saved_captions(self, paths=None):
+        """Read saved changes without reloading the folder or overwriting any draft."""
+        self._commit_current()
+        wanted = None if paths is None else {path_key(p) for p in paths}
+        conflicts, updated = [], []
+        for image, cp in self._items:
+            if wanted is not None and path_key(cp) not in wanted:
+                continue
+            if cp in self._dirty_paths:
+                conflicts.append(cp)
+                continue
+            try:
+                snapshot = read_caption_snapshot(image)
+            except (OSError, ValueError, RuntimeError) as exc:
+                self._read_errors[cp] = str(exc)
+                conflicts.append(cp)
+                continue
+            if self._captions.get(cp) != snapshot.text:
+                updated.append(cp)
+            self._snapshots[cp] = snapshot
+            self._captions[cp] = snapshot.text
+            self._read_errors.pop(cp, None)
+            self._mark_dirty(cp)
+        if 0 <= self._current_idx < len(self._items):
+            if self._items[self._current_idx][1] in updated:
+                self._refresh_editor()
+        if conflicts:
+            self.status_lbl.setText('Taslak/okuma çakışması: mevcut düzenlemeler korundu.' if self.lang == 'tr'
+                                    else 'Draft/read conflict: existing edits were preserved.')
+        return updated
 
     def _attach_tag_add_completer(self):
         """Attach Danbooru completer to _tag_add_input (call after caption_edit is created)."""
@@ -2160,7 +2114,7 @@ class _EditTab(QWidget):
         _c.setCompletionMode(QCompleter.PopupCompletion)
         _c.setMaxVisibleItems(10)
         self._tag_add_completer = _c
-        _c.popup().setStyleSheet(self._tag_popup_style())
+        theme.bind_style(_c.popup(), lambda self=self: self._tag_popup_style())
         _c.activated[str].connect(self._on_tag_add_completed)
         self._tag_add_input.setCompleter(_c)
         # Disconnect Qt's auto full-text connections — we manage prefix per-word ourselves
@@ -2217,7 +2171,7 @@ class _EditTab(QWidget):
         self._tag_add_input.clear()
 
     def _on_caption_changed(self):
-        self._dirty = True
+        self._commit_current()
         if hasattr(self, '_chip_scroll') and not getattr(self, '_syncing_input', False):
             self._build_chips(self.caption_edit.toPlainText())
 
@@ -2239,9 +2193,7 @@ class _EditTab(QWidget):
         raw = text.strip()
         if not raw:
             placeholder = QLabel(get_text('edit_no_tags', self.lang))
-            placeholder.setStyleSheet(
-                f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;"
-            )
+            theme.bind_style(placeholder, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; background: transparent; border: none;")
             self._chip_flow.addWidget(placeholder)
             self._chip_flow.addStretch()
             return
@@ -2279,28 +2231,22 @@ class _EditTab(QWidget):
 
     def _make_chip(self, tag: str) -> QFrame:
         chip = QFrame()
-        chip.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
+        theme.bind_style(chip, lambda: f"QFrame {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
             f" border-radius: 12px; }}"
-            f"QFrame:hover {{ border-color: {theme.ORANGE}44; }}"
-        )
+            f"QFrame:hover {{ border-color: {theme.ORANGE}44; }}")
         lay = QHBoxLayout(chip)
         lay.setContentsMargins(8, 3, 4, 3)
         lay.setSpacing(4)
 
         lbl = QLabel(tag)
-        lbl.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; background: transparent; border: none;"
-        )
+        theme.bind_style(lbl, lambda: f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; background: transparent; border: none;")
         lay.addWidget(lbl)
 
         rm_btn = QPushButton("×")
         rm_btn.setFixedSize(16, 16)
-        rm_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; color: {theme.TEXT_MUTED};"
+        theme.bind_style(rm_btn, lambda: f"QPushButton {{ background: transparent; border: none; color: {theme.TEXT_MUTED};"
             f" font-size: 14px; font-weight: 700; padding: 0; }}"
-            f"QPushButton:hover {{ color: {theme.RED}; }}"
-        )
+            f"QPushButton:hover {{ color: {theme.RED}; }}")
         rm_btn.setToolTip(f"Remove '{tag}'")
         rm_btn.clicked.connect(lambda checked=False, t=tag: self._remove_chip_tag(t))
         lay.addWidget(rm_btn)
@@ -2328,7 +2274,8 @@ class _EditTab(QWidget):
         if 0 <= self._current_idx < len(self._items):
             _, cap_path = self._items[self._current_idx]
             self._captions[cap_path] = text
-        self._dirty = True
+        if 0 <= self._current_idx < len(self._items):
+            self._mark_dirty(self._items[self._current_idx][1])
         self._build_chips(text)
         self._syncing_input = False
 
@@ -2349,21 +2296,28 @@ class _EditTab(QWidget):
         if self._current_idx >= 0:
             self._commit_current()
         if row < 0 or row >= len(self._items):
-            self.preview_lbl.clear()
-            self.caption_edit.clear()
-            self.filename_lbl.setText("")
             self._current_idx = -1
+            self.preview_lbl.clear()
+            blocked = self.caption_edit.blockSignals(True)
+            self.caption_edit.clear()
+            self.caption_edit.blockSignals(blocked)
+            self.filename_lbl.setText("")
+            if hasattr(self, '_studio_layout'):
+                self._studio_layout.clear()
             return
         self._current_idx = row
         img_path, cap_path = self._items[row]
-        try:
-            pix = QPixmap(img_path)
-            if not pix.isNull():
-                self.preview_lbl.setPixmap(pix.scaled(
-                    self.preview_lbl.width(), self.preview_lbl.height(),
-                    Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        except Exception:
-            self.preview_lbl.setText("(preview error)")
+        if hasattr(self, '_studio_layout'):
+            self._studio_layout.show_image(img_path)
+        else:
+            try:
+                pix = QPixmap(img_path)
+                if not pix.isNull():
+                    self.preview_lbl.setPixmap(pix.scaled(
+                        self.preview_lbl.width(), self.preview_lbl.height(),
+                        Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            except Exception:
+                self.preview_lbl.setText("(preview error)")
         self.filename_lbl.setText(Path(img_path).name)
         cap_text = self._captions.get(cap_path, "")
         self.caption_edit.blockSignals(True)
@@ -2375,60 +2329,92 @@ class _EditTab(QWidget):
     # ── Save ────────────────────────────────────────────────────
 
     def _save_current(self):
-        """Save the caption of the currently selected image to disk."""
-        if 0 <= self._current_idx < len(self._items):
-            _, cap_path = self._items[self._current_idx]
-            text = self.caption_edit.toPlainText()
-            self._captions[cap_path] = text
-            try:
-                Path(cap_path).write_text(text, encoding='utf-8')
-            except Exception:
-                pass
-            self._dirty = False
-            self.status_lbl.setText(f"Saved: {Path(cap_path).name}")
+        """Publish only successful saves; failure keeps the draft and selection."""
+        if not 0 <= self._current_idx < len(self._items):
+            return False
+        self._commit_current()
+        _, cp = self._items[self._current_idx]
+        try:
+            if cp not in self._snapshots or cp in self._read_errors:
+                raise RuntimeError(self._read_errors.get(cp, 'Caption baseline is unavailable. Reload/revert first.'))
+            self._snapshots[cp] = save_edited_caption(self._snapshots[cp], self._captions[cp])
+        except Exception as exc:
+            self._report_save_errors([f'{cp}: {exc}'])
+            return False
+        self._mark_dirty(cp)
+        self.status_lbl.setText(f'Saved: {Path(cp).name}')
+        self.captions_saved.emit([str(Path(cp).absolute())])
+        return True
 
     def _save_and_next(self):
-        """Save current caption then advance to the next image."""
-        self._save_current()
+        """Never advance on a failed save."""
+        if not self._save_current():
+            return
         nxt = self._current_idx + 1
         if nxt < len(self._items):
             self.image_list.setCurrentRow(nxt)
 
     def _revert_current(self):
-        """Reload caption from disk, discarding unsaved edits."""
+        """Discard only this draft, not drafts belonging to other images."""
         if 0 <= self._current_idx < len(self._items):
-            _, cap_path = self._items[self._current_idx]
+            image, cp = self._items[self._current_idx]
             try:
-                text = Path(cap_path).read_text(encoding='utf-8') if Path(cap_path).exists() else ""
-            except Exception:
-                text = ""
-            self._captions[cap_path] = text
-            self.caption_edit.blockSignals(True)
-            self.caption_edit.setPlainText(text)
-            self.caption_edit.blockSignals(False)
-            if hasattr(self, '_chip_scroll'):
-                self._build_chips(text)
-            self._dirty = False
+                snapshot = read_caption_snapshot(image)
+            except Exception as exc:
+                self._report_save_errors([f'{cp}: {exc}'])
+                return False
+            self._snapshots[cp] = snapshot
+            self._read_errors.pop(cp, None)
+            self._captions[cp] = snapshot.text
+            self._refresh_editor()
+            # Also refresh the opposite tab if an external writer changed the disk.
+            self.captions_saved.emit([str(Path(cp).absolute())])
+            return True
+        return False
 
     def _save_all(self):
         self._commit_current()
-        for cap_path, text in self._captions.items():
+        saved, errors = [], []
+        for cp, text in list(self._captions.items()):
             try:
-                Path(cap_path).write_text(text, encoding='utf-8')
-            except Exception:
-                pass
-        self._dirty = False
-        self.status_lbl.setText(get_text('ce_saved', self.lang))
+                if cp not in self._snapshots or cp in self._read_errors:
+                    raise RuntimeError(self._read_errors.get(cp, 'Caption baseline is unavailable. Reload/revert first.'))
+                self._snapshots[cp] = save_edited_caption(self._snapshots[cp], text)
+                self._mark_dirty(cp)
+                saved.append(str(Path(cp).absolute()))
+            except Exception as exc:
+                errors.append(f'{cp}: {exc}')
+        if saved:
+            self.captions_saved.emit(saved)
+        if errors:
+            self._report_save_errors(errors)
+        else:
+            self.status_lbl.setText(get_text('ce_saved', self.lang))
+        return not errors
 
     # ── Bulk operations ─────────────────────────────────────────
 
     def _refresh_editor(self):
+        for cp in self._captions:
+            self._mark_dirty(cp)
         if 0 <= self._current_idx < len(self._items):
             _, cap_path = self._items[self._current_idx]
-            text = self._captions.get(cap_path, "")
-            self.caption_edit.blockSignals(True)
-            self.caption_edit.setPlainText(text)
-            self.caption_edit.blockSignals(False)
+            text = self._captions.get(cap_path, '')
+            if self.caption_edit.toPlainText() != text:
+                cursor = self.caption_edit.textCursor()
+                position, anchor = cursor.position(), cursor.anchor()
+                scroll = self.caption_edit.verticalScrollBar().value()
+                old_blocked = self.caption_edit.blockSignals(True)
+                try:
+                    self.caption_edit.setPlainText(text)
+                    cursor = self.caption_edit.textCursor()
+                    limit = self.caption_edit.document().characterCount() - 1
+                    cursor.setPosition(min(anchor, limit))
+                    cursor.setPosition(min(position, limit), QTextCursor.KeepAnchor)
+                    self.caption_edit.setTextCursor(cursor)
+                    self.caption_edit.verticalScrollBar().setValue(scroll)
+                finally:
+                    self.caption_edit.blockSignals(old_blocked)
             if hasattr(self, '_chip_scroll'):
                 self._build_chips(text)
 
@@ -2554,85 +2540,12 @@ class _EditTab(QWidget):
         # Rebuild chips so the "no tags" placeholder follows the language
         if hasattr(self, 'caption_edit') and hasattr(self, '_chip_scroll'):
             self._build_chips(self.caption_edit.toPlainText())
+        if hasattr(self, '_studio_layout'):
+            self._studio_layout.update_language(lang)
 
     def refresh_styles(self):
-        _card_ss = (
-            f"QFrame {{ background: {theme.BG_CARD}; "
-            f"border: 1px solid {theme.BORDER}; border-radius: 10px; }}"
-        )
-        for attr in ('_left_card', '_preview_card', '_editor_card'):
-            w = getattr(self, attr, None)
-            if w:
-                w.setStyleSheet(_card_ss)
-
-        self.load_btn.setStyleSheet(theme.btn_primary())
-        self.save_btn.setStyleSheet(theme.btn_primary())
-        self.add_tag_btn.setStyleSheet(theme.btn_secondary())
-        self.remove_tag_btn.setStyleSheet(theme.btn_secondary())
-        self.replace_tag_btn.setStyleSheet(theme.btn_secondary())
-        self.image_list.setStyleSheet(
-            f"QListWidget {{ background: transparent; border: none; "
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; }}"
-            f"QListWidget::item {{ padding: 6px 8px; border-radius: 4px; }}"
-            f"QListWidget::item:selected {{ background: {theme.ORANGE}22; "
-            f"color: {theme.ORANGE_LIGHT}; }}"
-            f"QListWidget::item:hover:!selected {{ background: {theme.BG_SURFACE}; }}"
-        )
-        self.preview_lbl.setStyleSheet(
-            f"background: {theme.BG_DEEPEST}; border-radius: 6px; border: none;")
-        self.filename_lbl.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-weight: 600; "
-            f"font-size: {theme.fs(11)}; background: transparent; border: none;")
-        self.caption_edit.setStyleSheet(theme.log_area())
-        self.status_lbl.setStyleSheet(theme.label_muted())
-        if hasattr(self, '_chip_search'):
-            self._chip_search.setStyleSheet(
-                f"QLineEdit {{ background: {theme.BG_SURFACE}; border: 1px solid {theme.BORDER};"
-                f" border-radius: 5px; padding: 2px 8px; color: {theme.TEXT_PRIMARY};"
-                f" font-size: {theme.fs(11)}; }}"
-                f"QLineEdit:focus {{ border-color: {theme.ORANGE}; }}"
-            )
-        if hasattr(self, '_clear_all_btn'):
-            self._clear_all_btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER};"
-                f" color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 0 10px;"
-                f" font-size: {theme.fs(10)}; }}"
-                f"QPushButton:hover {{ border-color: {theme.RED}; color: {theme.RED}; }}"
-            )
-        if hasattr(self, '_tag_add_input'):
-            self._tag_add_input.setStyleSheet(
-                f"QLineEdit {{background:{theme.BG_SURFACE};border:1px solid {theme.BORDER};"
-                f"border-radius:6px;color:{theme.TEXT_PRIMARY};font-size:{theme.fs(12)};padding:4px 8px;}}"
-                f"QLineEdit:focus {{border-color:{theme.ORANGE};}}"
-            )
-        if hasattr(self, '_tag_add_completer'):
-            self._tag_add_completer.popup().setStyleSheet(self._tag_popup_style())
-        if hasattr(self, '_edit_list_btn'):
-            self._edit_list_btn.setStyleSheet(
-                f"QPushButton {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE};"
-                f" border: none; border-radius: 4px; font-size: 14px; }}"
-                f"QPushButton:!checked {{ background: transparent; color: {theme.TEXT_MUTED}; }}"
-            )
-        if hasattr(self, '_edit_grid_btn'):
-            self._edit_grid_btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                f" border: none; border-radius: 4px; font-size: 14px; }}"
-                f"QPushButton:checked {{ background: {theme.ORANGE_SUBTLE}; color: {theme.ORANGE}; }}"
-            )
-        if hasattr(self, '_save_one_btn'):
-            self._save_one_btn.setStyleSheet(theme.btn_primary())
-        if hasattr(self, '_save_next_btn'):
-            self._save_next_btn.setStyleSheet(theme.btn_secondary())
-        if hasattr(self, '_revert_btn'):
-            self._revert_btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; border: 1px solid {theme.BORDER}; "
-                f"color: {theme.TEXT_MUTED}; border-radius: 5px; padding: 6px 12px; "
-                f"font-size: {theme.fs(11)}; }}"
-                f"QPushButton:hover {{ border-color: {theme.BORDER_LIGHT}; color: {theme.TEXT_SECONDARY}; }}"
-            )
-        # Rebuild chips so chip colors reflect new theme
-        if hasattr(self, 'caption_edit') and hasattr(self, '_chip_scroll'):
-            self._build_chips(self.caption_edit.toPlainText())
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2668,33 +2581,33 @@ class _QualityTab(QWidget):
 
         self._trigger_edit = QLineEdit()
         self._trigger_edit.setPlaceholderText(_t('quality_trigger_ph'))
-        self._trigger_edit.setStyleSheet(theme.line_edit_compact())
+        theme.bind_style(self._trigger_edit, theme.line_edit_compact)
         self._trigger_edit.setFixedWidth(180)
         self._trigger_lbl = QLabel(_t('quality_trigger'))
         tb.addWidget(self._trigger_lbl); tb.addWidget(self._trigger_edit)
 
         self._min_tags_lbl = min_lbl = QLabel(_t('quality_min_tags'))
-        min_lbl.setStyleSheet(theme.label_default())
+        theme.bind_style(min_lbl, theme.label_default)
         self._min_tags_spin = QSpinBox()
         self._min_tags_spin.setRange(0, 50); self._min_tags_spin.setValue(3)
-        self._min_tags_spin.setStyleSheet(theme.spinbox_compact())
+        theme.bind_style(self._min_tags_spin, theme.spinbox_compact)
         tb.addWidget(min_lbl); tb.addWidget(self._min_tags_spin)
 
         tb.addStretch()
 
         self._run_btn = QPushButton(_t('quality_run_audit'))
-        self._run_btn.setStyleSheet(theme.btn_primary())
+        theme.bind_style(self._run_btn, theme.btn_primary)
         self._run_btn.clicked.connect(self._run_audit)
         tb.addWidget(self._run_btn)
 
         self._add_trigger_btn = QPushButton(_t('quality_add_trigger'))
-        self._add_trigger_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._add_trigger_btn, theme.btn_secondary)
         self._add_trigger_btn.clicked.connect(self._bulk_add_trigger)
         self._add_trigger_btn.setEnabled(False)
         tb.addWidget(self._add_trigger_btn)
 
         self._delete_btn = QPushButton(_t('quality_delete_sel'))
-        self._delete_btn.setStyleSheet(theme.btn_danger())
+        theme.bind_style(self._delete_btn, theme.btn_danger)
         self._delete_btn.clicked.connect(self._delete_selected)
         self._delete_btn.setEnabled(False)
         tb.addWidget(self._delete_btn)
@@ -2709,13 +2622,12 @@ class _QualityTab(QWidget):
                             ('no_trigger', _t('quality_stat_notrigger')), ('dup_tags', _t('quality_stat_duptags'))]:
             card = QFrame()
             card.setFixedSize(100, 52)
-            card.setStyleSheet(
-                f"QFrame{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}")
+            theme.bind_style(card, lambda: f"QFrame{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}")
             cl = QVBoxLayout(card); cl.setContentsMargins(6, 4, 6, 4)
             val = QLabel("0"); val.setAlignment(Qt.AlignCenter)
-            val.setStyleSheet(f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(15)};font-weight:700;border:none;")
+            theme.bind_style(val, lambda: f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(15)};font-weight:700;border:none;")
             lbl = QLabel(label); lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(9)};border:none;")
+            theme.bind_style(lbl, lambda: f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(9)};border:none;")
             cl.addWidget(val); cl.addWidget(lbl)
             card._val = val
             card._lbl = lbl
@@ -2737,7 +2649,7 @@ class _QualityTab(QWidget):
         self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._table.setStyleSheet(f"""
+        theme.bind_style(self._table, lambda: f"""
             QTableWidget{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}
             QHeaderView::section{{background:{theme.BG_CARD};color:{theme.TEXT_SECONDARY};
                 border:none;padding:6px 8px;font-size:{theme.fs(11)};font-weight:600;}}
@@ -2748,7 +2660,7 @@ class _QualityTab(QWidget):
 
         # ── Status ──
         self._status = QLabel(_t('quality_status_initial'))
-        self._status.setStyleSheet(f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(11)};padding:2px 0;")
+        theme.bind_style(self._status, lambda: f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(11)};padding:2px 0;")
         root.addWidget(self._status)
 
     # ── Audit ─────────────────────────────────────────────────
@@ -2901,28 +2813,8 @@ class _QualityTab(QWidget):
             self._status.setText(_t('quality_status_initial'))
 
     def refresh_styles(self):
-        self._trigger_edit.setStyleSheet(theme.line_edit_compact())
-        self._min_tags_lbl.setStyleSheet(theme.label_default())
-        self._min_tags_spin.setStyleSheet(theme.spinbox_compact())
-        self._run_btn.setStyleSheet(theme.btn_primary())
-        self._add_trigger_btn.setStyleSheet(theme.btn_secondary())
-        self._delete_btn.setStyleSheet(theme.btn_danger())
-        self._status.setStyleSheet(
-            f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(11)};padding:2px 0;")
-        _card_ss = (
-            f"QFrame{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}")
-        _val_ss = f"color:{theme.TEXT_PRIMARY};font-size:{theme.fs(15)};font-weight:700;border:none;"
-        _lbl_ss = f"color:{theme.TEXT_SECONDARY};font-size:{theme.fs(9)};border:none;"
-        for card in self._cards.values():
-            card.setStyleSheet(_card_ss)
-            card._val.setStyleSheet(_val_ss)
-            card._lbl.setStyleSheet(_lbl_ss)
-        self._table.setStyleSheet(f"""
-            QTableWidget{{background:{theme.BG_CARD};border:1px solid {theme.BORDER};border-radius:8px;}}
-            QHeaderView::section{{background:{theme.BG_CARD};color:{theme.TEXT_SECONDARY};
-                border:none;padding:6px 8px;font-size:{theme.fs(11)};font-weight:600;}}
-            QTableWidget::item:selected{{background:{theme.ORANGE};color:#fff;}}
-        """)
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2943,12 +2835,21 @@ class CaptionStudioPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         self.setLayout(root)
 
-        # Tab widget — objectName for tests
-        self.tabs = QTabWidget()
+        # Keep hidden tools from inflating the active Studio editor's size hints.
+        if getattr(theme, '_studio_design', False):
+            from src.ui.design_system.widgets import ActiveTabWidget
+            self.tabs = ActiveTabWidget()
+        else:
+            self.tabs = QTabWidget()
         self.tabs.setObjectName("caption_tabs")
         self.generate_tab = _GenerateTab(self.lang, self)
         self.edit_tab = _EditTab(self.lang, self)
         self.quality_tab = _QualityTab(self.lang, self)
+        self.clothing_tab = ClothingTaggerWidget(self.lang, self)
+        from src.ui.dataset_balance_widget import DatasetBalanceWidget
+        from src.ui.checkpoint_compare_widget import CheckpointCompareWidget
+        self.balance_tab = DatasetBalanceWidget(self.lang, self, store=self.clothing_tab.store)
+        self.compare_tab = CheckpointCompareWidget(self.lang, self)
 
         gen_scroll = QScrollArea()
         gen_scroll.setWidgetResizable(True)
@@ -2959,12 +2860,92 @@ class CaptionStudioPage(QWidget):
         self.tabs.addTab(gen_scroll, "Generate")
         self.tabs.addTab(self.edit_tab, "Edit")
         self.tabs.addTab(self.quality_tab, get_text('quality_tab', self.lang))
-        self.tabs.setStyleSheet(self._tab_style())
+        self.tabs.addTab(self.clothing_tab, "Kıyafetler" if self.lang == 'tr' else "Clothing")
+        self.tabs.addTab(self.balance_tab, "Veri dengesi" if self.lang == 'tr' else "Data balance")
+        self.tabs.addTab(self.compare_tab, "Checkpoint karşılaştır" if self.lang == 'tr' else "Compare checkpoints")
+        theme.bind_style(self.tabs, lambda self=self: self._tab_style())
         root.addWidget(self.tabs, stretch=1)
 
         self.generate_tab.folder_changed.connect(self.edit_tab.reload_folder)
         self.generate_tab.folder_changed.connect(self.quality_tab.reload_folder)
         self.generate_tab.captioning_finished.connect(self._on_generation_done)
+        self.edit_tab.folder_changed.connect(self.clothing_tab.reload_folder)
+        self.edit_tab.captions_saved.connect(self.clothing_tab.refresh_captions)
+        self.clothing_tab.captions_changed.connect(self._on_clothing_changed)
+        self.edit_tab.captions_saved.connect(self._invalidate_caption_dependents)
+        self.clothing_tab.captions_changed.connect(self._invalidate_caption_dependents)
+        self.tabs.currentChanged.connect(self._on_tab_activated)
+        self.clothing_tab.busy_changed.connect(self._on_clothing_busy)
+        self.edit_tab.folder_changed.connect(self.balance_tab.reload_folder)
+        self.generate_tab.folder_changed.connect(self.balance_tab.reload_folder)
+        self.balance_tab.busy_changed.connect(lambda busy: self._on_tools_busy(self.balance_tab, busy))
+        self.compare_tab.busy_changed.connect(lambda busy: self._on_tools_busy(self.compare_tab, busy))
+
+    def has_unsaved_caption_edits(self):
+        return self.edit_tab.has_unsaved_edits()
+
+    def any_tool_busy(self):
+        return any(getattr(self, name, None) is not None and getattr(self, name).is_busy()
+                   for name in ('clothing_tab', 'balance_tab', 'compare_tab'))
+
+    def _on_tools_busy(self, owner, busy):
+        pages = [self.generate_tab, self.edit_tab, self.quality_tab, self.clothing_tab,
+                 self.balance_tab, self.compare_tab]
+        window = self.window()
+        pages += [getattr(window, name, None) for name in
+                  ('char_sort_page', 'upscale_page', 'training_page', 'review_grid_page', 'tag_freq_page', 'start_btn')]
+        for page in pages:
+            if page is None or page is owner:
+                continue
+            if busy:
+                page._studio_previous_enabled = page.isEnabled()
+                page.setEnabled(False)
+            else:
+                page.setEnabled(getattr(page, '_studio_previous_enabled', True))
+
+    def _on_clothing_busy(self, busy):
+        for name in ('balance_tab', 'compare_tab'):
+            page = getattr(self, name, None)
+            if page is not None:
+                page.setEnabled(not busy)
+        self.generate_tab.setEnabled(not busy)
+        self.edit_tab.setEnabled(not busy)
+        self.quality_tab.setEnabled(not busy)
+        window = self.window()
+        for name in ('char_sort_page', 'upscale_page', 'training_page', 'review_grid_page', 'tag_freq_page'):
+            page = getattr(window, name, None)
+            if page is not None:
+                if busy:
+                    page._clothing_previous_enabled = page.isEnabled()
+                    page.setEnabled(False)
+                else:
+                    page.setEnabled(getattr(page, '_clothing_previous_enabled', True))
+
+    def _on_clothing_changed(self, paths=None):
+        self.edit_tab.refresh_saved_captions(paths)
+
+    def _invalidate_caption_dependents(self, paths=None):
+        """Do not leave a previous caption-derived balance report looking current."""
+        page = getattr(self, 'balance_tab', None)
+        if page is None or page.report is None:
+            return
+        wanted = None if paths is None else {path_key(p) for p in paths}
+        if wanted is None or any(path_key(Path(item.path).with_suffix('.txt')) in wanted
+                                 for item in page.report['items']):
+            page._invalidate_scan()
+            page.status.setText('Caption değişti; veri dengesini yeniden tara.' if self.lang == 'tr'
+                                else 'Captions changed; rescan the dataset balance.')
+
+    def _on_tab_activated(self, _index):
+        current = self.tabs.currentWidget()
+        if current is self.clothing_tab:
+            image = self.clothing_tab._active_image
+            if image:
+                self.clothing_tab.refresh_captions([str(Path(image).with_suffix('.txt'))])
+        elif current is self.edit_tab:
+            index = self.edit_tab._current_idx
+            if 0 <= index < len(self.edit_tab._items):
+                self.edit_tab.refresh_saved_captions([self.edit_tab._items[index][1]])
 
     def _on_generation_done(self, folder: str):
         if folder:
@@ -2976,6 +2957,12 @@ class CaptionStudioPage(QWidget):
         self.generate_tab.update_language(lang)
         self.edit_tab.update_language(lang)
         self.quality_tab.update_language(lang)
+        self.clothing_tab.update_language(lang)
+        self.balance_tab.update_language(lang)
+        self.compare_tab.update_language(lang)
+        self.tabs.setTabText(4, "Veri dengesi" if lang == 'tr' else "Data balance")
+        self.tabs.setTabText(5, "Checkpoint karşılaştır" if lang == 'tr' else "Compare checkpoints")
+        self.tabs.setTabText(3, "Kıyafetler" if lang == 'tr' else "Clothing")
 
     def _tab_style(self) -> str:
         return f"""
@@ -3005,7 +2992,5 @@ class CaptionStudioPage(QWidget):
         """
 
     def refresh_styles(self):
-        self.tabs.setStyleSheet(self._tab_style())
-        self.generate_tab.refresh_styles()
-        self.edit_tab.refresh_styles()
-        self.quality_tab.refresh_styles()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)

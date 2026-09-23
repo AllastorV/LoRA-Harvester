@@ -218,17 +218,20 @@ class QualityAnalyzer:
         patch_h, patch_w = 16, 16
         h, w = gray.shape[:2]
 
-        stds = []
-        for y in range(0, h - patch_h, patch_h):
-            for x in range(0, w - patch_w, patch_w):
-                patch = gray[y:y + patch_h, x:x + patch_w]
-                stds.append(float(np.std(patch)))
-
-        if not stds:
+        # Preserve the ORIGINAL grid exactly (the final boundary-aligned
+        # patch was excluded by range(0, size - 16, 16)). Changing that grid
+        # would change threshold decisions rather than merely speed them up.
+        rows = len(range(0, h - patch_h, patch_h))
+        cols = len(range(0, w - patch_w, patch_w))
+        if not rows or not cols:
             return 0.0
-
+        patches = (gray[:rows * patch_h, :cols * patch_w]
+                   .reshape(rows, patch_h, cols, patch_w)
+                   .transpose(0, 2, 1, 3).reshape(rows * cols, patch_h * patch_w))
+        # A single vectorised reduction replaces hundreds of Python calls.
+        # Sorting retains the old summation order for the quietest patches.
+        stds = np.std(patches, axis=1).astype(np.float64, copy=False)
         stds.sort()
-        # Take the quietest 20% of patches
         n_quiet = max(1, len(stds) // 5)
         return float(np.mean(stds[:n_quiet]))
 

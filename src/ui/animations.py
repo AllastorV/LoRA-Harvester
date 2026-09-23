@@ -8,6 +8,8 @@ Each helper returns the animation instance so callers can chain or cancel it.
 
 from __future__ import annotations
 
+from src.ui import theme
+
 from PyQt5.QtCore import (
     QEasingCurve, QPropertyAnimation, Qt, QPoint, QRect, QObject,
     QParallelAnimationGroup, QSequentialAnimationGroup, QAbstractAnimation,
@@ -255,47 +257,58 @@ class HoverLift(QObject):
 #  Animated stacked widget (page switch crossfade + slide)
 # ══════════════════════════════════════════════════════════════
 
+def finish_page_switch(stack):
+    """Finish an in-flight transition without changing the selected page."""
+    transition = getattr(stack, '_lh_page_transition', None)
+    if transition is None:
+        return
+    stack._lh_page_transition = None
+    group, page, target, effect = transition
+    group.stop()
+    page.move(target)
+    if page.graphicsEffect() is effect:
+        page.setGraphicsEffect(None)
+    group.deleteLater()
+
+
 def animate_page_switch(stack, old_index: int, new_index: int,
                         duration: int = 260) -> None:
-    """Crossfade + 20px slide when QStackedWidget changes page."""
+    """Animate one page at a time; always release the opacity effect."""
+    finish_page_switch(stack)
     if old_index == new_index or old_index < 0:
         stack.setCurrentIndex(new_index)
         return
-
-    new_w = stack.widget(new_index)
-    if new_w is None:
-        stack.setCurrentIndex(new_index)
+    page = stack.widget(new_index)
+    if page is None:
         return
-
-    # Switch index immediately; animate only the new page
     stack.setCurrentIndex(new_index)
-
-    # Slide from +18px right, fade 0→1
-    target = new_w.pos()
-    new_w.move(target + QPoint(18, 0))
-
-    effect = QGraphicsOpacityEffect(new_w)
-    new_w.setGraphicsEffect(effect)
+    target = page.pos()
+    page.move(target + QPoint(18, 0))
+    effect = QGraphicsOpacityEffect(page)
+    page.setGraphicsEffect(effect)
     effect.setOpacity(0.0)
+    group = QParallelAnimationGroup(stack)
+    position = QPropertyAnimation(page, b"pos")
+    position.setDuration(duration)
+    position.setStartValue(target + QPoint(18, 0))
+    position.setEndValue(target)
+    position.setEasingCurve(QEasingCurve.OutCubic)
+    group.addAnimation(position)
+    opacity = QPropertyAnimation(effect, b"opacity")
+    opacity.setDuration(duration)
+    opacity.setStartValue(0.0)
+    opacity.setEndValue(1.0)
+    opacity.setEasingCurve(QEasingCurve.OutCubic)
+    group.addAnimation(opacity)
+    stack._lh_page_transition = (group, page, target, effect)
 
-    group = QParallelAnimationGroup(new_w)
+    def complete():
+        current = getattr(stack, '_lh_page_transition', None)
+        if current is not None and current[0] is group:
+            finish_page_switch(stack)
 
-    pos_anim = QPropertyAnimation(new_w, b"pos")
-    pos_anim.setDuration(duration)
-    pos_anim.setStartValue(target + QPoint(18, 0))
-    pos_anim.setEndValue(target)
-    pos_anim.setEasingCurve(QEasingCurve.OutCubic)
-    group.addAnimation(pos_anim)
-
-    op_anim = QPropertyAnimation(effect, b"opacity")
-    op_anim.setDuration(duration)
-    op_anim.setStartValue(0.0)
-    op_anim.setEndValue(1.0)
-    op_anim.setEasingCurve(QEasingCurve.OutCubic)
-    group.addAnimation(op_anim)
-
-    group.finished.connect(lambda: new_w.setGraphicsEffect(None))
-    group.start(QAbstractAnimation.DeleteWhenStopped)
+    group.finished.connect(complete)
+    group.start()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1093,9 +1106,11 @@ class SidebarPulse(QObject):
     def _on_val(self, v):
         c = QColor(self._color)
         border = f"rgba({c.red()},{c.green()},{c.blue()},{v:.2f})"
-        self._btn.setStyleSheet(
-            self._base_ss + f" border-left: 3px solid {border};"
-        )
+        # Re-read the base factory: a theme or nav selection may have changed.
+        self._btn.setStyleSheet(theme.render_style(self._btn) + f" border-left: 3px solid {border};")
+
+    def set_color(self, color):
+        self._color = color
 
     def start(self):
         self._base_ss = self._btn.styleSheet()
@@ -1103,7 +1118,7 @@ class SidebarPulse(QObject):
 
     def stop(self):
         self._anim.stop()
-        self._btn.setStyleSheet(self._base_ss)
+        theme.set_style_if_changed(self._btn, theme.render_style(self._btn))
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1132,7 +1147,7 @@ class ProgressGlowBar(QProgressBar):
 
     def _apply_base_style(self):
         from src.ui import theme
-        self.setStyleSheet(f"""
+        theme.bind_style(self, lambda: f"""
             QProgressBar {{
                 background-color: {theme.BORDER};
                 border: none;
@@ -1381,16 +1396,14 @@ class SearchCombo(QComboBox):
 
     def apply_theme(self):
         from src.ui import theme as _t
-        self.setStyleSheet(
-            f"QComboBox {{ background: {_t.BG_SURFACE}; color: {_t.TEXT_PRIMARY};"
+        theme.bind_style(self, lambda _t=_t: f"QComboBox {{ background: {_t.BG_SURFACE}; color: {_t.TEXT_PRIMARY};"
             f" border: 1px solid {_t.BORDER}; border-radius: 6px;"
             f" padding: 4px 8px; font-size: {_t.fs(11)}; }}"
             f"QComboBox:focus {{ border-color: {_t.ORANGE}; }}"
             f"QComboBox::drop-down {{ border: none; }}"
             f"QComboBox QAbstractItemView {{ background: {_t.BG_ELEVATED};"
             f" color: {_t.TEXT_PRIMARY}; border: 1px solid {_t.BORDER};"
-            f" selection-background-color: {_t.ORANGE}22; }}"
-        )
+            f" selection-background-color: {_t.ORANGE}22; }}")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1448,12 +1461,10 @@ class ThumbnailGrid(QScrollArea):
         btn.setFixedSize(self._thumb_size, self._thumb_size)
         btn.setCursor(Qt.PointingHandCursor)
         btn.setCheckable(True)
-        btn.setStyleSheet(
-            f"QPushButton {{ background: {_t.BG_SURFACE}; border: 1px solid {_t.BORDER};"
+        theme.bind_style(btn, lambda _t=_t: f"QPushButton {{ background: {_t.BG_SURFACE}; border: 1px solid {_t.BORDER};"
             f" border-radius: 6px; }}"
             f"QPushButton:hover {{ border-color: {_t.ORANGE}; }}"
-            f"QPushButton:checked {{ border: 2px solid {_t.ORANGE}; }}"
-        )
+            f"QPushButton:checked {{ border: 2px solid {_t.ORANGE}; }}")
         try:
             pix = QPixmap(path)
             if not pix.isNull():
@@ -1489,68 +1500,63 @@ class ProgressSteps(QWidget):
 
     def set_step(self, current: int):
         self._current = max(0, min(current, len(self._steps) - 1))
-        self._build()
+        for i, circle in enumerate(self._step_circles):
+            circle.setText("✓" if i < self._current else str(i + 1))
+        self.refresh_styles()
 
     def _build(self):
-        from src.ui import theme as _t
-        while self._lay.count():
-            item = self._lay.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
+        """Create the step widgets once; theme/state changes only restyle them."""
+        self._step_circles = []
+        self._step_labels = []
+        self._step_lines = []
         for i, label in enumerate(self._steps):
-            done = i < self._current
-            active = i == self._current
-
             step_w = QWidget()
             step_w.setStyleSheet("background: transparent;")
             sv = QVBoxLayout(step_w)
             sv.setContentsMargins(4, 0, 4, 0)
             sv.setSpacing(4)
             sv.setAlignment(Qt.AlignHCenter)
-
-            circle = QLabel("✓" if done else str(i + 1))
+            circle = QLabel()
             circle.setFixedSize(28, 28)
             circle.setAlignment(Qt.AlignCenter)
-            if done:
-                circle.setStyleSheet(
-                    f"background: {_t.ORANGE}; color: #fff; border-radius: 14px;"
-                    f" font-size: 12px; font-weight: 700; border: none;"
-                )
-            elif active:
-                circle.setStyleSheet(
-                    f"background: {_t.ORANGE}; color: #ffffff; border-radius: 14px;"
-                    f" font-size: 12px; font-weight: 700; border: none;"
-                )
-            else:
-                circle.setStyleSheet(
-                    f"background: transparent; color: {_t.TEXT_MUTED};"
-                    f" border: 2px solid {_t.BORDER}; border-radius: 14px; font-size: 12px;"
-                )
+            theme.bind_style(circle, lambda i=i: self._circle_style(i))
             sv.addWidget(circle, alignment=Qt.AlignHCenter)
-
             lbl = QLabel(label)
             lbl.setAlignment(Qt.AlignCenter)
-            col = _t.ORANGE if active else (_t.TEXT_SECONDARY if done else _t.TEXT_MUTED)
-            lbl.setStyleSheet(
-                f"color: {col}; font-size: 10px; font-weight: {'600' if active else '400'};"
-                f" background: transparent; border: none;"
-            )
+            theme.bind_style(lbl, lambda i=i: self._label_style(i))
             sv.addWidget(lbl, alignment=Qt.AlignHCenter)
-
             step_w.setCursor(Qt.PointingHandCursor)
-            idx = i
-            step_w.mousePressEvent = lambda e, n=idx: self.step_clicked.emit(n)
+            step_w.mousePressEvent = lambda e, n=i: self.step_clicked.emit(n)
             self._lay.addWidget(step_w, stretch=1)
-
+            self._step_circles.append(circle)
+            self._step_labels.append(lbl)
             if i < len(self._steps) - 1:
                 line = QFrame()
                 line.setFixedHeight(2)
                 line.setFrameShape(QFrame.HLine)
-                line.setStyleSheet(
-                    f"background: {_t.ORANGE if done else _t.BORDER}; border: none;"
-                )
+                theme.bind_style(line, lambda i=i: self._line_style(i))
                 self._lay.addWidget(line, stretch=2)
+                self._step_lines.append(line)
+        self.set_step(self._current)
+
+    def _circle_style(self, index):
+        if index <= self._current:
+            return (f"background: {theme.ORANGE}; color: #ffffff; border-radius: 14px;"
+                    "font-size: 12px; font-weight: 700; border: none;")
+        return (f"background: transparent; color: {theme.TEXT_MUTED};"
+                f"border: 2px solid {theme.BORDER}; border-radius: 14px; font-size: 12px;")
+
+    def _label_style(self, index):
+        active, done = index == self._current, index < self._current
+        color = theme.ORANGE if active else (theme.TEXT_SECONDARY if done else theme.TEXT_MUTED)
+        return (f"color: {color}; font-size: 10px; font-weight: {'600' if active else '400'};"
+                "background: transparent; border: none;")
+
+    def _line_style(self, index):
+        return f"background: {theme.ORANGE if index < self._current else theme.BORDER}; border: none;"
+
+    def refresh_styles(self):
+        return theme.refresh_styles(self)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1577,10 +1583,8 @@ class FloatingActionButton(QPushButton):
     def apply_theme(self):
         from src.ui import theme as _t
         r = self._size // 2
-        self.setStyleSheet(
-            f"QPushButton {{ background: {_t.ORANGE}; color: #1a1a1a;"
+        theme.bind_style(self, lambda _t=_t, r=r: f"QPushButton {{ background: {_t.ORANGE}; color: #1a1a1a;"
             f" border: none; border-radius: {r}px;"
             f" font-size: 22px; font-weight: 700; }}"
             f"QPushButton:hover {{ background: {_t.ORANGE_DARK}; }}"
-            f"QPushButton:pressed {{ background: {_t.ORANGE_DARK}; }}"
-        )
+            f"QPushButton:pressed {{ background: {_t.ORANGE_DARK}; }}")

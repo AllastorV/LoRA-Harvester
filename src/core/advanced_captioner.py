@@ -134,13 +134,10 @@ class WD14Tagger:
     
     # Tag categories from WD14
     CATEGORIES = {
-        0: 'general',
-        1: 'artist', 
-        2: 'copyright',
-        3: 'character',
-        4: 'meta'
+        0: 'general', 1: 'artist', 3: 'copyright',
+        4: 'character', 5: 'meta', 9: 'rating',
     }
-    
+
     # Rating tags
     RATING_TAGS = ['general', 'sensitive', 'questionable', 'explicit']
     
@@ -456,9 +453,7 @@ class AdvancedCaptioner:
         'general', 'sensitive', 'questionable', 'explicit', 'safe',
         'rating:general', 'rating:sensitive', 'rating:questionable', 'rating:explicit',
     }
-    _CATEGORY_NAMES: Dict[int, str] = {
-        0: 'general', 1: 'artist', 2: 'copyright', 3: 'character', 4: 'meta',
-    }
+    _CATEGORY_NAMES: Dict[int, str] = WD14Tagger.CATEGORIES
 
     @staticmethod
     def _normalize(tag: str) -> str:
@@ -512,6 +507,7 @@ class AdvancedCaptioner:
         neg_exact: Set[str] = set()
         neg_prefix: List[str] = []
         neg_suffix: List[str] = []
+        neg_contains: List[str] = []
         for neg in settings.negative_tags:
             n = self._normalize(neg)
             if not n:
@@ -520,8 +516,7 @@ class AdvancedCaptioner:
                 # *pattern* → contains check (stored as substring)
                 core = n[1:-1]
                 if core:
-                    neg_prefix.append(core)   # reuse prefix list for contains
-                    neg_suffix.append(core)
+                    neg_contains.append(core)
             elif n.endswith('*'):
                 neg_prefix.append(n[:-1])
             elif n.startswith('*'):
@@ -561,7 +556,8 @@ class AdvancedCaptioner:
             is_priority = norm in priority_normalized
 
             # 4. Category gate (priority tags bypass)
-            if cat_name not in include_cats and not is_priority:
+            rating_enabled = cat_name == 'rating' and settings.include_rating_tags
+            if cat_name not in include_cats and not is_priority and not rating_enabled:
                 filtered_count += 1
                 continue
 
@@ -581,6 +577,10 @@ class AdvancedCaptioner:
                 filtered_count += 1
                 continue
             if any(norm.endswith(s) for s in neg_suffix):
+                filtered_count += 1
+                continue
+
+            if any(part in norm for part in neg_contains):
                 filtered_count += 1
                 continue
 

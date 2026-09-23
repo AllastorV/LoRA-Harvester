@@ -170,16 +170,12 @@ class _UsageBar(QFrame):
 
         top = QHBoxLayout()
         self._label = QLabel(label)
-        self._label.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; "
-            f"font-weight: bold; border: none; background: transparent;"
-        )
+        theme.bind_style(self._label, lambda: f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; "
+            f"font-weight: bold; border: none; background: transparent;")
         self._value = QLabel("—")
         self._value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self._value.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(10)}; "
-            f"border: none; background: transparent;"
-        )
+        theme.bind_style(self._value, lambda: f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent;")
         top.addWidget(self._label)
         top.addStretch()
         top.addWidget(self._value)
@@ -198,14 +194,14 @@ class _UsageBar(QFrame):
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
 
     def _apply_bar_style(self):
-        self._bar.setStyleSheet(f"""
+        theme.bind_style(self._bar, lambda self=self: f"""
             QProgressBar {{
                 background-color: {theme.BG_DARK};
                 border: none;
                 border-radius: 3px;
             }}
             QProgressBar::chunk {{
-                background-color: {self._color};
+                background-color: {theme.resolve_color(self._color)};
                 border-radius: 3px;
             }}
         """)
@@ -223,15 +219,8 @@ class _UsageBar(QFrame):
         self._label.setText(text)
 
     def refresh_styles(self):
-        self._label.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; "
-            f"font-weight: bold; border: none; background: transparent;"
-        )
-        self._value.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(10)}; "
-            f"border: none; background: transparent;"
-        )
-        self._apply_bar_style()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
 
 class SystemMonitorWidget(QFrame):
@@ -249,15 +238,13 @@ class SystemMonitorWidget(QFrame):
 
         self._title_lbl = QLabel(get_text("sys_monitor_title", lang))
         self._title_lbl.setFont(QFont("Arial", 11, QFont.Bold))
-        self._title_lbl.setStyleSheet(
-            f"color: {theme.ORANGE}; border: none; background: transparent;"
-        )
+        theme.bind_style(self._title_lbl, lambda: f"color: {theme.ORANGE}; border: none; background: transparent;")
         lay.addWidget(self._title_lbl)
 
-        self._cpu_bar = _UsageBar(get_text("sys_cpu", lang), theme.ORANGE, self)
+        self._cpu_bar = _UsageBar(get_text("sys_cpu", lang), lambda: theme.ORANGE, self)
         self._ram_bar = _UsageBar(get_text("sys_ram", lang), "#5B9BD5", self)
-        self._gpu_bar = _UsageBar(get_text("sys_gpu", lang), theme.GREEN, self)
-        self._vram_bar = _UsageBar(get_text("sys_vram", lang), theme.YELLOW, self)
+        self._gpu_bar = _UsageBar(get_text("sys_gpu", lang), lambda: theme.GREEN, self)
+        self._vram_bar = _UsageBar(get_text("sys_vram", lang), lambda: theme.YELLOW, self)
 
         lay.addWidget(self._cpu_bar)
         lay.addWidget(self._ram_bar)
@@ -265,10 +252,8 @@ class SystemMonitorWidget(QFrame):
         lay.addWidget(self._vram_bar)
 
         self._gpu_na_label = QLabel(get_text("sys_gpu_not_available", lang))
-        self._gpu_na_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"border: none; background: transparent;"
-        )
+        theme.bind_style(self._gpu_na_label, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent;")
         self._gpu_na_label.setAlignment(Qt.AlignCenter)
         self._gpu_na_label.hide()
         lay.addWidget(self._gpu_na_label)
@@ -281,7 +266,7 @@ class SystemMonitorWidget(QFrame):
         self._poll()
 
     def _apply_frame_style(self):
-        self.setStyleSheet(f"""
+        theme.bind_style(self, lambda: f"""
             SystemMonitorWidget {{
                 background-color: {theme.BG_CARD};
                 border: 1px solid {theme.BORDER};
@@ -347,16 +332,8 @@ class SystemMonitorWidget(QFrame):
                 )
 
     def refresh_styles(self):
-        self._apply_frame_style()
-        self._title_lbl.setStyleSheet(
-            f"color: {theme.ORANGE}; border: none; background: transparent;"
-        )
-        self._gpu_na_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"border: none; background: transparent;"
-        )
-        for bar in (self._cpu_bar, self._ram_bar, self._gpu_bar, self._vram_bar):
-            bar.refresh_styles()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
     def update_language(self, lang: str):
         self.lang = lang
@@ -384,21 +361,15 @@ class _MonitorPill(QFrame):
         lay.setSpacing(5)
 
         self._dot = QLabel("●")
-        self._dot.setStyleSheet(
-            f"color: {color}; font-size: {theme.fs(10)}; "
-            f"border: none; background: transparent;"
-        )
+        theme.bind_style(self._dot, lambda color=color: f"color: {theme.resolve_color(color)}; font-size: {theme.fs(10)}; "
+            f"border: none; background: transparent;")
         self._label = QLabel(label)
-        self._label.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; "
-            f"font-weight: 600; border: none; background: transparent;"
-        )
+        theme.bind_style(self._label, lambda: f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; "
+            f"font-weight: 600; border: none; background: transparent;")
         self._value = QLabel("—")
-        self._value.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; "
+        theme.bind_style(self._value, lambda: f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; "
             f"font-family: {theme.FONT_MONO}; font-weight: 600; "
-            f"border: none; background: transparent;"
-        )
+            f"border: none; background: transparent;")
         lay.addWidget(self._dot)
         lay.addWidget(self._label)
         lay.addWidget(self._value)
@@ -410,19 +381,8 @@ class _MonitorPill(QFrame):
         self._label.setText(text)
 
     def refresh_styles(self):
-        self._dot.setStyleSheet(
-            f"color: {self._color}; font-size: {theme.fs(10)}; "
-            f"border: none; background: transparent;"
-        )
-        self._label.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.fs(11)}; "
-            f"font-weight: 600; border: none; background: transparent;"
-        )
-        self._value.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(11)}; "
-            f"font-family: {theme.FONT_MONO}; font-weight: 600; "
-            f"border: none; background: transparent;"
-        )
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
 
 class SystemMonitorBar(QFrame):
@@ -440,10 +400,10 @@ class SystemMonitorBar(QFrame):
         lay.setContentsMargins(10, 4, 10, 4)
         lay.setSpacing(10)
 
-        self._cpu_pill = _MonitorPill(get_text("sys_cpu", lang), theme.ORANGE, self)
+        self._cpu_pill = _MonitorPill(get_text("sys_cpu", lang), lambda: theme.ORANGE, self)
         self._ram_pill = _MonitorPill(get_text("sys_ram", lang), "#5B9BD5", self)
-        self._gpu_pill = _MonitorPill(get_text("sys_gpu", lang), theme.GREEN, self)
-        self._vram_pill = _MonitorPill(get_text("sys_vram", lang), theme.YELLOW, self)
+        self._gpu_pill = _MonitorPill(get_text("sys_gpu", lang), lambda: theme.GREEN, self)
+        self._vram_pill = _MonitorPill(get_text("sys_vram", lang), lambda: theme.YELLOW, self)
 
         self._sep1 = self._make_sep()
         self._sep2 = self._make_sep()
@@ -466,10 +426,8 @@ class SystemMonitorBar(QFrame):
 
     def _make_sep(self) -> QLabel:
         sep = QLabel("·")
-        sep.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; "
-            f"border: none; background: transparent;"
-        )
+        theme.bind_style(sep, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; "
+            f"border: none; background: transparent;")
         return sep
 
     def _apply_frame_style(self):
@@ -525,14 +483,8 @@ class SystemMonitorBar(QFrame):
                 self._vram_pill.set_value(f"{used_vram:.1f}/{total_vram:.0f} GB")
 
     def refresh_styles(self):
-        self._apply_frame_style()
-        for pill in (self._cpu_pill, self._ram_pill, self._gpu_pill, self._vram_pill):
-            pill.refresh_styles()
-        for sep in (self._sep1, self._sep2, self._sep3):
-            sep.setStyleSheet(
-                f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; "
-                f"border: none; background: transparent;"
-            )
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
     def update_language(self, lang: str):
         self.lang = lang
@@ -565,7 +517,7 @@ class ResourceSettingsDrawer(QFrame):
 
         # Visual
         self.setFixedWidth(self.DRAWER_WIDTH)
-        self.setStyleSheet(f"""
+        theme.bind_style(self, lambda: f"""
             ResourceSettingsDrawer {{
                 background-color: {theme.BG_DARK};
                 border-left: 1px solid {theme.BORDER};
@@ -594,12 +546,12 @@ class ResourceSettingsDrawer(QFrame):
         header = QHBoxLayout()
         self._title = QLabel(get_text("res_title", self.lang))
         self._title.setFont(QFont("Arial", 16, QFont.Bold))
-        self._title.setStyleSheet(f"color: {theme.ORANGE_LIGHT};")
+        theme.bind_style(self._title, lambda: f"color: {theme.ORANGE_LIGHT};")
         header.addWidget(self._title)
         header.addStretch()
         self._close_btn = QPushButton("✕")
         self._close_btn.setFixedSize(32, 32)
-        self._close_btn.setStyleSheet(f"""
+        theme.bind_style(self._close_btn, lambda: f"""
             QPushButton {{
                 background: transparent; color: {theme.TEXT_SECONDARY};
                 font-size: {theme.fs(18)}; border: none; border-radius: 4px;
@@ -612,7 +564,7 @@ class ResourceSettingsDrawer(QFrame):
 
         # Subtitle
         self._subtitle = QLabel(get_text("res_subtitle", self.lang))
-        self._subtitle.setStyleSheet(theme.label_muted())
+        theme.bind_style(self._subtitle, theme.label_muted)
         self._subtitle.setWordWrap(True)
         root.addWidget(self._subtitle)
 
@@ -632,7 +584,7 @@ class ResourceSettingsDrawer(QFrame):
         self._lay.addLayout(self._lang_placeholder)
 
         # ── GPU Section ──────────────────────────────────────────
-        self._add_section("res_section_gpu", color=theme.ORANGE)
+        self._add_section("res_section_gpu", color=lambda: theme.ORANGE)
 
         self.gpu_cb = self._add_checkbox("res_gpu_enabled", "gpu_enabled")
         self.fp16_cb = self._add_checkbox("res_fp16", "fp16_enabled")
@@ -662,14 +614,14 @@ class ResourceSettingsDrawer(QFrame):
         )
 
         # ── Memory Section ───────────────────────────────────────
-        self._add_section("res_section_memory", color=theme.YELLOW)
+        self._add_section("res_section_memory", color=lambda: theme.YELLOW)
 
         self.ram_slider, self.ram_val = self._add_slider(
             "res_ram_limit", 512, 32768, 256, "MB",
         )
 
         # ── Misc Performance ─────────────────────────────────────
-        self._add_section("res_section_misc", color=theme.GREEN)
+        self._add_section("res_section_misc", color=lambda: theme.GREEN)
 
         self.async_cb = self._add_checkbox("res_async_save", "async_save")
         self.gc_cb = self._add_checkbox("res_auto_gc", "auto_gc")
@@ -687,7 +639,7 @@ class ResourceSettingsDrawer(QFrame):
 
         # Accent color swatches + custom picker
         self._accent_label = QLabel(get_text("res_accent_color", self.lang))
-        self._accent_label.setStyleSheet(theme.label_default())
+        theme.bind_style(self._accent_label, theme.label_default)
         self._lay.addWidget(self._accent_label)
 
         accent_row = QHBoxLayout()
@@ -721,12 +673,12 @@ class ResourceSettingsDrawer(QFrame):
         # ── Bottom buttons ───────────────────────────────────────
         btn_row = QHBoxLayout()
         self._reset_btn = QPushButton(get_text("res_reset", self.lang))
-        self._reset_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._reset_btn, theme.btn_secondary)
         self._reset_btn.clicked.connect(self._reset_defaults)
         btn_row.addWidget(self._reset_btn)
 
         self._apply_btn = QPushButton(get_text("res_apply", self.lang))
-        self._apply_btn.setStyleSheet(theme.btn_primary())
+        theme.bind_style(self._apply_btn, theme.btn_primary)
         self._apply_btn.clicked.connect(self._apply)
         btn_row.addWidget(self._apply_btn)
         root.addLayout(btn_row)
@@ -734,19 +686,15 @@ class ResourceSettingsDrawer(QFrame):
         # ── GPU Install button ───────────────────────────────────
         self._gpu_install_btn = QPushButton(get_text("res_gpu_install", self.lang))
         self._gpu_install_btn.setToolTip(get_text("res_gpu_install_tooltip", self.lang))
-        self._gpu_install_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {theme.BG_ELEVATED}; "
+        theme.bind_style(self._gpu_install_btn, lambda: f"QPushButton {{ background-color: {theme.BG_ELEVATED}; "
             f"color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER}; "
             f"border-radius: 6px; padding: 6px 16px; font-size: {theme.fs(11)}; }}"
-            f"QPushButton:hover {{ border-color: {theme.GREEN}; color: {theme.GREEN}; }}"
-        )
+            f"QPushButton:hover {{ border-color: {theme.GREEN}; color: {theme.GREEN}; }}")
         self._gpu_install_btn.clicked.connect(self._start_gpu_install)
         self._gpu_install_log = QLabel("")
         self._gpu_install_log.setWordWrap(True)
-        self._gpu_install_log.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"background: transparent; border: none; padding: 4px 0;"
-        )
+        theme.bind_style(self._gpu_install_log, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"background: transparent; border: none; padding: 4px 0;")
         self._gpu_install_thread = None
         root.addWidget(self._gpu_install_btn)
         root.addWidget(self._gpu_install_log)
@@ -756,14 +704,9 @@ class ResourceSettingsDrawer(QFrame):
     # ─── Builder helpers ─────────────────────────────────────────────────
 
     def _add_section(self, key: str, color: str = None):
-        color = color or theme.ORANGE
+        color = color or (lambda: theme.ORANGE)
         lbl = QLabel(get_text(key, self.lang))
-        lbl.setStyleSheet(
-            f"color: {color}; font-size: {theme.fs(11)}; font-weight: 700; "
-            f"letter-spacing: 0.06em; text-transform: uppercase; "
-            f"margin-top: 12px; margin-bottom: 2px; padding-bottom: 4px; "
-            f"border-bottom: 1px solid {color};"
-        )
+        theme.bind_style(lbl, lambda color=color: f'color: {theme.resolve_color(color)}; font-size: {theme.fs(11)}; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 12px; margin-bottom: 2px; padding-bottom: 4px; border-bottom: 1px solid {theme.resolve_color(color)};')
         self._lay.addWidget(lbl)
         # Store for language update + theme refresh
         if not hasattr(self, "_section_labels"):
@@ -772,7 +715,7 @@ class ResourceSettingsDrawer(QFrame):
 
     def _add_checkbox(self, text_key: str, setting_key: str) -> QCheckBox:
         cb = QCheckBox(get_text(text_key, self.lang))
-        cb.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; padding: 3px 0;")
+        theme.bind_style(cb, lambda: f"color: {theme.TEXT_PRIMARY}; padding: 3px 0;")
         tooltip_key = text_key + "_tooltip"
         tip = get_text(tooltip_key, self.lang)
         if tip != tooltip_key:
@@ -787,7 +730,7 @@ class ResourceSettingsDrawer(QFrame):
     def _add_slider(self, text_key, mn, mx, step, suffix=""):
         row = QHBoxLayout()
         lbl = QLabel(get_text(text_key, self.lang))
-        lbl.setStyleSheet(theme.label_default())
+        theme.bind_style(lbl, theme.label_default)
         lbl.setMinimumWidth(130)
         tooltip_key = text_key + "_tooltip"
         tip = get_text(tooltip_key, self.lang)
@@ -799,7 +742,7 @@ class ResourceSettingsDrawer(QFrame):
         sl.setMinimum(mn)
         sl.setMaximum(mx)
         sl.setSingleStep(step)
-        sl.setStyleSheet(theme.slider())
+        theme.bind_style(sl, theme.slider)
         if tip != tooltip_key:
             sl.setToolTip(tip)
         row.addWidget(sl, stretch=1)
@@ -807,7 +750,7 @@ class ResourceSettingsDrawer(QFrame):
         val = QLabel("")
         val.setMinimumWidth(55)
         val.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        val.setStyleSheet(theme.label_value())
+        theme.bind_style(val, theme.label_value)
         row.addWidget(val)
 
         # Live value update
@@ -879,28 +822,21 @@ class ResourceSettingsDrawer(QFrame):
         """
 
     def _refresh_accent_swatches(self):
-        current = (self._selected_accent or "").lower()
         for btn, color in self._accent_btns:
-            btn.setStyleSheet(
-                self._accent_swatch_style(color, selected=(color.lower() == current))
-            )
-        # Custom button: preview the current accent if it's not in presets
-        preset_colors = {c.lower() for c, _ in theme.ACCENT_PRESETS}
-        is_custom = current and current not in preset_colors
-        custom_bg = self._selected_accent if is_custom else "transparent"
-        custom_border = (f"2px solid {theme.TEXT_PRIMARY}"
-                         if is_custom else f"1px solid {theme.BORDER}")
-        self._custom_accent_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {custom_bg};
-                border: {custom_border};
-                border-radius: 14px;
-                font-size: {theme.fs(12)};
-            }}
-            QPushButton:hover {{
-                border: 2px solid {theme.TEXT_PRIMARY};
-            }}
-        """)
+            theme.bind_style(btn, lambda color=color: self._accent_swatch_style(
+                color, selected=color.lower() == (self._selected_accent or "").lower()))
+        theme.bind_style(self._custom_accent_btn, self._custom_accent_style)
+
+    def _custom_accent_style(self):
+        current = (self._selected_accent or "").lower()
+        is_custom = bool(current and current not in {c.lower() for c, _ in theme.ACCENT_PRESETS})
+        background = self._selected_accent if is_custom else "transparent"
+        border = f"2px solid {theme.TEXT_PRIMARY}" if is_custom else f"1px solid {theme.BORDER}"
+        return (
+            f"QPushButton {{ background-color: {background}; border: {border};"
+            f"border-radius: 14px; font-size: {theme.fs(12)}; }}"
+            f"QPushButton:hover {{ border: 2px solid {theme.TEXT_PRIMARY}; }}"
+        )
 
     def _pick_accent(self, color: str):
         self._selected_accent = color
@@ -1015,38 +951,8 @@ class ResourceSettingsDrawer(QFrame):
     # ─── Theme refresh ──────────────────────────────────────────────────
 
     def refresh_styles(self):
-        """Re-apply all stylesheets after a theme change."""
-        self.setStyleSheet(f"""
-            ResourceSettingsDrawer {{
-                background-color: {theme.BG_DARK};
-                border-left: 1px solid {theme.BORDER};
-            }}
-        """)
-        self._title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(17)}; font-weight: 700; letter-spacing: -0.01em;")
-        self._subtitle.setStyleSheet(theme.label_muted())
-        self._close_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent; color: {theme.TEXT_SECONDARY};
-                font-size: {theme.fs(18)}; border: none; border-radius: 4px;
-            }}
-            QPushButton:hover {{ background: {theme.BG_HOVER}; color: {theme.RED}; }}
-        """)
-        self._reset_btn.setStyleSheet(theme.btn_secondary())
-        self._apply_btn.setStyleSheet(theme.btn_primary())
-        for lbl, _key, color in self._section_labels:
-            lbl.setStyleSheet(
-                f"color: {color}; font-size: {theme.fs(11)}; font-weight: 700; "
-                f"letter-spacing: 0.06em; text-transform: uppercase; "
-                f"margin-top: 12px; margin-bottom: 2px; padding-bottom: 4px; "
-                f"border-bottom: 1px solid {color};"
-            )
-        for cb, _key in self._cb_keys:
-            cb.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; padding: 3px 0;")
-        for lbl, _key in self._slider_keys:
-            lbl.setStyleSheet(theme.label_default())
-        if hasattr(self, "_accent_label"):
-            self._accent_label.setStyleSheet(theme.label_default())
-            self._refresh_accent_swatches()
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)
 
     # ─── Language update ─────────────────────────────────────────────────
 

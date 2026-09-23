@@ -1,0 +1,8 @@
+# Conservative compatibility boundaries, NOT a fully tested dependency lock.
+# Keeps legacy anime/upscale dependencies away from the NumPy 2 ABI transition.
+numpy>=1.24,<2
+opencv-python>=4.8,<4.12
+opencv-python-headless>=4.8,<4.12
+transformers>=4.38,<5
+huggingface_hub>=0.20,<1
+PyQt5>=5.15.9,<5.16

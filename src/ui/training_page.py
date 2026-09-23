@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import math
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -390,12 +391,10 @@ class _DropLineEdit(QLineEdit):
 
     def _highlight(self, active: bool):
         if active:
-            self.setStyleSheet(
-                f"QLineEdit {{ background: {theme.BG_SURFACE}; color: {theme.TEXT_PRIMARY}; "
-                f"border: 1px solid {theme.ORANGE}; border-radius: {theme.R_SM}; padding: 0 8px; }}"
-            )
+            theme.bind_style(self, lambda: f"QLineEdit {{ background: {theme.BG_SURFACE}; color: {theme.TEXT_PRIMARY}; "
+                f"border: 1px solid {theme.ORANGE}; border-radius: {theme.R_SM}; padding: 0 8px; }}")
         else:
-            self.setStyleSheet(theme.line_edit_compact())
+            theme.bind_style(self, theme.line_edit_compact)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -410,16 +409,59 @@ class _TrainThread(QThread):
         super().__init__(parent)
         self._trainer = trainer
         self._train_toml = train_toml
+        self._cancel = threading.Event()
 
     def run(self):
-        self._trainer.start(
-            train_toml=self._train_toml,
-            log_callback=lambda msg: self.log_msg.emit(msg),
-            finished_callback=lambda ok, s: self.finished_sig.emit(ok, s),
-        )
+        outcome = []
+        try:
+            if self._cancel.is_set():
+                self.finished_sig.emit(False, "Training cancelled before launch.")
+                return
+            started = self._trainer.start(
+                train_toml=self._train_toml,
+                log_callback=lambda msg: self.log_msg.emit(msg),
+                finished_callback=lambda ok, text: outcome.append((ok, text)),
+            )
+            if not started:
+                self.finished_sig.emit(False, "Kohya could not start; inspect the log.")
+                return
+            if self._cancel.is_set():
+                self._trainer.stop()
+            # KohyaTrainer.start launches a separate Python thread. Keep the Qt
+            # lifecycle alive until that thread/process really exits.
+            monitor = getattr(self._trainer, '_thread', None)
+            if monitor is not None:
+                monitor.join()
+            ok, text = outcome[-1] if outcome else (False, "No Kohya completion result.")
+            self.finished_sig.emit(ok and not self._cancel.is_set(), text)
+        except Exception as exc:
+            self.finished_sig.emit(False, str(exc))
 
     def stop(self):
+        self._cancel.set()
         self._trainer.stop()
+
+
+class _ZipThread(QThread):
+    progress = pyqtSignal(int, int)
+    finished_sig = pyqtSignal(bool, str, int)
+
+    def __init__(self, source: Path, destination: Path, parent=None):
+        super().__init__(parent)
+        self.source, self.destination = source, destination
+
+    def stop(self):
+        self.requestInterruption()
+
+    def run(self):
+        try:
+            from src.core.kohya_exporter import export_training_zip
+            count = export_training_zip(
+                self.source, self.destination, cancel=self.isInterruptionRequested,
+                progress=self.progress.emit)
+            self.finished_sig.emit(True, str(self.destination), count)
+        except Exception as exc:
+            self.finished_sig.emit(False, str(exc), 0)
 
 
 class _InstallThread(QThread):
@@ -591,6 +633,7 @@ class TrainingPage(QWidget):
         self._trainer = None
         self._thread: Optional[_TrainThread] = None
         self._install_thread: Optional[_InstallThread] = None
+        self._zip_thread: Optional[_ZipThread] = None
         self._loss_history: list = []
         self._step_estimate: dict = {}
         self._kohya_badge_state = 'detecting'
@@ -659,6 +702,7 @@ class TrainingPage(QWidget):
         # Buttons
         self._install_kohya_btn.setToolTip(self._tip('install'))
         self._prepare_btn.setToolTip(self._tip('prepare'))
+        self._zip_btn.setToolTip(get_text('training_zip_tip', self.lang))
         self._build_btn.setToolTip(self._tip('build'))
         self._start_btn.setToolTip(self._tip('start'))
         self._stop_btn.setToolTip(self._tip('stop'))
@@ -673,18 +717,16 @@ class TrainingPage(QWidget):
 
         # ── Header ────────────────────────────────────────────────────────────
         self._title = QLabel(get_text('training_title', self.lang))
-        self._title.setStyleSheet(theme.label_section())
+        theme.bind_style(self._title, theme.label_section)
         root.addWidget(self._title)
 
         self._subtitle = QLabel(get_text('training_subtitle', self.lang))
-        self._subtitle.setStyleSheet(theme.label_muted())
+        theme.bind_style(self._subtitle, theme.label_muted)
         root.addWidget(self._subtitle)
 
         self._kohya_badge = QLabel(get_text('training_detecting', self.lang))
-        self._kohya_badge.setStyleSheet(
-            f"color: {theme.YELLOW}; font-size: {theme.fs(11)}; "
-            f"background: transparent; border: none; padding: 2px 0 6px 0;"
-        )
+        theme.bind_style(self._kohya_badge, lambda: f"color: {theme.YELLOW}; font-size: {theme.fs(11)}; "
+            f"background: transparent; border: none; padding: 2px 0 6px 0;")
         root.addWidget(self._kohya_badge)
 
         # ── Two columns ────────────────────────────────────────────────────────
@@ -702,7 +744,7 @@ class TrainingPage(QWidget):
         pc.setSpacing(6)
 
         self._paths_header = QLabel("📁  Paths")
-        self._paths_header.setStyleSheet(self._section_hdr_ss())
+        theme.bind_style(self._paths_header, lambda self=self: self._section_hdr_ss())
         pc.addWidget(self._paths_header)
 
         self._ds_lbl, self._ds_edit = self._path_row(
@@ -715,18 +757,25 @@ class TrainingPage(QWidget):
         ds_status_row = QHBoxLayout()
         ds_status_row.setContentsMargins(0, 0, 0, 0)
         self._kohya_struct_lbl = QLabel(get_text('training_no_folder', self.lang))
-        self._kohya_struct_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
-            f"background: transparent; border: none;"
-        )
+        theme.bind_style(self._kohya_struct_lbl, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
+            f"background: transparent; border: none;")
         ds_status_row.addWidget(self._kohya_struct_lbl)
         ds_status_row.addStretch()
         self._prepare_btn = QPushButton(get_text('training_prepare_btn', self.lang))
-        self._prepare_btn.setStyleSheet(self._prepare_btn_ss())
+        theme.bind_style(self._prepare_btn, lambda self=self: self._prepare_btn_ss())
         self._prepare_btn.setEnabled(False)
         self._prepare_btn.clicked.connect(self._prepare_kohya_structure)
         ds_status_row.addWidget(self._prepare_btn)
         pc.addLayout(ds_status_row)
+        zip_row = QHBoxLayout()
+        zip_row.addStretch()
+        self._zip_btn = QPushButton(get_text('training_zip_btn', self.lang))
+        theme.bind_style(self._zip_btn, theme.btn_secondary)
+        self._zip_btn.setEnabled(False)
+        self._zip_btn.clicked.connect(self._export_zip)
+        self._ds_edit.textChanged.connect(lambda _=None: self._zip_btn.setEnabled(False))
+        zip_row.addWidget(self._zip_btn)
+        pc.addLayout(zip_row)
 
         self._model_lbl, self._model_edit = self._path_row(
             pc, 'training_model_lbl', self._browse_model, tip_key='model',
@@ -737,19 +786,19 @@ class TrainingPage(QWidget):
         # Kohya path + Install button
         kohya_row_layout = QHBoxLayout()
         self._kohya_lbl = QLabel(get_text('training_kohya_lbl', self.lang))
-        self._kohya_lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(self._kohya_lbl, theme.label_frame)
         self._kohya_lbl.setMinimumWidth(130)
         self._kohya_edit = QLineEdit()
-        self._kohya_edit.setStyleSheet(theme.line_edit_compact())
+        theme.bind_style(self._kohya_edit, theme.line_edit_compact)
         kohya_browse = QPushButton("…")
         kohya_browse.setFixedWidth(28)
-        kohya_browse.setStyleSheet(theme.btn_browse())
+        theme.bind_style(kohya_browse, theme.btn_browse)
         kohya_browse.clicked.connect(self._browse_kohya)
         self._install_kohya_btn = QPushButton("⬇ Install")
-        self._install_kohya_btn.setStyleSheet(self._install_btn_ss())
+        theme.bind_style(self._install_kohya_btn, lambda self=self: self._install_btn_ss())
         self._install_kohya_btn.clicked.connect(self._start_install_kohya)
         self._repair_deps_btn = QPushButton("🔧 Fix deps")
-        self._repair_deps_btn.setStyleSheet(self._install_btn_ss())
+        theme.bind_style(self._repair_deps_btn, lambda self=self: self._install_btn_ss())
         self._repair_deps_btn.setVisible(False)
         self._repair_deps_btn.clicked.connect(self._start_repair_deps)
         kohya_row_layout.addWidget(self._kohya_lbl)
@@ -769,15 +818,15 @@ class TrainingPage(QWidget):
 
         # LoRA name
         sep = QFrame(); sep.setFixedHeight(1)
-        sep.setStyleSheet(f"background: {theme.BORDER}; border: none;")
+        theme.bind_style(sep, lambda: f"background: {theme.BORDER}; border: none;")
         pc.addWidget(sep)
 
         name_row = QHBoxLayout()
         self._name_lbl = QLabel(get_text('training_lora_name', self.lang))
-        self._name_lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(self._name_lbl, theme.label_frame)
         self._name_lbl.setMinimumWidth(130)
         self._name_edit = QLineEdit("my_lora")
-        self._name_edit.setStyleSheet(theme.line_edit_compact())
+        theme.bind_style(self._name_edit, theme.line_edit_compact)
         name_row.addWidget(self._name_lbl)
         name_row.addWidget(self._name_edit)
         pc.addLayout(name_row)
@@ -791,12 +840,12 @@ class TrainingPage(QWidget):
         cc.setSpacing(10)
 
         self._cfg_header = QLabel("⚡  Configuration")
-        self._cfg_header.setStyleSheet(self._section_hdr_ss())
+        theme.bind_style(self._cfg_header, lambda self=self: self._section_hdr_ss())
         cc.addWidget(self._cfg_header)
 
         # Preset buttons — subject-type axis
         preset_lbl = QLabel(get_text('training_type_lbl', self.lang))
-        preset_lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(preset_lbl, theme.label_frame)
         cc.addWidget(preset_lbl)
         self._preset_lbl_widget = preset_lbl
 
@@ -818,12 +867,12 @@ class TrainingPage(QWidget):
         # Epochs
         epochs_row = QHBoxLayout()
         self._epochs_lbl = QLabel("Epochs:")
-        self._epochs_lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(self._epochs_lbl, theme.label_frame)
         self._epochs_lbl.setMinimumWidth(130)
         self._epochs_sp = QSpinBox()
         self._epochs_sp.setRange(1, 200)
         self._epochs_sp.setValue(10)
-        self._epochs_sp.setStyleSheet(self._spinbox_ss('QSpinBox'))
+        theme.bind_style(self._epochs_sp, lambda self=self: self._spinbox_ss('QSpinBox'))
         self._epochs_sp.setFixedWidth(80)
         self._epochs_sp.valueChanged.connect(lambda _: self._apply_preset('custom', silent=True))
         epochs_row.addWidget(self._epochs_lbl)
@@ -836,7 +885,7 @@ class TrainingPage(QWidget):
         model_type_row = QHBoxLayout()
         model_type_row.setSpacing(6)
         self._model_type_lbl = QLabel("Model type:")
-        self._model_type_lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(self._model_type_lbl, theme.label_frame)
         self._model_type_lbl.setMinimumWidth(130)
         self._sd15_btn = QPushButton("SD 1.5")
         self._sdxl_btn = QPushButton("SDXL")
@@ -853,16 +902,14 @@ class TrainingPage(QWidget):
 
         # Advanced toggle
         self._adv_toggle = QPushButton("▶  Advanced settings")
-        self._adv_toggle.setStyleSheet(self._adv_toggle_ss())
+        theme.bind_style(self._adv_toggle, lambda self=self: self._adv_toggle_ss())
         self._adv_toggle.clicked.connect(self._toggle_advanced)
         cc.addWidget(self._adv_toggle)
 
         # ── Advanced frame ────────────────────────────────────────────────────
         self._adv_frame = QFrame()
-        self._adv_frame.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER}; "
-            f"border-radius: 6px; }}"
-        )
+        theme.bind_style(self._adv_frame, lambda: f"QFrame {{ background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER}; "
+            f"border-radius: 6px; }}")
         adv = QVBoxLayout(self._adv_frame)
         adv.setContentsMargins(10, 8, 10, 8)
         adv.setSpacing(4)
@@ -909,7 +956,7 @@ class TrainingPage(QWidget):
         right.setSpacing(8)
 
         self._progress_header = QLabel("📊  Progress")
-        self._progress_header.setStyleSheet(self._section_hdr_ss())
+        theme.bind_style(self._progress_header, lambda self=self: self._section_hdr_ss())
         right.addWidget(self._progress_header)
 
         info_row = QHBoxLayout()
@@ -932,20 +979,20 @@ class TrainingPage(QWidget):
         self._step_progress = QProgressBar()
         self._step_progress.setRange(0, 100)
         self._step_progress.setValue(0)
-        self._step_progress.setStyleSheet(theme.progress_bar())
+        theme.bind_style(self._step_progress, theme.progress_bar)
         self._step_progress.setFixedHeight(4)
         right.addWidget(self._step_progress)
 
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
-        self._progress.setStyleSheet(theme.progress_bar())
+        theme.bind_style(self._progress, theme.progress_bar)
         self._progress.setFixedHeight(8)
         right.addWidget(self._progress)
 
         self._log = QTextEdit()
         self._log.setReadOnly(True)
-        self._log.setStyleSheet(theme.log_area())
+        theme.bind_style(self._log, theme.log_area)
         self._log.setPlaceholderText(get_text('training_log_placeholder', self.lang))
         right.addWidget(self._log, stretch=1)
         cols.addLayout(right, stretch=1)
@@ -957,18 +1004,18 @@ class TrainingPage(QWidget):
         btn_row.setSpacing(8)
 
         self._build_btn = QPushButton(get_text('training_build_btn', self.lang))
-        self._build_btn.setStyleSheet(theme.btn_secondary())
+        theme.bind_style(self._build_btn, theme.btn_secondary)
         self._build_btn.setFixedWidth(140)
         self._build_btn.clicked.connect(self._build_config)
         btn_row.addWidget(self._build_btn)
 
         self._start_btn = QPushButton(get_text('training_start_btn', self.lang))
-        self._start_btn.setStyleSheet(theme.btn_action_start())
+        theme.bind_style(self._start_btn, theme.btn_action_start)
         self._start_btn.clicked.connect(self._start_training)
         btn_row.addWidget(self._start_btn, stretch=1)
 
         self._stop_btn = QPushButton(get_text('training_stop_btn', self.lang))
-        self._stop_btn.setStyleSheet(theme.btn_danger())
+        theme.bind_style(self._stop_btn, theme.btn_danger)
         self._stop_btn.setEnabled(False)
         self._stop_btn.setFixedWidth(90)
         self._stop_btn.clicked.connect(self._stop_training)
@@ -995,19 +1042,15 @@ class TrainingPage(QWidget):
 
     def _adv_section_lbl(self, text: str) -> QLabel:
         lbl = QLabel(text)
-        lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-weight: 700; "
+        theme.bind_style(lbl, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; font-weight: 700; "
             f"letter-spacing: 0.05em; background: transparent; border: none; "
-            f"margin-top: 6px; padding-left: 0px;"
-        )
+            f"margin-top: 6px; padding-left: 0px;")
         return lbl
 
     def _make_card(self) -> QFrame:
         f = QFrame()
-        f.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER_LIGHT}; "
-            f"border-radius: 10px; }}"
-        )
+        theme.bind_style(f, lambda: f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER_LIGHT}; "
+            f"border-radius: 10px; }}")
         return f
 
     def _prepare_btn_ss(self) -> str:
@@ -1086,16 +1129,16 @@ class TrainingPage(QWidget):
                   drop_dirs: bool = False, drop_exts=None):
         row = QHBoxLayout()
         lbl = QLabel(get_text(key, self.lang))
-        lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(lbl, theme.label_frame)
         lbl.setMinimumWidth(130)
         if drop_dirs or drop_exts:
             edit = _DropLineEdit(accept_dirs=drop_dirs, accept_exts=drop_exts)
         else:
             edit = QLineEdit()
-        edit.setStyleSheet(theme.line_edit_compact())
+        theme.bind_style(edit, theme.line_edit_compact)
         btn = QPushButton("…")
         btn.setFixedWidth(28)
-        btn.setStyleSheet(theme.btn_browse())
+        theme.bind_style(btn, theme.btn_browse)
         btn.clicked.connect(browse_fn)
         row.addWidget(lbl)
         row.addWidget(edit)
@@ -1108,13 +1151,13 @@ class TrainingPage(QWidget):
     def _spin_row(self, label: str, key: str, mn: int, mx: int, default: int, step: int = 1):
         row = QHBoxLayout()
         lbl = QLabel(label)
-        lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(lbl, theme.label_frame)
         lbl.setMinimumWidth(145)
         sp = QSpinBox()
         sp.setRange(mn, mx)
         sp.setValue(default)
         sp.setSingleStep(step)
-        sp.setStyleSheet(self._spinbox_ss('QSpinBox'))
+        theme.bind_style(sp, lambda self=self: self._spinbox_ss('QSpinBox'))
         sp.setFixedWidth(80)
         t = self._tip(key)
         lbl.setToolTip(t)
@@ -1129,14 +1172,14 @@ class TrainingPage(QWidget):
                    dec: int = 6, step: float = None):
         row = QHBoxLayout()
         lbl = QLabel(label)
-        lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(lbl, theme.label_frame)
         lbl.setMinimumWidth(145)
         sp = QDoubleSpinBox()
         sp.setRange(mn, mx)
         sp.setValue(default)
         sp.setDecimals(dec)
         sp.setSingleStep(step if step is not None else default / 10 if default > 0 else 1e-5)
-        sp.setStyleSheet(self._spinbox_ss('QDoubleSpinBox'))
+        theme.bind_style(sp, lambda self=self: self._spinbox_ss('QDoubleSpinBox'))
         sp.setFixedWidth(110)
         t = self._tip(key)
         lbl.setToolTip(t)
@@ -1150,12 +1193,12 @@ class TrainingPage(QWidget):
     def _combo_row(self, label: str, key: str, items: list, default_idx: int = 0):
         row = QHBoxLayout()
         lbl = QLabel(label)
-        lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(lbl, theme.label_frame)
         lbl.setMinimumWidth(145)
         cb = QComboBox()
         cb.addItems(items)
         cb.setCurrentIndex(default_idx)
-        cb.setStyleSheet(self._combo_ss())
+        theme.bind_style(cb, lambda self=self: self._combo_ss())
         cb.setFixedWidth(180)
         cb.currentIndexChanged.connect(lambda _: self._apply_preset('custom', silent=True))
         t = self._tip(key)
@@ -1171,11 +1214,11 @@ class TrainingPage(QWidget):
         """Build a label + QCheckBox row; store in _bool_refs[key]."""
         row = QHBoxLayout()
         lbl = QLabel(label)
-        lbl.setStyleSheet(theme.label_frame())
+        theme.bind_style(lbl, theme.label_frame)
         lbl.setMinimumWidth(145)
         cb = QCheckBox()
         cb.setChecked(default)
-        cb.setStyleSheet(self._checkbox_ss())
+        theme.bind_style(cb, lambda self=self: self._checkbox_ss())
         cb.toggled.connect(lambda _: self._apply_preset('custom', silent=True))
         t = self._tip(key)
         lbl.setToolTip(t)
@@ -1198,20 +1241,16 @@ class TrainingPage(QWidget):
 
     def _stat_pill(self, layout, key: str, value: str):
         frame = QFrame()
-        frame.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER}; "
-            f"border-radius: 6px; }}"
-        )
+        theme.bind_style(frame, lambda: f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER}; "
+            f"border-radius: 6px; }}")
         fl = QHBoxLayout(frame)
         fl.setContentsMargins(10, 4, 10, 4)
         fl.setSpacing(6)
         lbl = QLabel(get_text(key, self.lang))
-        lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; "
+        theme.bind_style(lbl, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; "
             f"background: transparent; border: none;")
         val = QLabel(value)
-        val.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; "
+        theme.bind_style(val, lambda: f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; "
             f"font-weight: 700; background: transparent; border: none;")
         fl.addWidget(lbl)
         fl.addWidget(val)
@@ -1337,7 +1376,7 @@ class TrainingPage(QWidget):
         active_ss = self._preset_btn_active_ss()
         idle_ss = self._preset_btn_idle_ss()
         for k, btn in self._preset_btns.items():
-            btn.setStyleSheet(active_ss if k == active_key else idle_ss)
+            theme.bind_style(btn, lambda active_key=active_key, k=k, self=self: self._preset_btn_active_ss() if k == active_key else self._preset_btn_idle_ss())
 
     def _toggle_advanced(self):
         self._advanced_visible = not self._advanced_visible
@@ -1348,13 +1387,13 @@ class TrainingPage(QWidget):
     def _set_model_type(self, is_sdxl: bool):
         self._sdxl_cb.setChecked(is_sdxl)
         if is_sdxl:
-            self._sd15_btn.setStyleSheet(self._model_type_btn_idle_ss())
-            self._sdxl_btn.setStyleSheet(self._model_type_btn_active_ss())
+            theme.bind_style(self._sd15_btn, lambda self=self: self._model_type_btn_idle_ss())
+            theme.bind_style(self._sdxl_btn, lambda self=self: self._model_type_btn_active_ss())
             if 'resolution' in self._spin_refs:
                 self._spin_refs['resolution'].setValue(1024)
         else:
-            self._sd15_btn.setStyleSheet(self._model_type_btn_active_ss())
-            self._sdxl_btn.setStyleSheet(self._model_type_btn_idle_ss())
+            theme.bind_style(self._sd15_btn, lambda self=self: self._model_type_btn_active_ss())
+            theme.bind_style(self._sdxl_btn, lambda self=self: self._model_type_btn_idle_ss())
             if self._active_preset in _PRESETS and 'resolution' in self._spin_refs:
                 self._spin_refs['resolution'].setValue(
                     _PRESETS[self._active_preset]['resolution'])
@@ -1388,10 +1427,8 @@ class TrainingPage(QWidget):
                 f"({img_count} {get_text('training_images_word', self.lang)})"
             )
             self._kohya_struct_state = 'kohya'
-            self._kohya_struct_lbl.setStyleSheet(
-                f"color: {theme.GREEN}; font-size: {theme.fs(10)}; "
-                f"background: transparent; border: none;"
-            )
+            theme.bind_style(self._kohya_struct_lbl, lambda: f"color: {theme.GREEN}; font-size: {theme.fs(10)}; "
+                f"background: transparent; border: none;")
             self._prepare_btn.setText(get_text('training_reprepare', self.lang))
         else:
             self._kohya_struct_lbl.setText(
@@ -1399,10 +1436,50 @@ class TrainingPage(QWidget):
                 f"({img_count} {get_text('training_images_word', self.lang)})"
             )
             self._kohya_struct_state = 'flat'
-            self._kohya_struct_lbl.setStyleSheet(
-                f"color: {theme.YELLOW}; font-size: {theme.fs(10)}; "
-                f"background: transparent; border: none;"
-            )
+            theme.bind_style(self._kohya_struct_lbl, lambda: f"color: {theme.YELLOW}; font-size: {theme.fs(10)}; "
+                f"background: transparent; border: none;")
+        self._zip_btn.setEnabled(already_kohya and (p / 'dataset_config.toml').is_file())
+
+    def _export_zip(self):
+        from PyQt5.QtWidgets import QMessageBox
+        if self._zip_thread is not None and self._zip_thread.isRunning():
+            return
+        source = Path(self._ds_edit.text().strip())
+        if self._kohya_struct_state != 'kohya' or not (source / 'dataset_config.toml').is_file():
+            QMessageBox.warning(self, get_text('training_zip_title', self.lang),
+                                get_text('training_zip_need_prepared', self.lang))
+            return
+        guard = getattr(self, 'operation_guard', None)
+        if guard is not None and not guard():
+            return
+        default = source.parent / (source.name + '.zip')
+        name, _ = QFileDialog.getSaveFileName(
+            self, get_text('training_zip_title', self.lang), str(default), 'ZIP (*.zip)')
+        if not name:
+            return
+        destination = Path(name)
+        self._zip_btn.setEnabled(False)
+        self._prepare_btn.setEnabled(False)
+        worker = _ZipThread(source, destination, self)
+        self._zip_thread = worker
+        worker.progress.connect(
+            lambda done, total: self._zip_btn.setText(f'ZIP {done}/{total}'), Qt.QueuedConnection)
+        worker.finished_sig.connect(self._on_zip_finished, Qt.QueuedConnection)
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(lambda: setattr(self, '_zip_thread', None), Qt.QueuedConnection)
+        callback = getattr(self, 'lifecycle_callback', None)
+        if callback is not None:
+            worker.finished.connect(lambda: callback(False), Qt.QueuedConnection)
+            callback(True)
+        worker.start()
+
+    def _on_zip_finished(self, success: bool, value: str, count: int):
+        self._zip_btn.setText(get_text('training_zip_btn', self.lang))
+        self._zip_btn.setEnabled(self._kohya_struct_state == 'kohya')
+        self._prepare_btn.setEnabled(True)
+        key = 'training_zip_done' if success else 'training_zip_failed'
+        self._log.append(get_text(key, self.lang).format(
+            path=value, count=count, error=value))
 
     def _browse_model(self):
         f, _ = QFileDialog.getOpenFileName(
@@ -1484,6 +1561,8 @@ class TrainingPage(QWidget):
     # ── Kohya detection ──────────────────────────────────────────────────────
 
     def _detect_kohya(self):
+        if self._thread is not None and self._thread.isRunning():
+            return
         from src.training.trainer import KohyaTrainer
         kohya_dir = self._kohya_edit.text().strip() or None
         self._trainer = KohyaTrainer(kohya_dir=kohya_dir)
@@ -1506,14 +1585,14 @@ class TrainingPage(QWidget):
                     f" — missing {missing_label}"
                 )
                 self._kohya_badge_state = 'partial'
-                self._kohya_badge.setStyleSheet(f"color: {theme.YELLOW}; {_ss}")
+                theme.bind_style(self._kohya_badge, lambda: f"color: {theme.YELLOW}; {f'font-size: {theme.fs(11)}; background: transparent; border: none; padding: 2px 0 6px 0;'}")
             else:
                 self._kohya_badge.setText(
                     f"{get_text('training_kohya_ready', self.lang)}: "
                     f"{Path(info['script_path']).parent.name}"
                 )
                 self._kohya_badge_state = 'ready'
-                self._kohya_badge.setStyleSheet(f"color: {theme.GREEN}; {_ss}")
+                theme.bind_style(self._kohya_badge, lambda: f"color: {theme.GREEN}; {f'font-size: {theme.fs(11)}; background: transparent; border: none; padding: 2px 0 6px 0;'}")
         elif info["script_found"]:
             missing_label = ", ".join(missing_names[:3]) if missing_names else "accelerate"
             self._kohya_badge.setText(
@@ -1521,11 +1600,11 @@ class TrainingPage(QWidget):
                 f" — missing {missing_label}"
             )
             self._kohya_badge_state = 'partial'
-            self._kohya_badge.setStyleSheet(f"color: {theme.YELLOW}; {_ss}")
+            theme.bind_style(self._kohya_badge, lambda: f"color: {theme.YELLOW}; {f'font-size: {theme.fs(11)}; background: transparent; border: none; padding: 2px 0 6px 0;'}")
         else:
             self._kohya_badge.setText(get_text('training_kohya_missing', self.lang))
             self._kohya_badge_state = 'missing'
-            self._kohya_badge.setStyleSheet(f"color: {theme.RED}; {_ss}")
+            theme.bind_style(self._kohya_badge, lambda: f"color: {theme.RED}; {f'font-size: {theme.fs(11)}; background: transparent; border: none; padding: 2px 0 6px 0;'}")
 
         # Hide Install button when kohya is detected; show when missing
         self._install_kohya_btn.setVisible(not info["script_found"])
@@ -1680,6 +1759,11 @@ class TrainingPage(QWidget):
     # ── Training control ─────────────────────────────────────────────────────
 
     def _start_training(self):
+        if self._thread is not None and self._thread.isRunning():
+            return
+        guard = getattr(self, 'operation_guard', None)
+        if guard is not None and not guard():
+            return
         if not self._trainer:
             self._detect_kohya()
         train_toml = self._build_config()
@@ -1703,6 +1787,10 @@ class TrainingPage(QWidget):
         self._thread = _TrainThread(self._trainer, train_toml, parent=self)
         self._thread.log_msg.connect(self._on_log, Qt.QueuedConnection)
         self._thread.finished_sig.connect(self._on_finished, Qt.QueuedConnection)
+        callback = getattr(self, 'lifecycle_callback', None)
+        if callback is not None:
+            self._thread.finished.connect(lambda: callback(False), Qt.QueuedConnection)
+            callback(True)
         self._thread.start()
         self._poll_timer.start()
 
@@ -1777,6 +1865,7 @@ class TrainingPage(QWidget):
     def update_language(self, lang: str):
         self.lang = lang
         self._title.setText(get_text('training_title', lang))
+        self._zip_btn.setText(get_text('training_zip_btn', lang))
         self._subtitle.setText(get_text('training_subtitle', lang))
         self._ds_lbl.setText(get_text('training_dataset_lbl', lang))
         self._model_lbl.setText(get_text('training_model_lbl', lang))
@@ -1804,94 +1893,5 @@ class TrainingPage(QWidget):
         self._apply_tooltips()
 
     def refresh_styles(self):
-        from PyQt5.QtWidgets import QDoubleSpinBox as _DSpin
-
-        self._adv_frame.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER}; "
-            f"border-radius: 6px; }}"
-        )
-
-        self._title.setStyleSheet(theme.label_section())
-        self._subtitle.setStyleSheet(theme.label_muted())
-        self._name_lbl.setStyleSheet(theme.label_frame())
-        self._name_edit.setStyleSheet(theme.line_edit_compact())
-        self._progress.setStyleSheet(theme.progress_bar())
-        self._step_progress.setStyleSheet(theme.progress_bar())
-        self._log.setStyleSheet(theme.log_area())
-        self._build_btn.setStyleSheet(theme.btn_secondary())
-        self._start_btn.setStyleSheet(theme.btn_action_start())
-        self._stop_btn.setStyleSheet(theme.btn_danger())
-        self._prepare_btn.setStyleSheet(self._prepare_btn_ss())
-        self._install_kohya_btn.setStyleSheet(self._install_btn_ss())
-        self._repair_deps_btn.setStyleSheet(self._install_btn_ss())
-        self._adv_toggle.setStyleSheet(self._adv_toggle_ss())
-
-        for attr_lbl, attr_edit in (
-            ('_ds_lbl', '_ds_edit'), ('_model_lbl', '_model_edit'),
-            ('_kohya_lbl', '_kohya_edit'), ('_out_lbl', '_out_edit'),
-        ):
-            lbl = getattr(self, attr_lbl, None)
-            edit = getattr(self, attr_edit, None)
-            if lbl:  lbl.setStyleSheet(theme.label_frame())
-            if edit: edit.setStyleSheet(theme.line_edit_compact())
-
-        _spin_ss  = self._spinbox_ss('QSpinBox')
-        _dspin_ss = self._spinbox_ss('QDoubleSpinBox')
-        _combo_ss = self._combo_ss()
-        for sp in self._spin_refs.values():
-            sp.setStyleSheet(_dspin_ss if isinstance(sp, _DSpin) else _spin_ss)
-        for cb in self._combo_refs.values():
-            cb.setStyleSheet(_combo_ss)
-        _chk_ss = self._checkbox_ss()
-        for chk in self._bool_refs.values():
-            chk.setStyleSheet(_chk_ss)
-
-        for btn in self.findChildren(QPushButton):
-            if btn.text() == "…":
-                btn.setStyleSheet(theme.btn_browse())
-
-        self._update_preset_btn_styles(self._active_preset)
-        is_sdxl = self._sdxl_cb.isChecked()
-        self._sd15_btn.setStyleSheet(
-            self._model_type_btn_idle_ss() if is_sdxl else self._model_type_btn_active_ss())
-        self._sdxl_btn.setStyleSheet(
-            self._model_type_btn_active_ss() if is_sdxl else self._model_type_btn_idle_ss())
-
-        _badge_color  = {'ready': theme.GREEN, 'partial': theme.YELLOW,
-                         'missing': theme.RED, 'detecting': theme.YELLOW}
-        _struct_color = {'kohya': theme.GREEN, 'flat': theme.YELLOW, 'none': theme.TEXT_MUTED}
-        _badge_ss  = "font-size: %s; background: transparent; border: none; padding: 2px 0 6px 0;" % theme.fs(11)
-        _struct_ss = "font-size: %s; background: transparent; border: none;" % theme.fs(10)
-        self._kohya_badge.setStyleSheet(
-            f"color: {_badge_color.get(self._kohya_badge_state, theme.YELLOW)}; {_badge_ss}")
-        self._kohya_struct_lbl.setStyleSheet(
-            f"color: {_struct_color.get(self._kohya_struct_state, theme.TEXT_MUTED)}; {_struct_ss}")
-
-        _pill_frame_ss = (
-            f"QFrame {{ background: {theme.BG_CARD}; border: 1px solid {theme.BORDER}; "
-            f"border-radius: 6px; }}"
-        )
-        for caption_lbl, val_lbl in (
-            (self._epoch_caption_lbl, self._epoch_lbl),
-            (self._loss_caption_lbl, self._loss_lbl),
-            (self._eta_caption_lbl, self._eta_lbl),
-            (self._steps_caption_lbl, self._steps_lbl),
-            (self._steps_per_epoch_caption_lbl, self._steps_per_epoch_lbl),
-        ):
-            frame = caption_lbl.parent()
-            if frame:  frame.setStyleSheet(_pill_frame_ss)
-            caption_lbl.setStyleSheet(
-                f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(11)}; "
-                f"background: transparent; border: none;")
-            val_lbl.setStyleSheet(
-                f"color: {theme.TEXT_PRIMARY}; font-size: {theme.fs(13)}; "
-                f"font-weight: 700; background: transparent; border: none;")
-
-        _hdr_ss = self._section_hdr_ss()
-        for attr in ('_paths_header', '_cfg_header', '_progress_header'):
-            w = getattr(self, attr, None)
-            if w:  w.setStyleSheet(_hdr_ss)
-
-        for attr in ('_preset_lbl_widget', '_epochs_lbl', '_model_type_lbl'):
-            w = getattr(self, attr, None)
-            if w:  w.setStyleSheet(theme.label_frame())
+        """Refresh existing controls, including dynamically added children."""
+        return theme.refresh_styles(self)

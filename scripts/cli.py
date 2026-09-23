@@ -435,7 +435,8 @@ Examples:
         # Process all videos
         overall_stats = processor.process_all_videos(
             frame_interval=args.interval,
-            skip_text=not args.no_skip_text
+            skip_text=not args.no_skip_text,
+            resume=use_resume,
         )
         
         # Run captioning on output if enabled

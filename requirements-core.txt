@@ -1,0 +1,16 @@
+# Bootstrap wizard installs torch and exactly one ONNX distribution separately.
+opencv-python>=4.8,<4.12
+ultralytics>=8.0
+transformers>=4.38,<5
+Pillow>=10
+numpy>=1.24,<2
+easyocr>=1.7
+PyQt5>=5.15.9,<5.16
+tqdm>=4.65
+pyyaml>=6
+pandas>=2
+huggingface_hub>=0.20,<1
+imagehash>=4.3
+aiofiles>=23
+scikit-learn>=1.3
+scenedetect[opencv]>=0.6

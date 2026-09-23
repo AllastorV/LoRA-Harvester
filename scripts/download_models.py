@@ -1,6 +1,6 @@
 """
 Download all default models into models/ folder.
-Run automatically by install.bat and install_gpu.bat.
+Run manually when model weights are needed; install.bat installs Python packages.
 
 Usage:
   python download_models.py                          # WD14 + YOLO + InsightFace + Anime

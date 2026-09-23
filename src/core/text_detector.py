@@ -16,11 +16,9 @@ import logging
 import numpy as np
 from typing import Tuple, Optional, List, Dict
 
-# Lazy import – easyocr is heavy and may not be installed
-try:
-    import easyocr as _easyocr
-except ImportError:
-    _easyocr = None
+# Import and initialise OCR only when the full OCR path is actually used.
+# quick_text_check / overlay detection must not reserve another GPU model.
+_easyocr = None
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +38,11 @@ class SubtitleDetector:
                 - normal: balanced (default)
                 - high : aggressive, catches faint soft-sub / watermarks too
         """
-        self.languages = languages
+        self.languages = list(languages)
         self.reader = None
+        self._ocr_attempted = False
+        import threading
+        self._ocr_lock = threading.Lock()
 
         # Sensitivity presets
         # NOTE: detect_colored / detect_stroke / the edge-density band check are
@@ -101,17 +102,29 @@ class SubtitleDetector:
             'ocr_used': 0,
         }
 
-        logger.info("Initializing text detector (EasyOCR)...")
-        try:
-            if _easyocr is None:
-                raise ImportError("easyocr not installed")
-            import torch
-            use_gpu = torch.cuda.is_available()
-            self.reader = _easyocr.Reader(languages, gpu=use_gpu, verbose=False)
-            logger.info("Text detector ready (GPU=%s)", use_gpu)
-        except Exception as e:
-            logger.warning("EasyOCR load failed, using quick mode only: %s", e)
-            self.reader = None
+        logger.info("Text detector ready; OCR deferred until full text detection.")
+
+    def initialize_ocr(self):
+        """Load once on demand; failures retain the existing heuristic fallback."""
+        if self.reader is not None:
+            return self.reader
+        # A second caller must wait for an in-progress initialisation rather
+        # than observe _ocr_attempted=True with a not-yet-created reader.
+        with self._ocr_lock:
+            if self.reader is not None or self._ocr_attempted:
+                return self.reader
+            self._ocr_attempted = True
+            try:
+                import importlib
+                import torch
+                module = _easyocr if _easyocr is not None else importlib.import_module('easyocr')
+                use_gpu = torch.cuda.is_available()
+                self.reader = module.Reader(self.languages, gpu=use_gpu, verbose=False)
+                logger.info("Full OCR loaded (GPU=%s)", use_gpu)
+            except Exception as exc:
+                logger.warning("EasyOCR load failed, using quick mode only: %s", exc)
+                self.reader = None
+        return self.reader
 
     # ─────────────────── Full OCR detection ───────────────────────────
 
@@ -131,7 +144,7 @@ class SubtitleDetector:
         """
         self._stats['total_checked'] += 1
 
-        if self.reader is None:
+        if self.initialize_ocr() is None:
             result = self.quick_text_check(frame)
             return result, 0.0
 
