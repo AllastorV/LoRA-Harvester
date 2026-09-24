@@ -543,5 +543,4 @@ done
 
 Daha fazla bilgi için:
 - [README.md](../README.md) - Ana dokümantasyon
-- [AI_TOOLKIT_NOTLARI.md](../AI_TOOLKIT_NOTLARI.md) - Güncel kullanım kılavuzu
 - `python ensemble_demo.py` - Canlı karşılaştırma

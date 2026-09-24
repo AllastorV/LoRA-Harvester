@@ -1,4 +1,4 @@
-> **2026.09.22-r2:** Güncel kurulum ve yeni paneller için [Studio kılavuzunu](../GELISTIRME_KILAVUZU.md) kullanın. `install.bat` tek sihirbazdır; `run.bat` proje ortamını seçerek açar. Aşağıdaki eski performans tahminleri bu teslimde ölçülmedi.
+> **2026.09.22-r2:** Güncel kurulum ve yeni paneller için [README dosyasını](../README.md) kullanın. `install.bat` tek sihirbazdır; `run.bat` proje ortamını seçerek açar. Aşağıdaki eski performans tahminleri bu teslimde ölçülmedi.
 
 # 🌾 LoRA-Harvester - Quick Reference Guide / Hızlı Referans Kılavuzu
 
