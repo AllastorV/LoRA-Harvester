@@ -227,7 +227,10 @@ def test_onnx_gpu_repair_uses_published_wheel_and_project_constraints(tmp_path, 
     monkeypatch.setattr(sm.subprocess, 'run', probe)
     monkeypatch.setattr(sm, 'diagnose', lambda *a, **kw: {
         'issues': [], 'cuda_available': True, 'onnx_providers': ['CUDAExecutionProvider']})
-    m.install({'onnx_gpu'})
+    m.install({'onnx_gpu', 'faces'})
+    face_install = next(c for c in commands if 'insightface>=0.7.3' in c)
+    onnx_remove = next(c for c in commands if 'uninstall' in c)
+    assert commands.index(face_install) < commands.index(onnx_remove)
     download = next(c for c in commands if 'download' in c)
     install = next(c for c in commands if '--no-index' in c)
     for command in (download, install):

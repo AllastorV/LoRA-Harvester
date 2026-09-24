@@ -340,6 +340,12 @@ class SetupManager:
                         self.pip('install', 'onnxruntime>=1.19,<2')
                     self.pip('install', '-r', str(self.root / 'requirements-core.txt'),
                              '-c', str(self.root / 'requirements-compat.txt'))
+                extras = {'upscale': ['realesrgan>=0.3.0', 'basicsr>=1.4.2', 'gfpgan>=1.3.8'],
+                          'anime': ['dghs-imgutils'], 'faces': ['insightface>=0.7.3']}
+                for component, packages in extras.items():
+                    if component in components:
+                        self.pip('install', '-c', str(self.root / 'requirements-compat.txt'), *packages)
+                # Optional packages can pull CPU ONNX; apply the selected runtime last.
                 if components.intersection({'onnx_cpu', 'onnx_gpu'}):
                     # Shared DLL namespace requires removal of both; downloads
                     # are staged first so an offline failure leaves runtime intact.
@@ -356,11 +362,6 @@ class SetupManager:
                     self.pip('uninstall', '-y', 'onnxruntime', 'onnxruntime-gpu')
                     self.pip('install', '--no-index', '--find-links', str(wheel_dir), '-c', str(self.root / 'requirements-compat.txt'), package)
                     shutil.rmtree(wheel_dir, ignore_errors=True)
-                extras = {'upscale': ['realesrgan>=0.3.0', 'basicsr>=1.4.2', 'gfpgan>=1.3.8'],
-                          'anime': ['dghs-imgutils'], 'faces': ['insightface>=0.7.3']}
-                for component, packages in extras.items():
-                    if component in components:
-                        self.pip('install', '-c', str(self.root / 'requirements-compat.txt'), *packages)
                 # Final diagnose runs pip check and handles the GPU runtime package alias.
             if 'clothing' in components:
                 self.install_clothing()
