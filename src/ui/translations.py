@@ -795,10 +795,10 @@ TRANSLATIONS = {
         'addmodel_added_title': 'Model Added',
         'addmodel_added_body': "Model '{}' registered successfully.",
         'addmodel_error_title': 'Error',
-        'res_gpu_install': '⚡  Install GPU Packages',
-        'res_gpu_install_tooltip': 'Installs onnxruntime-gpu and PyTorch CUDA — requires internet & restarts the app',
+        'res_gpu_install': '⚡  Open GPU Setup',
+        'res_gpu_install_tooltip': 'Opens GPU setup for PyTorch and ONNX. Close this app before installing.',
         'res_gpu_installing': '⚡  Installing…',
-        'res_gpu_install_starting': 'Starting GPU package install…',
+        'res_gpu_install_starting': 'GPU setup opened. Close this app, then install the selected components.',
 
         # ── i18n remediation: tag_frequency + review_grid ──
         'tag_freq_select_folder_btn': 'Select Folder',
@@ -1664,10 +1664,10 @@ TRANSLATIONS = {
         'addmodel_added_title': 'Model Eklendi',
         'addmodel_added_body': "'{}' modeli başarıyla kaydedildi.",
         'addmodel_error_title': 'Hata',
-        'res_gpu_install': '⚡  GPU Paketlerini Kur',
-        'res_gpu_install_tooltip': 'onnxruntime-gpu ve PyTorch CUDA kurar — internet gerektirir ve uygulamayı yeniden başlatır',
+        'res_gpu_install': '⚡  GPU Kurulumunu Aç',
+        'res_gpu_install_tooltip': 'PyTorch ve ONNX GPU kurulumunu açar. Kurmadan önce uygulamayı kapatın.',
         'res_gpu_installing': '⚡  Kuruluyor…',
-        'res_gpu_install_starting': 'GPU paket kurulumu başlatılıyor…',
+        'res_gpu_install_starting': 'GPU kurulumu açıldı. Uygulamayı kapatıp seçili bileşenleri kurun.',
 
         # ── i18n remediation: tag_frequency + review_grid ──
         'tag_freq_select_folder_btn': 'Klasör Seç',

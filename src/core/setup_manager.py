@@ -187,7 +187,14 @@ print("LH_DIAG:"+json.dumps(report,ensure_ascii=False))'''
                                encoding='utf-8', errors='replace', timeout=45, env=clean_env())
         report['pip_check'] = check.stdout.strip() or check.stderr.strip()
         if check.returncode:
-            report['issues'].append('pip check: ' + report['pip_check'])
+            for line in report['pip_check'].splitlines():
+                line = line.strip()
+                if (report.get('onnx_distributions', {}).get('onnxruntime-gpu')
+                        and line.lower().startswith('insightface ')
+                        and line.lower().endswith('requires onnxruntime, which is not installed.')):
+                    report['warnings'].append('InsightFace metadata requires the CPU ONNX distribution name; the GPU runtime provides the module.')
+                elif line:
+                    report['issues'].append('pip check: ' + line)
     except (SetupError, subprocess.TimeoutExpired, OSError, ValueError) as exc:
         report['issues'].append(str(exc))
     smi = shutil.which('nvidia-smi')
@@ -336,7 +343,7 @@ class SetupManager:
                 if components.intersection({'onnx_cpu', 'onnx_gpu'}):
                     # Shared DLL namespace requires removal of both; downloads
                     # are staged first so an offline failure leaves runtime intact.
-                    package = 'onnxruntime-gpu==1.20.1' if 'onnx_gpu' in components else 'onnxruntime>=1.19,<2'
+                    package = 'onnxruntime-gpu==1.20.2' if 'onnx_gpu' in components else 'onnxruntime>=1.19,<2'
                     if 'onnx_gpu' in components:
                         cuda = subprocess.run([str(exe), '-I', '-c',
                             'import torch; print(torch.version.cuda or "cpu")'], capture_output=True, text=True,
@@ -345,15 +352,16 @@ class SetupManager:
                             raise SetupError('ONNX GPU requires CUDA 12 PyTorch; select ONNX CPU or CUDA 12.4.')
                     wheel_dir = logs / ('onnx-wheels-' + stamp)
                     wheel_dir.mkdir()
-                    self.pip('download', '--only-binary=:all:', '--dest', str(wheel_dir), package)
+                    self.pip('download', '--only-binary=:all:', '--dest', str(wheel_dir), '-c', str(self.root / 'requirements-compat.txt'), package)
                     self.pip('uninstall', '-y', 'onnxruntime', 'onnxruntime-gpu')
-                    self.pip('install', '--no-index', '--find-links', str(wheel_dir), package)
+                    self.pip('install', '--no-index', '--find-links', str(wheel_dir), '-c', str(self.root / 'requirements-compat.txt'), package)
+                    shutil.rmtree(wheel_dir, ignore_errors=True)
                 extras = {'upscale': ['realesrgan>=0.3.0', 'basicsr>=1.4.2', 'gfpgan>=1.3.8'],
                           'anime': ['dghs-imgutils'], 'faces': ['insightface>=0.7.3']}
                 for component, packages in extras.items():
                     if component in components:
                         self.pip('install', '-c', str(self.root / 'requirements-compat.txt'), *packages)
-                self.pip('check')
+                # Final diagnose runs pip check and handles the GPU runtime package alias.
             if 'clothing' in components:
                 self.install_clothing()
             self.emit('Running final checks…')

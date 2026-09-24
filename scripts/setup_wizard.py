@@ -4,11 +4,33 @@ import argparse
 import json
 from pathlib import Path
 import queue
+import shutil
+import subprocess
 import sys
 import threading
 import webbrowser
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.core.setup_manager import SetupManager, diagnose, SetupError, ROOT
+
+
+def nvidia_gpu_available():
+    smi = shutil.which('nvidia-smi')
+    if not smi:
+        return False
+    try:
+        result = subprocess.run([smi, '-L'], capture_output=True, text=True, timeout=10)
+        return result.returncode == 0 and bool(result.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def setup_defaults(focus, channel, gpu_available):
+    selected = {'core'} if focus == 'core' else {focus}
+    if focus == 'core' and gpu_available and channel != 'cpu':
+        selected.add('gpu')
+    chosen_channel = channel if gpu_available or focus == 'gpu' else 'cpu'
+    onnx_choice = 'Repair CUDA' if gpu_available and 'gpu' in selected and chosen_channel == 'cu124' else 'Keep current'
+    return selected, chosen_channel, onnx_choice
 
 
 def cli(args):
@@ -50,7 +72,7 @@ def gui(args):
               wraplength=850).pack(anchor='w', pady=8)
     choices = ttk.LabelFrame(outer, text='Components', padding=12)
     choices.pack(fill='x')
-    defaults = {'core'} if args.focus == 'core' else {args.focus}
+    defaults, default_channel, default_onnx = setup_defaults(args.focus, args.channel, nvidia_gpu_available())
     labels = {'core': 'Core application / install missing packages',
               'gpu': 'PyTorch GPU support (replaces the installed version with the selected version)',
               'clothing': 'Outfit model: Ollama qwen3-vl:4b (several GB download)',
@@ -68,11 +90,11 @@ def gui(args):
     options.pack(fill='x', pady=6)
     ttk.Label(options, text='Torch 2.6.0 channel:').pack(side='left')
     channel = ttk.Combobox(options, values=['cu124', 'cu118', 'cpu'], state='readonly', width=10)
-    channel.set(args.channel)
+    channel.set(default_channel)
     channel.pack(side='left', padx=8)
     ttk.Label(options, text='ONNX/WD14:').pack(side='left', padx=(15, 0))
     onnx = ttk.Combobox(options, values=['Keep current', 'Repair CPU', 'Repair CUDA'], state='readonly', width=18)
-    onnx.set('Mevcudu koru')
+    onnx.set(default_onnx)
     onnx.pack(side='left', padx=8)
     rebuild = tk.BooleanVar(value=False)
     rebuild_widget = ttk.Checkbutton(choices,
@@ -118,7 +140,7 @@ def gui(args):
         if onnx.current() == 1:
             components.add('onnx_cpu')
         elif onnx.current() == 2:
-            components.add('onnx_gpu')
+            components.update({'gpu', 'onnx_gpu'})
         if not components:
             messagebox.showinfo('Select a component', 'Select a component to install or repair.')
             return

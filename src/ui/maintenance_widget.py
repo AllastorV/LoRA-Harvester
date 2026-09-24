@@ -6,6 +6,16 @@ from PyQt5.QtWidgets import QFrame, QVBoxLayout, QLabel, QPushButton
 from . import theme
 
 
+def launch_setup_wizard(focus=None):
+    root = Path(__file__).resolve().parents[2]
+    base = Path(sys.base_prefix) / ('python.exe' if sys.platform == 'win32' else 'bin/python3')
+    exe = str(base if base.is_file() else Path(sys.executable))
+    command = [exe, str(root / 'scripts/setup_wizard.py')]
+    if focus:
+        command.extend(['--focus', focus])
+    subprocess.Popen(command, cwd=root, stdin=subprocess.DEVNULL)
+
+
 class MaintenanceWidget(QFrame):
     def __init__(self, lang='en', parent=None):
         super().__init__(parent)
@@ -25,13 +35,8 @@ class MaintenanceWidget(QFrame):
 
     def open_wizard(self):
         from PyQt5.QtWidgets import QMessageBox
-        root = Path(__file__).resolve().parents[2]
-        # Launch with a concrete interpreter. The wizard verifies the target venv
-        # itself and the runtime lock prevents mutating this running environment.
+        # The runtime lock prevents changing packages until the app closes.
         try:
-            base = Path(sys.base_prefix) / ('python.exe' if sys.platform == 'win32' else 'bin/python3')
-            exe = str(base if base.is_file() else Path(sys.executable))
-            subprocess.Popen([exe, str(root / 'scripts/setup_wizard.py')], cwd=root,
-                             stdin=subprocess.DEVNULL)
+            launch_setup_wizard()
         except OSError as exc:
             QMessageBox.warning(self, 'Setup', str(exc))

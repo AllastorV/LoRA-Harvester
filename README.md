@@ -236,11 +236,11 @@ _sorted/
 | CUDA out of memory | Lower `--batch-size` or use `--no-turbo` |
 | Too few frames extracted | Lower `--interval` or `--confidence` |
 | Too many false detections | Raise `--confidence`, use `--ensemble` |
-| Captions only contain trigger word | WD14 model failed to load — run `pip install onnxruntime` (or `onnxruntime-gpu`) and ensure you have internet access on first launch so the model can download |
-| Captions not generating | Run `pip install onnxruntime` |
+| Captions only contain trigger word | Repair ONNX in the Setup/Repair wizard and allow the WD14 model to download on first launch |
+| Captions not generating | Repair ONNX in the Setup/Repair wizard |
 | Watermarks in output | Enable quality filter |
 | Grainy or dark frames | Enable `--quality`; raise `quality.blur_threshold` in config.yaml |
-| InsightFace missing | Run `pip install insightface scikit-learn onnxruntime` |
+| InsightFace missing | Repair Faces and ONNX in the Setup/Repair wizard |
 
 ---
 
@@ -469,11 +469,11 @@ python scripts/character_sort.py /gorseller/giris --references /referanslar --ma
 | CUDA bellek hatasi | `--batch-size` dusur veya `--no-turbo` kullan |
 | Cok az kare cikti | `--interval` veya `--confidence` degerini dusur |
 | Cok fazla yanlis tespit | `--confidence` yukselт, `--ensemble` kullan |
-| Sadece tetikleyici kelime yaziliyor | WD14 modeli yuklenmemis — `pip install onnxruntime` (veya `onnxruntime-gpu`) calistir ve ilk baslatmada internet baglantisi oldugundan emin ol |
-| Caption olusmuyor | `pip install onnxruntime` calistir |
+| Sadece tetikleyici kelime yaziliyor | Kurulum/onarım sihirbazında ONNX onar; WD14 modelinin ilk açılışta indirilmesi için internet bağlantısı sağla |
+| Caption olusmuyor | Kurulum/onarım sihirbazında ONNX onar |
 | Ciktida filigran var | Kalite filtresini ac |
 | Karlı/karanlik kareler | `--quality` ac; `config.yaml`'da `quality.blur_threshold` degerini yukselt |
-| InsightFace eksik | `pip install insightface scikit-learn onnxruntime` calistir |
+| InsightFace eksik | Kurulum/onarım sihirbazında Yüz ve ONNX onar |
 
 ---
 

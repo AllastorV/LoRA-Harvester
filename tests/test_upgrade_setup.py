@@ -7,6 +7,7 @@ import sys
 import threading
 import pytest
 from src.core import setup_manager as sm
+from scripts import setup_wizard
 
 
 def fake_env(tmp_path, monkeypatch):
@@ -139,11 +140,23 @@ def test_single_bootstrap_has_no_global_pip():
     text=(root/'install.bat').read_text()
     assert 'pip install' not in text and 'pip uninstall' not in text
     assert 'nvidia-smi -L' in text and '--cli --yes' in text
+    assert 'core,gpu,onnx_gpu,upscale,anime,faces' in text
     assert '--components' in text and 'setup_wizard.py' in text
     assert not any((root/name).exists() for name in
                    ['install_gpu.bat','install_clothing.bat','scripts/install_gpu.ps1'])
     assert '"%PYTHON%" main.py' in (root/'run.bat').read_text()
     assert r'%~dp0venv\Scripts\python.exe' in (root/'run.bat').read_text()
+
+
+@pytest.mark.parametrize(('focus', 'channel', 'available', 'expected'), [
+    ('core', 'cu124', True, ({'core', 'gpu'}, 'cu124', 'Repair CUDA')),
+    ('core', 'cu124', False, ({'core'}, 'cpu', 'Keep current')),
+    ('core', 'cpu', True, ({'core'}, 'cpu', 'Keep current')),
+    ('gpu', 'cu124', True, ({'gpu'}, 'cu124', 'Repair CUDA')),
+    ('clothing', 'cu124', True, ({'clothing'}, 'cu124', 'Keep current')),
+])
+def test_setup_wizard_hardware_defaults(focus, channel, available, expected):
+    assert setup_wizard.setup_defaults(focus, channel, available) == expected
 
 
 def test_diagnostics_do_not_attempt_repair(tmp_path,monkeypatch):
@@ -154,6 +167,35 @@ def test_diagnostics_do_not_attempt_repair(tmp_path,monkeypatch):
     result=sm.diagnose(tmp_path)
     assert not result['venv_ok'] and result['issues']
     assert list(tmp_path.iterdir())==[]
+
+
+@pytest.mark.parametrize('other_issue', ['', 'other 1.0 requires missing, which is not installed.'])
+def test_diagnostics_accept_gpu_onnx_package_alias_but_keep_other_errors(tmp_path, monkeypatch, other_issue):
+    fake_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(sm.shutil, 'which', lambda *a: None)
+    class Offline:
+        def open(self, *a, **kw):
+            raise OSError('offline')
+    monkeypatch.setattr(sm.urllib.request, 'build_opener', lambda *a: Offline())
+    details = {
+        'modules': {name: {'ok': True} for name in sm.MODULES},
+        'onnx_distributions': {'onnxruntime-gpu': '1.20.2'},
+        'onnx_providers': ['CUDAExecutionProvider'],
+        'cuda_available': True,
+    }
+    def fake_run(args, **kwargs):
+        if 'check' in args:
+            output = 'insightface 2.0 requires onnxruntime, which is not installed.\n'
+            if other_issue:
+                output += other_issue + '\n'
+            return subprocess.CompletedProcess(args, 1, stdout=output, stderr='')
+        return subprocess.CompletedProcess(args, 0, stdout='LH_DIAG:' + json.dumps(details), stderr='')
+    monkeypatch.setattr(sm.subprocess, 'run', fake_run)
+    result = sm.diagnose(tmp_path)
+    assert any('InsightFace metadata' in warning for warning in result['warnings'])
+    assert bool(result['issues']) == bool(other_issue)
+    if other_issue:
+        assert other_issue in result['issues'][0]
 
 
 def test_gpu_repair_replaces_cpu_wheel_even_at_same_public_version(tmp_path,monkeypatch):
@@ -169,6 +211,30 @@ def test_gpu_repair_replaces_cpu_wheel_even_at_same_public_version(tmp_path,monk
     assert '--force-reinstall' in torch_cmd
     assert torch_cmd[0]==exe and 'https://download.pytorch.org/whl/cu124' in torch_cmd
     assert '-c' in torch_cmd and str(tmp_path/'requirements-compat.txt') in torch_cmd
+
+
+def test_onnx_gpu_repair_uses_published_wheel_and_project_constraints(tmp_path, monkeypatch):
+    fake_env(tmp_path, monkeypatch)
+    (tmp_path/'requirements-compat.txt').write_text('numpy<2')
+    m = sm.SetupManager(tmp_path, log=lambda x: None)
+    commands = []
+    monkeypatch.setattr(m, 'snapshot', lambda *a: None)
+    monkeypatch.setattr(m, 'run', lambda args, **kw: commands.append(args))
+    def probe(args, **kwargs):
+        script = args[-1] if args and isinstance(args[-1], str) else ''
+        output = '12.4\n' if 'torch.version.cuda' in script else '2.6.0+cu124 0.21.0+cu124 2.6.0+cu124 True\n'
+        return subprocess.CompletedProcess(args, 0, stdout=output, stderr='')
+    monkeypatch.setattr(sm.subprocess, 'run', probe)
+    monkeypatch.setattr(sm, 'diagnose', lambda *a, **kw: {
+        'issues': [], 'cuda_available': True, 'onnx_providers': ['CUDAExecutionProvider']})
+    m.install({'onnx_gpu'})
+    download = next(c for c in commands if 'download' in c)
+    install = next(c for c in commands if '--no-index' in c)
+    for command in (download, install):
+        assert 'onnxruntime-gpu==1.20.2' in command
+        assert '-c' in command
+        assert str(tmp_path/'requirements-compat.txt') in command
+    assert not list((tmp_path/'logs').glob('onnx-wheels-*'))
 
 
 def test_healthy_gpu_wheel_is_not_reinstalled(tmp_path,monkeypatch):

@@ -695,7 +695,6 @@ class ResourceSettingsDrawer(QFrame):
         self._gpu_install_log.setWordWrap(True)
         theme.bind_style(self._gpu_install_log, lambda: f"color: {theme.TEXT_MUTED}; font-size: {theme.fs(10)}; "
             f"background: transparent; border: none; padding: 4px 0;")
-        self._gpu_install_thread = None
         root.addWidget(self._gpu_install_btn)
         root.addWidget(self._gpu_install_log)
 
@@ -863,22 +862,12 @@ class ResourceSettingsDrawer(QFrame):
         self._load_values()
 
     def _start_gpu_install(self):
-        if self._gpu_install_thread and self._gpu_install_thread.isRunning():
-            return
-        from src.core.model_installer import GpuInstallThread
-        self._gpu_install_btn.setEnabled(False)
-        self._gpu_install_btn.setText(get_text("res_gpu_installing", self.lang))
-        self._gpu_install_log.setText(get_text("res_gpu_install_starting", self.lang))
-        self._gpu_install_thread = GpuInstallThread(parent=self)
-        self._gpu_install_thread.log_message.connect(
-            lambda msg: self._gpu_install_log.setText(msg))
-        self._gpu_install_thread.finished_ok.connect(self._on_gpu_install_done)
-        self._gpu_install_thread.start()
-
-    def _on_gpu_install_done(self, ok: bool, summary: str):
-        self._gpu_install_log.setText(summary)
-        self._gpu_install_btn.setText(get_text("res_gpu_install", self.lang))
-        self._gpu_install_btn.setEnabled(True)
+        from src.ui.maintenance_widget import launch_setup_wizard
+        try:
+            launch_setup_wizard('gpu')
+            self._gpu_install_log.setText(get_text("res_gpu_install_starting", self.lang))
+        except OSError as exc:
+            self._gpu_install_log.setText(str(exc))
 
     def embed_lang_combo(self, combo):
         """Host an external language combo inside the drawer."""

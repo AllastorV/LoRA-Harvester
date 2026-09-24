@@ -6,7 +6,7 @@ set "COMPONENTS=core,upscale,anime,faces"
 set "CHANNEL=cpu"
 nvidia-smi -L >nul 2>&1
 if not errorlevel 1 (
-    set "COMPONENTS=core,gpu,upscale,anime,faces"
+    set "COMPONENTS=core,gpu,onnx_gpu,upscale,anime,faces"
     set "CHANNEL=cu124"
 )
 echo Selected PyTorch channel for this hardware: %CHANNEL%

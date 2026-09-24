@@ -99,6 +99,21 @@ def test_maintenance_real_widget_is_lazy(qapp,monkeypatch):
     finally:widget.deleteLater();qapp.processEvents()
 
 
+def test_gpu_button_opens_shared_setup_wizard(qapp, monkeypatch):
+    from src.ui import maintenance_widget
+    from src.ui.resource_settings import ResourceSettingsDrawer
+    calls = []
+    monkeypatch.setattr(maintenance_widget, 'launch_setup_wizard', calls.append)
+    drawer = ResourceSettingsDrawer('en')
+    try:
+        drawer._gpu_install_btn.click()
+        assert calls == ['gpu']
+        assert 'Close this app' in drawer._gpu_install_log.text()
+    finally:
+        drawer.deleteLater()
+        qapp.processEvents()
+
+
 def test_studio_real_worker_runs_outside_gui_thread(qapp,tmp_path):
     from PyQt5.QtCore import QThread
     from src.ui.dataset_balance_widget import DatasetBalanceWidget
