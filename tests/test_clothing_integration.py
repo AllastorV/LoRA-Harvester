@@ -58,6 +58,11 @@ class SourceIntegrationTests(unittest.TestCase):
 
     def test_all_changed_python_files_parse(self):
         for path in ROOT.rglob('*.py'):
+            # Third-party code in the project venv (or its backups) is not ours
+            # and may legitimately use non-UTF-8 source encodings.
+            if any(part in ('venv', '.venv') or part.startswith('venv-backup-')
+                   for part in path.relative_to(ROOT).parts):
+                continue
             with self.subTest(path=str(path.relative_to(ROOT))):
                 ast.parse(path.read_text(encoding='utf-8'))
 
