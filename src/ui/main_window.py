@@ -2996,7 +2996,21 @@ class VideoSmartCropperUI(QMainWindow):
 
 
 
+def drop_opencv_qt_overrides(environ=os.environ):
+    """Let PyQt5 use its own Qt plugins even if cv2 was imported first.
+
+    On Linux, importing opencv-python points QT_QPA_PLATFORM_PLUGIN_PATH and
+    QT_QPA_FONTDIR at the Qt build bundled inside cv2/. A QApplication created
+    afterwards loads that incompatible xcb plugin and aborts at startup.
+    """
+    for name in ('QT_QPA_PLATFORM_PLUGIN_PATH', 'QT_QPA_FONTDIR'):
+        value = environ.get(name)
+        if value and os.path.normpath(value).split(os.sep)[-3:-1] == ['cv2', 'qt']:
+            environ.pop(name)
+
+
 def create_app():
+    drop_opencv_qt_overrides()
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)

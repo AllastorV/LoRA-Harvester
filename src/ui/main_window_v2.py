@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QFrame, QVBoxLayout, QHBoxLa
 from src.core.caption_sync import path_key
 from src.core.smart_suggestions import scan_suggestions, ScanCancelled
 from src.ui import theme
-from src.ui.main_window import VideoSmartCropperUI
+from src.ui.main_window import VideoSmartCropperUI, drop_opencv_qt_overrides
 from src.ui.design_system.widgets import label, button, NavButton, Disclosure, line_icon
 from src.ui.design_system.media import MediaLoader, attach_image_thumbnails
 from src.ui.design_system.editor_layout import EditorStudioLayout
@@ -748,6 +748,7 @@ class StudioMainWindow(VideoSmartCropperUI):
 
 
 def create_app():
+    drop_opencv_qt_overrides()
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
