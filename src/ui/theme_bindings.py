@@ -25,6 +25,28 @@ def _remove(key, reference):
         _widgets.pop(key, None)
 
 
+class _ForgetOnDestroyed:
+    """``destroyed`` slot that tolerates being cleared by the cyclic GC.
+
+    When a widget's wrapper is collected as part of a reference cycle, Python may
+    clear this slot's state before the C++ object is deleted and emits
+    ``destroyed``. A lambda with default arguments then raises TypeError, which
+    PyQt5 escalates to qFatal and aborts the whole application.
+    """
+    __slots__ = ('key', 'reference')
+
+    def __init__(self, key, reference):
+        self.key = key
+        self.reference = reference
+
+    def __call__(self, *args):
+        try:
+            key, reference = self.key, self.reference
+        except AttributeError:
+            return  # Cleared by the GC; the weakref callback prunes the entry.
+        _remove(key, reference)
+
+
 def set_style_if_changed(widget, stylesheet: str) -> bool:
     """Avoid expensive Qt repolishing when the rendered stylesheet is identical."""
     if not isinstance(stylesheet, str):
@@ -54,7 +76,7 @@ def bind_style(widget, factory: Callable[[], str]):
         # C++ deletion can happen before the Python wrapper is garbage-collected.
         signal = getattr(widget, 'destroyed', None)
         if signal is not None:
-            signal.connect(lambda *args, k=key, ref=reference: _remove(k, ref))
+            signal.connect(_ForgetOnDestroyed(key, reference))
     return widget
 
 

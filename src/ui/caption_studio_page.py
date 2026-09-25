@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
     QTabWidget, QCompleter, QScrollArea, QSizePolicy,
     QGridLayout, QButtonGroup, QRadioButton, QSlider, QMessageBox,
 )
+from PyQt5 import sip
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QStringListModel
 from PyQt5.QtGui import (
     QFont, QDragEnterEvent, QDropEvent, QPixmap, QIcon, QTextCursor,
@@ -48,6 +49,19 @@ _shared_tag_model: Optional[QStringListModel] = None
 _shared_tag_load_started = False
 
 
+def _get_shared_tag_model() -> QStringListModel:
+    """Return the shared tag model, recreating it if Qt already destroyed it.
+
+    PyQt deletes parentless QObjects together with their QApplication, so the
+    module-level wrapper can outlive the C++ model when a new application is
+    created in the same process (e.g. consecutive offscreen Qt tests).
+    """
+    global _shared_tag_model
+    if _shared_tag_model is None or sip.isdeleted(_shared_tag_model):
+        _shared_tag_model = QStringListModel([])
+    return _shared_tag_model
+
+
 # ════════════════════════════════════════════════════════════════
 #  QTextEdit with Danbooru tag autocomplete popup
 # ════════════════════════════════════════════════════════════════
@@ -72,11 +86,7 @@ class TagCompleterTextEdit(QTextEdit):
         # hidden editor is constructed during application startup.
 
     def _setup_completer(self):
-        global _shared_tag_model
-        if _shared_tag_model is None:
-            _shared_tag_model = QStringListModel([])
-
-        c = QCompleter(_shared_tag_model, self)
+        c = QCompleter(_get_shared_tag_model(), self)
         # For QTextEdit the popup must be parented to the viewport
         c.setWidget(self)
         c.setCompletionMode(QCompleter.PopupCompletion)
@@ -107,10 +117,10 @@ class TagCompleterTextEdit(QTextEdit):
     # ── Tag loading ─────────────────────────────────────────────
 
     def _ensure_tags_loaded(self):
-        global _shared_tag_model, _shared_tag_load_started
+        global _shared_tag_load_started
         if _shared_tag_load_started:
             return
-        if _shared_tag_model and _shared_tag_model.rowCount() > 0:
+        if _get_shared_tag_model().rowCount() > 0:
             return
         _shared_tag_load_started = True
         self._loader = _TagLoadThread()
@@ -118,9 +128,7 @@ class TagCompleterTextEdit(QTextEdit):
         self._loader.start()
 
     def _on_tags_loaded(self, tags: list):
-        global _shared_tag_model
-        if _shared_tag_model is not None:
-            _shared_tag_model.setStringList(tags)
+        _get_shared_tag_model().setStringList(tags)
         if tags:
             self.tags_loaded.emit(len(tags))
         else:
@@ -2104,10 +2112,7 @@ class _EditTab(QWidget):
 
     def _attach_tag_add_completer(self):
         """Attach Danbooru completer to _tag_add_input (call after caption_edit is created)."""
-        global _shared_tag_model
-        if _shared_tag_model is None:
-            _shared_tag_model = QStringListModel([])
-        _c = QCompleter(_shared_tag_model, self._tag_add_input)
+        _c = QCompleter(_get_shared_tag_model(), self._tag_add_input)
         _c.setFilterMode(Qt.MatchStartsWith)
         _c.setCaseSensitivity(Qt.CaseInsensitive)
         _c.setModelSorting(QCompleter.CaseInsensitivelySortedModel)

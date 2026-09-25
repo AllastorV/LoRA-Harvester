@@ -125,6 +125,32 @@ class RealQtThemeTests(unittest.TestCase):
         self.assertEqual(stack.currentIndex(), 0)
         self.assertIsNone(stack.widget(0).graphicsEffect())
 
+    def test_cyclic_garbage_widget_destruction_does_not_abort(self):
+        # PyQt5 aborts on an exception raised inside a slot, so the scenario runs
+        # in a child process: bound widgets collected as a reference cycle must
+        # not call a GC-cleared ``destroyed`` handler.
+        import subprocess
+        script = '\n'.join([
+            'import gc',
+            'from PyQt5.QtWidgets import QApplication, QWidget, QPushButton',
+            'from src.ui import theme',
+            'app = QApplication([])',
+            'for _ in range(50):',
+            '    w = QWidget(); b = QPushButton("x", w)',
+            '    theme.bind_style(w, lambda: ""); theme.bind_style(b, lambda: "")',
+            '    b.clicked.connect(lambda *_a, w=w: w.update())',
+            '    del w, b',
+            'gc.collect()',
+            'app.processEvents()',
+            'print("survived")',
+        ])
+        root = Path(__file__).resolve().parents[1]
+        env = dict(os.environ, QT_QPA_PLATFORM='offscreen')
+        result = subprocess.run([sys.executable, '-c', script], cwd=root, env=env,
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+        self.assertIn('survived', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
