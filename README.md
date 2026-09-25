@@ -149,6 +149,8 @@ python scripts/character_sort.py /images/input --references /refs --max-characte
 
 #### Video Extractor
 
+Defaults below are the values in the shipped `config/config.yaml`; edit it (or pass `--config other.yaml`) to change them. A flag given on the command line always wins, and a `--preset` keeps its own tag limits.
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--format -f` | `9:16` | Crop aspect ratio. `1:1` is best for LoRA; `9:16` for vertical content |
@@ -159,7 +161,7 @@ python scripts/character_sort.py /images/input --references /refs --max-characte
 | `--turbo` | ON | Batch frame processing. Keep ON unless VRAM is very low |
 | `--batch-size` | `4` | Frames per batch in turbo mode (1–16) |
 | `--ensemble` | OFF | Use 3 AI models and vote for agreement. Slower but more accurate |
-| `--voting-threshold` | `1` | How many models must agree (1–3). `3` = strictest |
+| `--voting-threshold` | `2` | How many models must agree (1–3). `3` = strictest |
 | `--quality` | OFF | Enable blur + noise + brightness + duplicate filtering |
 | `--caption` | OFF | Generate a `.txt` caption file per saved image |
 | `--trigger` | *(empty)* | Word prepended to every caption (your LoRA keyword) |
@@ -169,6 +171,8 @@ python scripts/character_sort.py /images/input --references /refs --max-characte
 | `--preset` | *(none)* | Tagging preset: `anime_character`, `style_lora`, `realistic_photo`, `concept_art` |
 
 #### config.yaml — Advanced
+
+The CLI reads these values together with the detection, cropping, processing, upscale and character-recognition parameters. On/off switches such as `--quality`, `--caption` and `--upscale` are always chosen on the command line.
 
 ```yaml
 quality:
@@ -416,6 +420,8 @@ python scripts/character_sort.py /gorseller/giris --references /referanslar --ma
 
 #### Video Cikarici
 
+Asagidaki varsayilanlar `config/config.yaml` dosyasindaki degerlerdir; degistirmek icin dosyayi duzenleyin (veya `--config baska.yaml` verin). Komut satirinda verilen bayrak her zaman onceliklidir; `--preset` kendi etiket limitlerini korur. `--quality`, `--caption`, `--upscale` gibi ac/kapa secenekleri yalnizca komut satirindan secilir.
+
 | Parametre | Varsayilan | Etkisi |
 |-----------|-----------|--------|
 | `--format -f` | `9:16` | Kirpma en-boy orani. `1:1` LoRA icin ideal; `9:16` dikey icerik |
@@ -426,7 +432,7 @@ python scripts/character_sort.py /gorseller/giris --references /referanslar --ma
 | `--turbo` | ACIK | Toplu kare isleme. VRAM cok dusuk degilse acik birak |
 | `--batch-size` | `4` | Turbo modunda grup basina kare sayisi (1-16) |
 | `--ensemble` | KAPALI | 3 AI modeli kullan ve oylama yap. Yavas ama cok dogru |
-| `--voting-threshold` | `1` | Kac model anlasмali (1-3). `3` = en kati |
+| `--voting-threshold` | `2` | Kac model anlasмali (1-3). `3` = en kati |
 | `--quality` | KAPALI | Bulaniklik + gurultu + parlaklik + tekrar filtrelemeyi ac |
 | `--caption` | KAPALI | Her gorsel icin `.txt` caption dosyasi olustur |
 | `--trigger` | *(bos)* | Her caption'in basina eklenen kelime (LoRA anahtar kelimen) |
