@@ -159,7 +159,7 @@ python scripts/character_sort.py /images/input --references /refs --max-characte
 | `--turbo` | ON | Batch frame processing. Keep ON unless VRAM is very low |
 | `--batch-size` | `4` | Frames per batch in turbo mode (1–16) |
 | `--ensemble` | OFF | Use 3 AI models and vote for agreement. Slower but more accurate |
-| `--voting-threshold` | `2` | How many models must agree (1–3). `3` = strictest |
+| `--voting-threshold` | `1` | How many models must agree (1–3). `3` = strictest |
 | `--quality` | OFF | Enable blur + noise + brightness + duplicate filtering |
 | `--caption` | OFF | Generate a `.txt` caption file per saved image |
 | `--trigger` | *(empty)* | Word prepended to every caption (your LoRA keyword) |
@@ -197,7 +197,7 @@ captioning:
 |-----------|---------|-------------|
 | `--model` | `buffalo_l` | InsightFace model. `buffalo_l`=accurate, `buffalo_s`=fast |
 | `--threshold` | `0.45` | Face similarity cutoff (0–1). Lower = stricter matching |
-| `--max-characters` | `1` | Limit output to 1–6 character folders. Extras go to `other/` |
+| `--max-characters` | `6` | Limit output to 1–6 character folders. Extras go to `other/` |
 | `--cluster-eps` | `0.6` | DBSCAN epsilon for auto-clustering unknown faces |
 | `--cluster-min` | `2` | Minimum images to form a cluster. Below this goes to `unknown/` |
 | `--no-cluster` | OFF | Disable auto-clustering; unmatched faces go to `unknown/` |
@@ -426,7 +426,7 @@ python scripts/character_sort.py /gorseller/giris --references /referanslar --ma
 | `--turbo` | ACIK | Toplu kare isleme. VRAM cok dusuk degilse acik birak |
 | `--batch-size` | `4` | Turbo modunda grup basina kare sayisi (1-16) |
 | `--ensemble` | KAPALI | 3 AI modeli kullan ve oylama yap. Yavas ama cok dogru |
-| `--voting-threshold` | `2` | Kac model anlasмali (1-3). `3` = en kati |
+| `--voting-threshold` | `1` | Kac model anlasмali (1-3). `3` = en kati |
 | `--quality` | KAPALI | Bulaniklik + gurultu + parlaklik + tekrar filtrelemeyi ac |
 | `--caption` | KAPALI | Her gorsel icin `.txt` caption dosyasi olustur |
 | `--trigger` | *(bos)* | Her caption'in basina eklenen kelime (LoRA anahtar kelimen) |
@@ -441,7 +441,7 @@ python scripts/character_sort.py /gorseller/giris --references /referanslar --ma
 |-----------|-----------|--------|
 | `--model` | `buffalo_l` | InsightFace modeli. `buffalo_l`=dogru, `buffalo_s`=hizli |
 | `--threshold` | `0.45` | Yuz benzerligi siniri (0-1). Dusuk = daha kati eslestirme |
-| `--max-characters` | `1` | Ciktıyi 1-6 karakter klasoruyle sinirla. Fazlasi `other/`'a |
+| `--max-characters` | `6` | Ciktıyi 1-6 karakter klasoruyle sinirla. Fazlasi `other/`'a |
 | `--cluster-eps` | `0.6` | Bilinmeyen yuzler icin DBSCAN epsilon |
 | `--cluster-min` | `2` | Kume olusturmak icin gereken min gorsel sayisi |
 | `--no-cluster` | KAPALI | Otomatik kumelemeyi kapat; eslesmeyenler `unknown/`'a |

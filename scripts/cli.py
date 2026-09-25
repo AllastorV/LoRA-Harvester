@@ -5,6 +5,7 @@ Supports: Batch processing, Quality analysis, Auto-captioning, Resume
 """
 
 import argparse
+import dataclasses
 import sys
 import os
 import glob
@@ -161,10 +162,10 @@ Examples:
     tag_group = parser.add_argument_group('Tag Settings')
     tag_group.add_argument('--trigger', '--trigger-word', dest='trigger_word', default='',
                           help='Trigger word added at beginning of every caption')
-    tag_group.add_argument('--max-tags', type=int, default=30,
-                          help='Maximum number of tags (default: 30)')
-    tag_group.add_argument('--min-confidence', type=float, default=0.35,
-                          help='Minimum tag confidence 0-1 (default: 0.35)')
+    tag_group.add_argument('--max-tags', type=int, default=None,
+                          help='Maximum number of tags (default: 30, or the --preset value)')
+    tag_group.add_argument('--min-confidence', type=float, default=None,
+                          help='Minimum tag confidence 0-1 (default: 0.35, or the --preset value)')
     tag_group.add_argument('--negative-tags', type=str, default='',
                           help='Comma-separated tags to exclude (e.g., "watermark,signature,text")')
     tag_group.add_argument('--priority-tags', type=str, default='',
@@ -187,7 +188,7 @@ Examples:
                           help='Use spaces instead of underscores in tags')
     tag_group.add_argument('--caption-prefix', default='',
                           help='Prefix added before caption')
-    tag_group.add_argument('--caption-suffix', default='',
+    tag_group.add_argument('--caption-suffix', '--suffix', default='',
                           help='Suffix added after caption')
     tag_group.add_argument('--save-json', action='store_true',
                           help='Also save detailed JSON with tags')
@@ -317,7 +318,8 @@ Examples:
         print(f"   WD14: {'✓' if not args.no_wd14 else '✗'} ({args.wd14_model})")
         if args.trigger_word:
             print(f"   Trigger: '{args.trigger_word}'")
-        print(f"   Max tags: {args.max_tags}")
+        if args.max_tags is not None:
+            print(f"   Max tags: {args.max_tags}")
         if args.preset:
             print(f"   Preset: {args.preset}")
         if args.negative_tags:
@@ -373,16 +375,24 @@ Examples:
         if args.caption:
             # Build tag settings
             if args.preset:
-                tag_settings = CAPTIONER_PRESETS[args.preset]
-                # Override with command line args
+                # Copy so the shared preset is not mutated; only options given
+                # on the command line override the preset's own values.
+                tag_settings = dataclasses.replace(CAPTIONER_PRESETS[args.preset])
                 tag_settings.trigger_word = args.trigger_word or tag_settings.trigger_word
-                tag_settings.max_tags = args.max_tags
-                tag_settings.min_confidence = args.min_confidence
+                if args.max_tags is not None:
+                    tag_settings.max_tags = args.max_tags
+                if args.min_confidence is not None:
+                    tag_settings.min_confidence = args.min_confidence
+                if args.negative_tags:
+                    tag_settings.negative_tags = (list(tag_settings.negative_tags)
+                                                  + parse_negative_tags(args.negative_tags))
+                tag_settings.caption_prefix = args.caption_prefix or tag_settings.caption_prefix
+                tag_settings.caption_suffix = args.caption_suffix or tag_settings.caption_suffix
             else:
                 tag_settings = TagSettings(
                     trigger_word=args.trigger_word,
-                    max_tags=args.max_tags,
-                    min_confidence=args.min_confidence,
+                    max_tags=30 if args.max_tags is None else args.max_tags,
+                    min_confidence=0.35 if args.min_confidence is None else args.min_confidence,
                     negative_tags=parse_negative_tags(args.negative_tags),
                     priority_tags=parse_negative_tags(args.priority_tags),
                     keep_character_tags=keep_character,
@@ -400,6 +410,9 @@ Examples:
                 tag_settings=tag_settings,
                 enable_wd14=not args.no_wd14,
             )
+            if args.caption_mode != 'tags_only':
+                print(f"⚠️  --caption-mode {args.caption_mode}: the CLI captioner writes WD14 tags only; "
+                      "use Caption Studio in the GUI for Florence-2 captions.")
         
         print("✅ Models loaded successfully!")
         print()
@@ -446,24 +459,21 @@ Examples:
             print("📝 Running Auto-Captioning on saved frames...")
             print("="*60)
             
-            # Caption each output directory
+            # Caption only the folders written by this run
             for video_stat in overall_stats.get('videos_stats', []):
-                video_name = video_stat.get('video_name', '').replace('.mp4', '').replace('.avi', '')
-                
-                # Find output directories
-                output_base = Path(args.output)
-                for subdir in output_base.iterdir():
-                    if subdir.is_dir() and video_name in subdir.name:
-                        for category_dir in ['persons', 'animals', 'objects']:
-                            cat_path = subdir / category_dir
-                            if cat_path.exists():
-                                print(f"\n📂 Captioning: {cat_path}")
-                                captioner.caption_directory(
-                                    str(cat_path),
-                                    mode=args.caption_mode,
-                                    overwrite=False,
-                                    save_json=args.save_json
-                                )
+                output_dir = video_stat.get('output_dir')
+                if not output_dir:
+                    continue
+                for category_dir in ['persons', 'animals', 'objects']:
+                    cat_path = Path(output_dir) / category_dir
+                    if cat_path.exists():
+                        print(f"\n📂 Captioning: {cat_path}")
+                        captioner.caption_directory(
+                            str(cat_path),
+                            mode=args.caption_mode,
+                            overwrite=False,
+                            save_json=args.save_json
+                        )
         
         # Run character recognition/sorting if enabled
         if args.character_sort and overall_stats['total_frames_saved'] > 0:
@@ -491,19 +501,19 @@ Examples:
                     print("\n📚 Loading reference images...")
                     recognizer.load_references(args.char_references)
 
-                output_base = Path(args.output)
+                # Sort only the folders written by this run
                 for video_stat in overall_stats.get('videos_stats', []):
-                    video_name = Path(video_stat.get('video_name', '')).stem
-                    for subdir in output_base.iterdir():
-                        if subdir.is_dir() and video_name in subdir.name:
-                            persons_dir = subdir / 'persons'
-                            if persons_dir.exists():
-                                print(f"\n📂 Sorting: {persons_dir}")
-                                recognizer.sort_directory(
-                                    input_dir=str(persons_dir),
-                                    output_dir=str(persons_dir / '_sorted'),
-                                    copy=args.char_copy,
-                                )
+                    output_dir = video_stat.get('output_dir')
+                    if not output_dir:
+                        continue
+                    persons_dir = Path(output_dir) / 'persons'
+                    if persons_dir.exists():
+                        print(f"\n📂 Sorting: {persons_dir}")
+                        recognizer.sort_directory(
+                            input_dir=str(persons_dir),
+                            output_dir=str(persons_dir / '_sorted'),
+                            copy=args.char_copy,
+                        )
 
             except ImportError as e:
                 print(f"⚠️  Character recognition skipped: {e}")

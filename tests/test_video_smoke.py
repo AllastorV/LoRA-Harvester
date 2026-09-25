@@ -125,3 +125,79 @@ def test_paused_processor_honors_stop_without_manual_resume(clip,tmp_path,turbo)
         worker.join(2)
         pytest.fail('Paused processor ignored stop until manually resumed')
     assert errors == []
+
+
+@pytest.mark.parametrize('legacy',[False,True])
+def test_videos_stats_report_each_videos_own_output_dir(clip,tmp_path,legacy):
+    videos=[str(clip), str(tmp_path/'missing.avi')]
+    if legacy:
+        p=EnhancedVideoProcessor(videos,str(tmp_path/'output'),FixedDetector(),None,FixedCropper(),
+                                 enable_quality_check=False)
+        stats=p.process_all_videos(frame_interval=1,skip_text=False,resume=False)
+    else:
+        p=UnifiedVideoProcessor(videos,str(tmp_path/'output'),FixedDetector(),None,FixedCropper())
+        stats=p.process_all_videos(frame_interval=1,skip_text=False)
+    first,missing=stats['videos_stats']
+    assert len(list(Path(first['output_dir']).rglob('*.png'))) == 12
+    # A video that cannot be opened must not inherit the previous video's folder.
+    assert missing['output_dir'] is None
+
+
+def test_cli_captions_only_folders_written_by_this_run(clip,tmp_path,monkeypatch):
+    import importlib.util
+    import sys
+    root=Path(__file__).resolve().parents[1]
+    spec=importlib.util.spec_from_file_location('lh_scripts_cli', root/'scripts'/'cli.py')
+    cli=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    captioned=[]
+    class RecordingCaptioner:
+        def caption_directory(self, directory, **kwargs):
+            captioned.append(Path(directory))
+    monkeypatch.setattr(cli,'ObjectDetector',lambda **kw: FixedDetector())
+    monkeypatch.setattr(cli,'SmartCropper',lambda **kw: FixedCropper())
+    monkeypatch.setattr(cli,'AdvancedCaptioner',lambda **kw: RecordingCaptioner())
+    output=tmp_path/'output'
+    unrelated=output/'older_dataset'/'persons'
+    unrelated.mkdir(parents=True)
+    monkeypatch.setattr(sys,'argv',['cli.py',str(clip),'-o',str(output),'-i','1',
+                                    '--no-skip-text','--no-resume','--caption'])
+    cli.main()
+    assert captioned, 'captioning was not run on the new frames'
+    assert all(path.parent.parent == output and path.parent.name.startswith('sample_')
+               for path in captioned)
+    assert unrelated not in captioned
+
+
+@pytest.mark.parametrize('script',['scripts/cli.py','cli.py'])
+def test_cli_preset_keeps_its_values_and_applies_documented_suffix(clip,tmp_path,monkeypatch,script):
+    import importlib.util
+    import sys
+    from src.core.advanced_captioner import CAPTIONER_PRESETS
+    root=Path(__file__).resolve().parents[1]
+    spec=importlib.util.spec_from_file_location('lh_cli_under_test', root/script)
+    cli=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    captured={}
+    class RecordingCaptioner:
+        def __init__(self, tag_settings=None, **kwargs):
+            captured['settings']=tag_settings
+        def caption_directory(self, directory, **kwargs):
+            pass
+    monkeypatch.setattr(cli,'ObjectDetector',lambda **kw: FixedDetector())
+    monkeypatch.setattr(cli,'SmartCropper',lambda **kw: FixedCropper())
+    monkeypatch.setattr(cli,'AdvancedCaptioner',RecordingCaptioner)
+    preset=CAPTIONER_PRESETS['anime_character']
+    before=(preset.trigger_word, preset.max_tags, preset.caption_suffix)
+    # The README's "With captions" example.
+    monkeypatch.setattr(sys,'argv',['cli.py',str(clip),'-o',str(tmp_path/'out'),'-i','6',
+                                    '--no-skip-text','--no-resume','--caption',
+                                    '--preset','anime_character','--trigger','mychar',
+                                    '--suffix','masterpiece, best quality'])
+    cli.main()
+    settings=captured['settings']
+    assert settings.trigger_word == 'mychar'
+    assert settings.caption_suffix == 'masterpiece, best quality'
+    assert settings.max_tags == preset.max_tags == 25
+    assert settings.min_confidence == preset.min_confidence
+    assert (preset.trigger_word, preset.max_tags, preset.caption_suffix) == before

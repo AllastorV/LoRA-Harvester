@@ -310,6 +310,7 @@ class UnifiedVideoProcessor:
                 (self.person_dir / 'uncertain').mkdir(exist_ok=True)
             print("🔞 NSFW detection enabled — routing persons to sfw/nsfw subdirs")
 
+        self.current_output_dir = base_path
         print(f"📁 Output: {base_path}")
         return base_path
     
@@ -411,6 +412,7 @@ class UnifiedVideoProcessor:
                 skip_callback = None
 
             # Process single video
+            self.current_output_dir = None
             video_stats = self.process_single_video(
                 video_path,
                 frame_interval,
@@ -438,8 +440,10 @@ class UnifiedVideoProcessor:
                 self.overall_stats.get('total_frames_processed', 0)
                 + video_stats.get('processed_frames', 0)
             )
+            output_dir = getattr(self, 'current_output_dir', None)
             self.overall_stats['videos_stats'].append({
                 'video_name': Path(video_path).name,
+                'output_dir': str(output_dir) if output_dir else None,
                 'stats': video_stats
             })
         

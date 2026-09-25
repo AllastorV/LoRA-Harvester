@@ -685,6 +685,7 @@ class EnhancedVideoProcessor:
                 break
             
             # Process video
+            self.current_output_dir = None
             video_stats = self.process_single_video(
                 video_path,
                 frame_interval,
@@ -697,8 +698,10 @@ class EnhancedVideoProcessor:
             # Update overall stats
             self.overall_stats['processed_videos'] += 1
             self.overall_stats['total_frames_saved'] += video_stats['saved_frames']
+            output_dir = getattr(self, 'current_output_dir', None)
             self.overall_stats['videos_stats'].append({
                 'video': Path(video_path).name,
+                'output_dir': str(output_dir) if output_dir else None,
                 'stats': video_stats
             })
         
