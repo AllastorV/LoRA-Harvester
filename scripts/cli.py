@@ -1,10 +1,12 @@
 """
 Command Line Interface for LoRA-Harvester v3.0
 AI-Powered Dataset Collection Tool for LoRA Training
-Supports: Batch processing, Quality analysis, Auto-captioning, Resume
+Supports: Batch processing, Quality analysis, Auto-captioning, Resume,
+Upscaling and Character sorting. The root-level cli.py delegates here.
 """
 
 import argparse
+import dataclasses
 import sys
 import os
 import glob
@@ -20,23 +22,123 @@ if hasattr(sys.stdout, 'reconfigure'):
     except Exception:
         pass
 
+
+def list_upscale_models():
+    """Print the upscale model registry (needs no cv2/torch)."""
+    try:
+        from src.core.upscale_models import list_models
+        models = list_models()
+        print(f"\nAvailable upscale models ({len(models)} total):")
+        print(f"  {'Name':<35} {'Scale':>5}  {'Arch':<20}  Status")
+        print(f"  {'-'*35} {'-----':>5}  {'-'*20}  ------")
+        for name, cfg in models.items():
+            status = "ready" if cfg.get('available') else "not downloaded"
+            print(f"  {name:<35} {cfg.get('scale','?'):>5}x  "
+                  f"{cfg.get('arch','?'):<20}  {status}")
+        print(f"\nDownload: python scripts/download_models.py --upscale-models <name>")
+    except Exception as e:
+        print(f"Error loading model registry: {e}")
+
+
+# ── Early lightweight commands (before the cv2/torch imports below) ──────────
+if __name__ == '__main__' and '--list-upscale-models' in sys.argv[1:]:
+    list_upscale_models()
+    sys.exit(0)
+
 from src.core.detector import ObjectDetector
 from src.core.text_detector import SubtitleDetector
 from src.core.cropper import SmartCropper
 from src.core.enhanced_processor import EnhancedVideoProcessor
+from src.core.unified_processor import UnifiedVideoProcessor
 from src.core.advanced_captioner import (
     AdvancedCaptioner, TagSettings, 
     CAPTIONER_PRESETS, create_captioner_from_preset
 )
 from pathlib import Path
 
+DEFAULT_CONFIG = os.path.join(_PROJECT_ROOT, "config", "config.yaml")
+WD14_MODELS = [
+    'SmilingWolf/wd-swinv2-tagger-v3', 'SmilingWolf/wd-convnext-tagger-v3',
+    'SmilingWolf/wd-vit-tagger-v3', 'SmilingWolf/wd-v1-4-moat-tagger-v2',
+    'SmilingWolf/wd-v1-4-swinv2-tagger-v2',
+    'wd-v1-4-vit-tagger-v2', 'wd-v1-4-convnext-tagger-v2', 'wd-v1-4-swinv2-tagger-v2',
+]
 
-def load_config(config_path: str = "config/config.yaml") -> dict:
+
+def load_config(config_path: str = DEFAULT_CONFIG) -> dict:
     """Load configuration from YAML file"""
     if os.path.exists(config_path):
         with open(config_path, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
+            data = yaml.safe_load(f)
+        return data if isinstance(data, dict) else {}
     return {}
+
+
+def _config_value(config: dict, *keys):
+    node = config
+    for key in keys:
+        if not isinstance(node, dict) or key not in node:
+            return None
+        node = node[key]
+    return node
+
+
+# config.yaml key path -> CLI option dest. On/off switches (--quality,
+# --caption, --upscale, ...) are always chosen on the command line.
+CONFIG_OPTIONS = {
+    ('detection', 'model_size'): 'model',
+    ('detection', 'confidence'): 'confidence',
+    ('ensemble', 'voting_threshold'): 'voting_threshold',
+    ('cropping', 'default_format'): 'format',
+    ('cropping', 'min_padding'): 'padding',
+    ('processing', 'default_frame_interval'): 'interval',
+    ('processing', 'jpeg_quality'): 'jpeg_quality',
+    ('performance', 'batch_size'): 'batch_size',
+    ('quality', 'blur_threshold'): 'blur_threshold',
+    ('quality', 'brightness_min'): 'brightness_min',
+    ('quality', 'brightness_max'): 'brightness_max',
+    ('quality', 'duplicate_threshold'): 'duplicate_threshold',
+    ('scene_detection', 'threshold'): 'scene_threshold',
+    ('upscale', 'model'): 'upscale_model',
+    ('upscale', 'tile'): 'upscale_tile',
+    ('upscale', 'target'): 'upscale_target',
+    ('upscale', 'min_resolution'): 'upscale_min_res',
+    ('captioning', 'wd14', 'model'): 'wd14_model',
+    ('captioning', 'tags', 'trigger_word'): 'trigger_word',
+    ('captioning', 'tags', 'caption_prefix'): 'caption_prefix',
+    ('captioning', 'tags', 'caption_suffix'): 'caption_suffix',
+    ('character_recognition', 'similarity_threshold'): 'char_threshold',
+    ('character_recognition', 'cluster_eps'): 'char_cluster_eps',
+    ('character_recognition', 'cluster_min_samples'): 'char_cluster_min',
+    ('character_recognition', 'model'): 'char_model',
+}
+# Applied only without --preset, so a chosen preset keeps its own values.
+CONFIG_TAG_LIMITS = {
+    ('captioning', 'tags', 'max_tags'): 'max_tags',
+    ('captioning', 'tags', 'min_confidence'): 'min_confidence',
+}
+
+
+def config_defaults(config: dict, mapping=CONFIG_OPTIONS) -> dict:
+    """Return {option dest: value} for settings present in config.yaml."""
+    values = {}
+    for keys, dest in mapping.items():
+        value = _config_value(config, *keys)
+        if value is not None and value != '':
+            values[dest] = value
+    return values
+
+
+def apply_config_defaults(parser, config: dict, config_path: str):
+    """Use config.yaml values as option defaults; explicit flags still win."""
+    values = config_defaults(config)
+    for action in parser._actions:
+        if action.dest in values and action.choices is not None \
+                and values[action.dest] not in action.choices:
+            parser.error(f"{config_path}: invalid value {values[action.dest]!r} for "
+                         f"{action.option_strings[-1]} (choose from "
+                         f"{', '.join(map(str, action.choices))})")
+    parser.set_defaults(**values)
 
 
 def parse_negative_tags(tags_str: str) -> list:
@@ -59,7 +161,7 @@ Examples:
   python cli.py *.mp4 -o output --turbo
   
   # With quality filtering
-  python cli.py input.mp4 -o output --quality --no-blur --no-duplicates
+  python cli.py input.mp4 -o output --quality --no-duplicates
   
   # With auto-captioning (WD14 tags)
   python cli.py input.mp4 -o output --caption --caption-mode tags_only
@@ -143,6 +245,26 @@ Examples:
                             help='Use scene detection instead of fixed interval')
     scene_group.add_argument('--scene-threshold', type=float, default=25.0,
                             help='Scene change detection threshold (default: 25.0)')
+
+    # ==================== UPSCALE (NEW v3.x) ====================
+    upscale_group = parser.add_argument_group('Upscale (Real-ESRGAN)')
+    upscale_group.add_argument('--upscale', action='store_true',
+                               help='Enable Real-ESRGAN upscaling (requires: pip install realesrgan basicsr)')
+    upscale_group.add_argument('--upscale-model', default='RealESRGAN_x4plus_anime_6B',
+                               help='Upscale model name from registry (default: RealESRGAN_x4plus_anime_6B). '
+                                    'Use --list-upscale-models to see all.')
+    upscale_group.add_argument('--upscale-target', default='crop', choices=['crop', 'frame'],
+                               help='What to upscale: crop (after detection, faster) or '
+                                    'frame (full frame before detection). Default: crop')
+    upscale_group.add_argument('--upscale-tile', type=int, default=0,
+                               help='Tile size for low-VRAM GPUs (0=no tiling, default: 0)')
+    upscale_group.add_argument('--upscale-min-res', type=int, default=512,
+                               help='Rescue frames below this min dimension (px) before quality filter. '
+                                    'Default: 512. Set 0 to disable rescue logic.')
+    upscale_group.add_argument('--face-enhance', action='store_true',
+                               help='GFPGAN face restoration on top of ESRGAN (requires: pip install gfpgan)')
+    upscale_group.add_argument('--list-upscale-models', action='store_true',
+                               help='List available upscale models and exit')
     
     # ==================== CAPTIONING (NEW) ====================
     caption_group = parser.add_argument_group('Auto Captioning (WD14/Danbooru)')
@@ -152,8 +274,9 @@ Examples:
                               choices=['tags_only', 'tag_first', 'florence2', 'combined'],
                               help='Caption mode: tags_only, tag_first, florence2, combined (default: tags_only)')
     caption_group.add_argument('--wd14-model', default='wd-v1-4-vit-tagger-v2',
-                              choices=['wd-v1-4-vit-tagger-v2', 'wd-v1-4-convnext-tagger-v2', 'wd-v1-4-swinv2-tagger-v2'],
-                              help='WD14 model (default: wd-v1-4-vit-tagger-v2)')
+                              choices=WD14_MODELS, metavar='MODEL',
+                              help='WD14 model: ' + ', '.join(WD14_MODELS) +
+                                   ' (default: config.yaml captioning.wd14.model, else wd-v1-4-vit-tagger-v2)')
     caption_group.add_argument('--no-wd14', action='store_true',
                               help='Disable WD14 tagging')
     
@@ -161,10 +284,10 @@ Examples:
     tag_group = parser.add_argument_group('Tag Settings')
     tag_group.add_argument('--trigger', '--trigger-word', dest='trigger_word', default='',
                           help='Trigger word added at beginning of every caption')
-    tag_group.add_argument('--max-tags', type=int, default=30,
-                          help='Maximum number of tags (default: 30)')
-    tag_group.add_argument('--min-confidence', type=float, default=0.35,
-                          help='Minimum tag confidence 0-1 (default: 0.35)')
+    tag_group.add_argument('--max-tags', type=int, default=None,
+                          help='Maximum number of tags (default: 30, or the --preset value)')
+    tag_group.add_argument('--min-confidence', type=float, default=None,
+                          help='Minimum tag confidence 0-1 (default: 0.35, or the --preset value)')
     tag_group.add_argument('--negative-tags', type=str, default='',
                           help='Comma-separated tags to exclude (e.g., "watermark,signature,text")')
     tag_group.add_argument('--priority-tags', type=str, default='',
@@ -187,7 +310,7 @@ Examples:
                           help='Use spaces instead of underscores in tags')
     tag_group.add_argument('--caption-prefix', default='',
                           help='Prefix added before caption')
-    tag_group.add_argument('--caption-suffix', default='',
+    tag_group.add_argument('--caption-suffix', '--suffix', default='',
                           help='Suffix added after caption')
     tag_group.add_argument('--save-json', action='store_true',
                           help='Also save detailed JSON with tags')
@@ -239,18 +362,26 @@ Examples:
                              help='Start fresh, ignore checkpoints')
     
     # ==================== OTHER ====================
-    parser.add_argument('--config', default=os.path.join(_PROJECT_ROOT, "config/config.yaml"),
-                       help='Path to config file (default: config.yaml)')
+    parser.add_argument('--config', default=DEFAULT_CONFIG,
+                       help='Settings file; its values replace the defaults shown here and '
+                            'command-line flags override it (default: config/config.yaml)')
     parser.add_argument('--jpeg-quality', type=int, default=95,
                        help='JPEG output quality 1-100 (default: 95)')
     parser.add_argument('-v', '--verbose', action='store_true',
                        help='Verbose output')
     
+    if '--list-upscale-models' in sys.argv[1:]:
+        list_upscale_models()
+        return
+    # config.yaml values become the option defaults; explicit flags still win.
+    known, _ = parser.parse_known_args()
+    if known.config != DEFAULT_CONFIG and not os.path.isfile(known.config):
+        parser.error(f"config file not found: {known.config}")
+    config = load_config(known.config)
+    apply_config_defaults(parser, config, known.config)
+    config_tag_limits = config_defaults(config, CONFIG_TAG_LIMITS)
     args = parser.parse_args()
-    
-    # Load config file
-    config = load_config(args.config)
-    
+
     # Handle flags
     use_turbo = args.turbo and not args.no_turbo
     use_resume = args.resume and not args.no_resume
@@ -317,7 +448,8 @@ Examples:
         print(f"   WD14: {'✓' if not args.no_wd14 else '✗'} ({args.wd14_model})")
         if args.trigger_word:
             print(f"   Trigger: '{args.trigger_word}'")
-        print(f"   Max tags: {args.max_tags}")
+        if args.max_tags is not None:
+            print(f"   Max tags: {args.max_tags}")
         if args.preset:
             print(f"   Preset: {args.preset}")
         if args.negative_tags:
@@ -373,16 +505,26 @@ Examples:
         if args.caption:
             # Build tag settings
             if args.preset:
-                tag_settings = CAPTIONER_PRESETS[args.preset]
-                # Override with command line args
+                # Copy so the shared preset is not mutated; only options given
+                # on the command line override the preset's own values.
+                tag_settings = dataclasses.replace(CAPTIONER_PRESETS[args.preset])
                 tag_settings.trigger_word = args.trigger_word or tag_settings.trigger_word
-                tag_settings.max_tags = args.max_tags
-                tag_settings.min_confidence = args.min_confidence
+                if args.max_tags is not None:
+                    tag_settings.max_tags = args.max_tags
+                if args.min_confidence is not None:
+                    tag_settings.min_confidence = args.min_confidence
+                if args.negative_tags:
+                    tag_settings.negative_tags = (list(tag_settings.negative_tags)
+                                                  + parse_negative_tags(args.negative_tags))
+                tag_settings.caption_prefix = args.caption_prefix or tag_settings.caption_prefix
+                tag_settings.caption_suffix = args.caption_suffix or tag_settings.caption_suffix
             else:
                 tag_settings = TagSettings(
                     trigger_word=args.trigger_word,
-                    max_tags=args.max_tags,
-                    min_confidence=args.min_confidence,
+                    max_tags=(config_tag_limits.get('max_tags', 30)
+                              if args.max_tags is None else args.max_tags),
+                    min_confidence=(config_tag_limits.get('min_confidence', 0.35)
+                                    if args.min_confidence is None else args.min_confidence),
                     negative_tags=parse_negative_tags(args.negative_tags),
                     priority_tags=parse_negative_tags(args.priority_tags),
                     keep_character_tags=keep_character,
@@ -400,23 +542,74 @@ Examples:
                 tag_settings=tag_settings,
                 enable_wd14=not args.no_wd14,
             )
+            if args.caption_mode != 'tags_only':
+                print(f"⚠️  --caption-mode {args.caption_mode}: the CLI captioner writes WD14 tags only; "
+                      "use Caption Studio in the GUI for Florence-2 captions.")
         
+        # Build upscaler if requested (v3.x)
+        upscaler = None
+        if args.upscale:
+            try:
+                from src.core.upscaler import FrameUpscaler
+                upscaler = FrameUpscaler(
+                    model_name=args.upscale_model,
+                    tile=args.upscale_tile,
+                    use_gpu=True,
+                    face_enhance=args.face_enhance,
+                )
+                if upscaler.is_available():
+                    print(f"✅ Upscaler ready: {args.upscale_model} ({upscaler.get_scale()}x)")
+                else:
+                    print("⚠️  Upscaler deps missing — upscale disabled.")
+                    print("    Install: pip install realesrgan basicsr")
+                    upscaler = None
+            except Exception as e:
+                print(f"⚠️  Upscaler init failed: {e} — upscale disabled.")
+                upscaler = None
+
         print("✅ Models loaded successfully!")
         print()
-        
-        # Create enhanced processor
-        processor = EnhancedVideoProcessor(
-            video_paths=video_files,
-            output_dir=args.output,
-            detector=detector,
-            text_detector=text_detector,
-            cropper=cropper,
-            use_turbo=use_turbo,
-            batch_size=args.batch_size,
-            enable_quality_check=args.quality,
-            enable_scene_detection=args.scene_detection,
-            jpeg_quality=args.jpeg_quality
-        )
+
+        # Use UnifiedVideoProcessor when upscale is active (has upscaler support).
+        # Fall back to EnhancedVideoProcessor for the legacy path.
+        if upscaler is not None:
+            quality_analyzer = None
+            if args.quality:
+                from src.core.quality_analyzer import QualityAnalyzer
+                quality_analyzer = QualityAnalyzer(
+                    blur_threshold=args.blur_threshold,
+                    brightness_range=(args.brightness_min, args.brightness_max),
+                    duplicate_threshold=args.duplicate_threshold,
+                    check_duplicates=args.no_duplicates,
+                )
+            processor = UnifiedVideoProcessor(
+                video_paths=video_files,
+                output_dir=args.output,
+                detector=detector,
+                text_detector=text_detector,
+                cropper=cropper,
+                use_turbo=use_turbo,
+                batch_size=args.batch_size,
+                quality_analyzer=quality_analyzer,
+                jpeg_quality=args.jpeg_quality,
+                upscaler=upscaler,
+                upscale_target=args.upscale_target,
+                upscale_min_resolution=args.upscale_min_res,
+            )
+        else:
+            # Create enhanced processor (legacy path — no upscale)
+            processor = EnhancedVideoProcessor(
+                video_paths=video_files,
+                output_dir=args.output,
+                detector=detector,
+                text_detector=text_detector,
+                cropper=cropper,
+                use_turbo=use_turbo,
+                batch_size=args.batch_size,
+                enable_quality_check=args.quality,
+                enable_scene_detection=args.scene_detection,
+                jpeg_quality=args.jpeg_quality
+            )
         
         # Update quality analyzer settings if enabled
         if args.quality and processor.quality_analyzer:
@@ -426,18 +619,22 @@ Examples:
                 processor.quality_analyzer.duplicate_threshold = args.duplicate_threshold
         
         # Update scene detector settings if enabled
-        if args.scene_detection and processor.scene_detector:
+        # (UnifiedVideoProcessor has no scene_detector — guard with getattr)
+        if args.scene_detection and getattr(processor, 'scene_detector', None):
             processor.scene_detector.threshold = args.scene_threshold
         
         print("🎬 Starting video processing...")
         print()
         
         # Process all videos
-        overall_stats = processor.process_all_videos(
-            frame_interval=args.interval,
-            skip_text=not args.no_skip_text,
-            resume=use_resume,
-        )
+        # (resume/checkpoint is only supported by EnhancedVideoProcessor)
+        process_kwargs = {
+            'frame_interval': args.interval,
+            'skip_text': not args.no_skip_text,
+        }
+        if isinstance(processor, EnhancedVideoProcessor):
+            process_kwargs['resume'] = use_resume
+        overall_stats = processor.process_all_videos(**process_kwargs)
         
         # Run captioning on output if enabled
         if captioner and overall_stats['total_frames_saved'] > 0:
@@ -446,24 +643,21 @@ Examples:
             print("📝 Running Auto-Captioning on saved frames...")
             print("="*60)
             
-            # Caption each output directory
+            # Caption only the folders written by this run
             for video_stat in overall_stats.get('videos_stats', []):
-                video_name = video_stat.get('video_name', '').replace('.mp4', '').replace('.avi', '')
-                
-                # Find output directories
-                output_base = Path(args.output)
-                for subdir in output_base.iterdir():
-                    if subdir.is_dir() and video_name in subdir.name:
-                        for category_dir in ['persons', 'animals', 'objects']:
-                            cat_path = subdir / category_dir
-                            if cat_path.exists():
-                                print(f"\n📂 Captioning: {cat_path}")
-                                captioner.caption_directory(
-                                    str(cat_path),
-                                    mode=args.caption_mode,
-                                    overwrite=False,
-                                    save_json=args.save_json
-                                )
+                output_dir = video_stat.get('output_dir')
+                if not output_dir:
+                    continue
+                for category_dir in ['persons', 'animals', 'objects']:
+                    cat_path = Path(output_dir) / category_dir
+                    if cat_path.exists():
+                        print(f"\n📂 Captioning: {cat_path}")
+                        captioner.caption_directory(
+                            str(cat_path),
+                            mode=args.caption_mode,
+                            overwrite=False,
+                            save_json=args.save_json
+                        )
         
         # Run character recognition/sorting if enabled
         if args.character_sort and overall_stats['total_frames_saved'] > 0:
@@ -491,19 +685,19 @@ Examples:
                     print("\n📚 Loading reference images...")
                     recognizer.load_references(args.char_references)
 
-                output_base = Path(args.output)
+                # Sort only the folders written by this run
                 for video_stat in overall_stats.get('videos_stats', []):
-                    video_name = Path(video_stat.get('video_name', '')).stem
-                    for subdir in output_base.iterdir():
-                        if subdir.is_dir() and video_name in subdir.name:
-                            persons_dir = subdir / 'persons'
-                            if persons_dir.exists():
-                                print(f"\n📂 Sorting: {persons_dir}")
-                                recognizer.sort_directory(
-                                    input_dir=str(persons_dir),
-                                    output_dir=str(persons_dir / '_sorted'),
-                                    copy=args.char_copy,
-                                )
+                    output_dir = video_stat.get('output_dir')
+                    if not output_dir:
+                        continue
+                    persons_dir = Path(output_dir) / 'persons'
+                    if persons_dir.exists():
+                        print(f"\n📂 Sorting: {persons_dir}")
+                        recognizer.sort_directory(
+                            input_dir=str(persons_dir),
+                            output_dir=str(persons_dir / '_sorted'),
+                            copy=args.char_copy,
+                        )
 
             except ImportError as e:
                 print(f"⚠️  Character recognition skipped: {e}")

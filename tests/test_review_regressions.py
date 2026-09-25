@@ -208,16 +208,8 @@ def test_exporter_serializes_requested_class_token(tmp_path):
     assert subset.get("class_tokens") == "mychar person", subset
 
 
-# B10: the README-documented CLI must honor --no-resume.
-def test_documented_cli_forwards_resume_flag():
-    tree = ast.parse((ROOT / "scripts/cli.py").read_text(encoding="utf-8"))
-    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
-             and isinstance(n.func, ast.Attribute) and n.func.attr == "process_all_videos"]
-    assert len(calls) == 1
-    assert any(k.arg == "resume" and isinstance(k.value, ast.Name)
-               and k.value.id == "use_resume" for k in calls[0].keywords), (
-        "scripts/cli.py computes use_resume but does not forward it."
-    )
+# B10 (the documented CLI must honor --no-resume) is checked end-to-end in
+# tests/test_video_smoke.py::test_documented_cli_forwards_resume_flag.
 
 
 # B11: advertised MCP self-test must refer to a file in the snapshot.

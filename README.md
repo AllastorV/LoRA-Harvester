@@ -149,6 +149,8 @@ python scripts/character_sort.py /images/input --references /refs --max-characte
 
 #### Video Extractor
 
+Defaults below are the values in the shipped `config/config.yaml`; edit it (or pass `--config other.yaml`) to change them. A flag given on the command line always wins, and a `--preset` keeps its own tag limits.
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--format -f` | `9:16` | Crop aspect ratio. `1:1` is best for LoRA; `9:16` for vertical content |
@@ -169,6 +171,8 @@ python scripts/character_sort.py /images/input --references /refs --max-characte
 | `--preset` | *(none)* | Tagging preset: `anime_character`, `style_lora`, `realistic_photo`, `concept_art` |
 
 #### config.yaml — Advanced
+
+The CLI reads these values together with the detection, cropping, processing, upscale and character-recognition parameters. On/off switches such as `--quality`, `--caption` and `--upscale` are always chosen on the command line.
 
 ```yaml
 quality:
@@ -197,7 +201,7 @@ captioning:
 |-----------|---------|-------------|
 | `--model` | `buffalo_l` | InsightFace model. `buffalo_l`=accurate, `buffalo_s`=fast |
 | `--threshold` | `0.45` | Face similarity cutoff (0–1). Lower = stricter matching |
-| `--max-characters` | `1` | Limit output to 1–6 character folders. Extras go to `other/` |
+| `--max-characters` | `6` | Limit output to 1–6 character folders. Extras go to `other/` |
 | `--cluster-eps` | `0.6` | DBSCAN epsilon for auto-clustering unknown faces |
 | `--cluster-min` | `2` | Minimum images to form a cluster. Below this goes to `unknown/` |
 | `--no-cluster` | OFF | Disable auto-clustering; unmatched faces go to `unknown/` |
@@ -416,6 +420,8 @@ python scripts/character_sort.py /gorseller/giris --references /referanslar --ma
 
 #### Video Cikarici
 
+Asagidaki varsayilanlar `config/config.yaml` dosyasindaki degerlerdir; degistirmek icin dosyayi duzenleyin (veya `--config baska.yaml` verin). Komut satirinda verilen bayrak her zaman onceliklidir; `--preset` kendi etiket limitlerini korur. `--quality`, `--caption`, `--upscale` gibi ac/kapa secenekleri yalnizca komut satirindan secilir.
+
 | Parametre | Varsayilan | Etkisi |
 |-----------|-----------|--------|
 | `--format -f` | `9:16` | Kirpma en-boy orani. `1:1` LoRA icin ideal; `9:16` dikey icerik |
@@ -441,7 +447,7 @@ python scripts/character_sort.py /gorseller/giris --references /referanslar --ma
 |-----------|-----------|--------|
 | `--model` | `buffalo_l` | InsightFace modeli. `buffalo_l`=dogru, `buffalo_s`=hizli |
 | `--threshold` | `0.45` | Yuz benzerligi siniri (0-1). Dusuk = daha kati eslestirme |
-| `--max-characters` | `1` | Ciktıyi 1-6 karakter klasoruyle sinirla. Fazlasi `other/`'a |
+| `--max-characters` | `6` | Ciktıyi 1-6 karakter klasoruyle sinirla. Fazlasi `other/`'a |
 | `--cluster-eps` | `0.6` | Bilinmeyen yuzler icin DBSCAN epsilon |
 | `--cluster-min` | `2` | Kume olusturmak icin gereken min gorsel sayisi |
 | `--no-cluster` | KAPALI | Otomatik kumelemeyi kapat; eslesmeyenler `unknown/`'a |
